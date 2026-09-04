@@ -18,15 +18,15 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
-            bin_name: codebase-recall
+            bin_name: code-rcl
             archive_ext: tar.gz
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            bin_name: codebase-recall.exe
+            bin_name: code-rcl.exe
             archive_ext: zip
           - os: macos-latest
             target: x86_64-apple-darwin
-            bin_name: codebase-recall
+            bin_name: code-rcl
             archive_ext: tar.gz
 
     steps:
