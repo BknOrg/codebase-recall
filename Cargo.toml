@@ -1,0 +1,42 @@
+[package]
+name = "codebase-recall"
+version = "0.5.1"
+edition = "2024"
+authors = ["Bkn Org"]
+description = "CLI based application for codebase dumper for LLMs and fast review/recall project"
+license = "MIT"
+repository = "https://github.com/BknOrg/codebase-recall"
+readme = "README.md"
+
+[package.metadata.wix]
+upgrade-guid = "9A02545F-636D-4CAC-AE1C-8B70DE333E4E"
+path-guid = "0C631924-C69E-4B52-9D4B-F3D3E678C0DA"
+license = false
+eula = false
+
+[[bin]]
+name = "code-rcl"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+ignore = "0.4"
+anyhow = "1.0"
+rusqlite = { version = "0.32", features = ["bundled"] }
+blake3 = "1"
+tree-sitter = "0.25"
+tree-sitter-rust = "0.24"
+tree-sitter-javascript = "0.23"
+tree-sitter-typescript = "0.23"
+tree-sitter-python = "0.23"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+globset = "0.4"
+tiny_http = "0.12"
+webbrowser = "1.2"
+ctrlc = "3.5"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

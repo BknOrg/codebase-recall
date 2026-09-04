@@ -1,0 +1,52 @@
+:root {
+  --bg: #ffffff; --fg: #1a1a1a; --muted: #6b7280; --panel: #f6f7f9;
+  --border: #e2e5ea; --edge: #b9c0cb; --edge-strong: #7c8797;
+  --file: #2563eb; --func: #16a34a; --type: #d97706; --var: #9333ea;
+  --ext: #94a3b8; --accent: #ef4444;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115; --fg: #e6e8eb; --muted: #9aa4b2; --panel: #171a21;
+    --border: #262b36; --edge: #39414f; --edge-strong: #5b6675;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+  font: 13px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+#app { display: flex; flex-direction: column; height: 100%; }
+header { display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--panel); }
+header h1 { font-size: 13px; margin: 0; font-weight: 600; }
+header .stat { color: var(--muted); }
+header label { display: inline-flex; gap: 4px; align-items: center; cursor: pointer; }
+header input[type=search] { padding: 3px 7px; border: 1px solid var(--border);
+  border-radius: 5px; background: var(--bg); color: var(--fg); }
+header button { padding: 3px 10px; border: 1px solid var(--border); border-radius: 5px;
+  background: var(--bg); color: var(--fg); cursor: pointer; }
+header button:hover { border-color: var(--edge-strong); }
+#stage { flex: 1; overflow: hidden; position: relative; }
+svg { width: 100%; height: 100%; display: block; cursor: grab; }
+svg.grabbing { cursor: grabbing; }
+.edge { stroke: var(--edge); stroke-width: 1; transition: stroke-opacity .18s ease; }
+.edge.imports { stroke-dasharray: 4 3; }
+.edge.references { stroke-dasharray: 1 3; }
+.node circle { stroke: var(--bg); stroke-width: 1.5; cursor: grab; }
+.node circle, .node text { transition: opacity .18s ease; }
+.node.dragging circle { cursor: grabbing; }
+.node text { fill: var(--fg); paint-order: stroke; stroke: var(--bg);
+  stroke-width: 3px; font-size: 10px; pointer-events: none; user-select: none; }
+/* Press-and-hold a node (or type in the search box) to spotlight it: everything
+   unrelated fades right down. Dims via child opacity / stroke-opacity so it
+   layers on top of the enter/exit fade (an inline `opacity` on the element). */
+.node.dim circle, .node.dim text { opacity: .12; }
+.edge.dim { stroke-opacity: .1; }
+.node.match circle { stroke: var(--accent); stroke-width: 2.5px; }
+.node.file circle { cursor: pointer; }
+.legend { position: absolute; right: 10px; bottom: 10px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
+.legend div { display: flex; align-items: center; gap: 6px; margin: 2px 0; color: var(--muted); }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+#status { position: absolute; left: 10px; bottom: 10px; color: var(--muted);
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 8px; font-size: 11px; opacity: 0; transition: opacity .3s ease; }
+#status.show { opacity: 1; }
