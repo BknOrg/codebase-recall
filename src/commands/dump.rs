@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::fs;
 
 use crate::cli::DumpArgs;
-use crate::{formatter, walker};
+use crate::dump::{formatter, walker};
 
 pub fn run(args: DumpArgs) -> Result<()> {
     let (tree_paths, files) = walker::collect_files(&args.path, args.max_size_kb)?;

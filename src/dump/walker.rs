@@ -14,6 +14,7 @@ const IGNORED_NAMES_FOR_CONTENT: &[&str] = &[
     "go.sum",
     ".DS_Store",
     "Thumbs.db",
+    "LICENSE",
 ];
 
 const IGNORED_EXTENSIONS_FOR_CONTENT: &[&str] = &[

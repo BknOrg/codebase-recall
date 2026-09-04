@@ -1,18 +1,12 @@
 [package]
 name = "codebase-recall"
-version = "0.5.1"
+version = "0.5.3"
 edition = "2024"
 authors = ["Bkn Org"]
 description = "CLI based application for codebase dumper for LLMs and fast review/recall project"
 license = "MIT"
 repository = "https://github.com/BknOrg/codebase-recall"
 readme = "README.md"
-
-[package.metadata.wix]
-upgrade-guid = "9A02545F-636D-4CAC-AE1C-8B70DE333E4E"
-path-guid = "0C631924-C69E-4B52-9D4B-F3D3E678C0DA"
-license = false
-eula = false
 
 [[bin]]
 name = "code-rcl"

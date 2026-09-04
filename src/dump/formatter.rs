@@ -1,4 +1,4 @@
-use crate::walker::FileEntry;
+use crate::dump::walker::FileEntry;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 

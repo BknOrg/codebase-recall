@@ -4,10 +4,10 @@ use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::analysis::{self, Language};
-use crate::cache::models::FileRow;
 use crate::cache::CacheDb;
+use crate::cache::models::FileRow;
 use crate::cli::SyncArgs;
-use crate::walker;
+use crate::dump::walker;
 
 pub fn run(args: SyncArgs) -> Result<()> {
     let project = args.project.clone();

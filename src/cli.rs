@@ -17,7 +17,7 @@ pub struct Cli {
 pub enum Command {
     /// Dump the codebase into a single Markdown context file
     Dump(DumpArgs),
-    /// Create .code-ctx/ (graph cache DB + config) in the target project
+    /// Create .code-rcl/ (graph cache DB + config) in the target project
     Init(InitArgs),
     /// Parse changed source files into the graph cache
     Sync(SyncArgs),

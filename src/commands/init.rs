@@ -8,7 +8,7 @@ use crate::cli::InitArgs;
 
 const CONFIG_FILE: &str = "config.toml";
 
-const DEFAULT_CONFIG: &str = r#"# code-ctx project configuration
+const DEFAULT_CONFIG: &str = r#"# code-rcl project configuration
 schema_version = 1
 
 [sync]
@@ -50,10 +50,10 @@ pub fn run(args: InitArgs) -> Result<()> {
     ensure_gitignored(project)?;
 
     println!(
-        "Initialized code-ctx cache at {}",
+        "Initialized code-rcl cache at {}",
         cache::ctx_dir(project).display()
     );
-    println!("Next: `code-ctx sync` to populate the graph cache.");
+    println!("Next: `code-rcl sync` to populate the graph cache.");
     Ok(())
 }
 
@@ -63,7 +63,10 @@ fn ensure_gitignored(project: &Path) -> Result<()> {
     let entry = format!("{}/", cache::CODE_CTX_DIR);
 
     let already = fs::read_to_string(&gitignore)
-        .map(|c| c.lines().any(|l| l.trim() == entry || l.trim() == cache::CODE_CTX_DIR))
+        .map(|c| {
+            c.lines()
+                .any(|l| l.trim() == entry || l.trim() == cache::CODE_CTX_DIR)
+        })
         .unwrap_or(false);
     if already {
         return Ok(());

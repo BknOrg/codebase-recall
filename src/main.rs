@@ -3,10 +3,9 @@ mod assets;
 mod cache;
 mod cli;
 mod commands;
-mod formatter;
+mod dump;
 mod graph;
 mod server;
-mod walker;
 
 use anyhow::Result;
 use clap::Parser;

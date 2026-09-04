@@ -11,7 +11,7 @@
   }[k] || "--func");
   const cssVar = (v) =>
     getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-  const radius = (n) => (n.kind === "file" ? 7 : 5);
+  const radius = (n) => (n.kind === "file" ? 8 : 5.5);
 
   // --- indexes ----------------------------------------------------------------
   const fileOf = new Map(); // symbol id -> owning file id
@@ -21,7 +21,52 @@
 
   const expanded = new Set();
   const state = { kinds: new Set(["imports", "calls", "references"]), query: "" };
-  let pressed = null; // id of the node currently held down, or null
+  let hovered = null; // id of node currently hovered by cursor
+  let isDragging = false;
+
+  // Tooltip element
+  const stage = document.getElementById("stage");
+  const tooltip = document.createElement("div");
+  tooltip.className = "graph-tooltip";
+  stage.appendChild(tooltip);
+
+  function showTooltip(ev, d) {
+    if (isDragging) return;
+    let html = `<div class="tt-title"><span>${d.label}</span><span class="tt-kind">${d.kind}</span></div>`;
+    if (d.path) {
+      html += `<div class="tt-path">${d.path}</div>`;
+    }
+    const meta = [];
+    if (d.language) meta.push(d.language);
+    if (d.lines && Array.isArray(d.lines)) {
+      meta.push(`L${d.lines[0]}-${d.lines[1]}`);
+    }
+    if (d.exported) meta.push("exported");
+    if (meta.length) {
+      html += `<div class="tt-meta">${meta.join(" &bull; ")}</div>`;
+    }
+    tooltip.innerHTML = html;
+    tooltip.style.display = "block";
+    updateTooltipPos(ev);
+  }
+
+  function updateTooltipPos(ev) {
+    const stageRect = stage.getBoundingClientRect();
+    let left = ev.clientX - stageRect.left + 14;
+    let top = ev.clientY - stageRect.top + 14;
+    if (left + 240 > stageRect.width) {
+      left = ev.clientX - stageRect.left - 240;
+    }
+    if (top + 80 > stageRect.height) {
+      top = ev.clientY - stageRect.top - 70;
+    }
+    tooltip.style.left = `${Math.max(8, left)}px`;
+    tooltip.style.top = `${Math.max(8, top)}px`;
+  }
+
+  function hideTooltip() {
+    tooltip.style.display = "none";
+  }
 
   // Physics objects are kept across rebuilds so positions & velocity survive
   // a filter toggle or a file expand (no teardown, no re-scatter).
@@ -81,14 +126,14 @@
   const linkForce = d3
     .forceLink()
     .id((d) => d.id)
-    .distance((l) => (l.kind === "contains" ? 34 : 92))
+    .distance((l) => (l.kind === "contains" ? 40 : 110))
     .strength((l) => (l.kind === "contains" ? 0.55 : 0.14));
 
   const sim = d3
     .forceSimulation()
     .force("link", linkForce)
-    .force("charge", d3.forceManyBody().strength(-240).distanceMax(560).theta(0.9))
-    .force("collide", d3.forceCollide().radius((d) => radius(d) + 5))
+    .force("charge", d3.forceManyBody().strength(-280).distanceMax(650).theta(0.9))
+    .force("collide", d3.forceCollide().radius((d) => radius(d) + 8))
     .force("x", d3.forceX(0).strength(0.04))
     .force("y", d3.forceY(0).strength(0.04))
     .velocityDecay(0.32)
@@ -110,14 +155,14 @@
   const drag = d3
     .drag()
     .on("start", (ev, d) => {
+      isDragging = true;
+      hideTooltip();
       if (!ev.active) sim.alphaTarget(0.25).restart();
       d.fx = d.x;
       d.fy = d.y;
       const g = ev.sourceEvent.target.closest(".node");
       if (g) g.classList.add("dragging");
-      // Press-and-hold spotlights this node's neighbourhood; d3-drag fires
-      // "start" on pointerdown even without any movement.
-      pressed = d.id;
+      hovered = d.id;
       applyHighlight();
     })
     .on("drag", (ev, d) => {
@@ -125,12 +170,17 @@
       d.fy = ev.y;
     })
     .on("end", (ev, d) => {
+      isDragging = false;
       if (!ev.active) sim.alphaTarget(0);
       d.fx = null;
       d.fy = null;
       const g = ev.sourceEvent.target.closest(".node");
       if (g) g.classList.remove("dragging");
-      pressed = null;
+      // Cek apakah kursor masih di atas node
+      const currentHover = document.elementFromPoint(ev.sourceEvent.clientX, ev.sourceEvent.clientY)?.closest(".node");
+      if (!currentHover) {
+        hovered = null;
+      }
       applyHighlight();
     });
 
@@ -150,9 +200,8 @@
     }
 
     // Enter/exit fade uses an inline `opacity` on the <g>/<line>. The `.dim`
-    // rule (press-to-spotlight, search) therefore dims via *other* properties —
-    // child `circle`/`text` opacity for nodes, `stroke-opacity` for edges — so
-    // it composes with the fade instead of being shadowed by the inline style.
+    // rule therefore dims via child opacity / stroke-opacity so it composes
+    // cleanly with the fade.
     nodeSel = gNodes
       .selectAll("g")
       .data(vnodes, (d) => d.id)
@@ -162,18 +211,37 @@
             .append("g")
             .attr("class", (d) => "node " + d.kind)
             .style("opacity", 0)
-            .call(drag);
+            .call(drag)
+            .on("pointerenter", (ev, d) => {
+              hovered = d.id;
+              applyHighlight();
+              showTooltip(ev, d);
+            })
+            .on("pointermove", (ev) => {
+              updateTooltipPos(ev);
+            })
+            .on("pointerleave", () => {
+              if (!isDragging) {
+                hovered = null;
+                applyHighlight();
+                hideTooltip();
+              }
+            });
+
           g.append("circle")
             .attr("r", radius)
             .attr("fill", (d) => cssVar(KIND_COLOR(d.kind)));
+
           g.append("text")
-            .attr("x", (d) => radius(d) + 3)
-            .attr("y", 3)
+            .attr("x", (d) => radius(d) + 4)
+            .attr("y", 3.5)
             .text((d) => (d.label.length > 40 ? d.label.slice(0, 39) + "…" : d.label));
+
           g.filter((d) => d.kind === "file").on("click", (ev, d) => {
             expanded.has(d.id) ? expanded.delete(d.id) : expanded.add(d.id);
             rebuild();
           });
+
           g.transition().duration(220).style("opacity", 1);
           return g;
         },
@@ -201,7 +269,7 @@
     applyHighlight();
   }
 
-  // --- highlight: press-to-spotlight, then the search filter ----------------
+  // --- highlight: hover-to-spotlight, then search filter --------------------
   const hit = (d, q) =>
     d.label.toLowerCase().includes(q) || (d.path || "").toLowerCase().includes(q);
   const endId = (e) => (typeof e === "object" && e ? e.id : e);
@@ -218,16 +286,25 @@
     return near;
   }
 
-  // Single source of truth for the dim/match classes. A held-down node wins;
-  // otherwise fall back to the search box.
+  // Single source of truth for the dim/hovered/connected/match classes.
   function applyHighlight() {
-    if (pressed != null) {
-      const near = neighbourhood(pressed);
-      nodeSel.classed("match", (d) => d.id === pressed);
+    if (hovered != null) {
+      const near = neighbourhood(hovered);
+      nodeSel.classed("hovered", (d) => d.id === hovered);
+      nodeSel.classed("connected", (d) => d.id !== hovered && near.has(d.id));
+      nodeSel.classed("match", false);
       nodeSel.classed("dim", (d) => !near.has(d.id));
-      linkSel.classed("dim", (d) => endId(d.source) !== pressed && endId(d.target) !== pressed);
+
+      linkSel.classed("highlighted", (d) => endId(d.source) === hovered || endId(d.target) === hovered);
+      linkSel.classed("dim", (d) => endId(d.source) !== hovered && endId(d.target) !== hovered);
       return;
     }
+
+    // Reset hover classes jika tidak ada node yang di-hover
+    nodeSel.classed("hovered", false);
+    nodeSel.classed("connected", false);
+    linkSel.classed("highlighted", false);
+
     const q = state.query;
     nodeSel.classed("match", (d) => !!q && hit(d, q));
     nodeSel.classed("dim", (d) => !!q && !hit(d, q));
@@ -280,15 +357,14 @@
     if (!ev.target.closest(".node")) fit();
   });
 
-  // Safety net: the spotlight lasts only while a node is held. d3-drag's "end"
-  // normally clears it; this also catches a lost pointer / focus.
-  for (const evt of ["pointerup", "mouseup", "pointercancel", "blur"])
-    addEventListener(evt, () => {
-      if (pressed != null) {
-        pressed = null;
-        applyHighlight();
-      }
-    });
+  // Clear highlight on mouseleave svg container
+  svg.on("mouseleave", () => {
+    if (!isDragging && hovered != null) {
+      hovered = null;
+      applyHighlight();
+      hideTooltip();
+    }
+  });
 
   // --- start ----------------------------------------------------------------
   {

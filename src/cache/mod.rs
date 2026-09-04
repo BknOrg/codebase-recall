@@ -29,7 +29,7 @@ pub fn db_path(project_root: &Path) -> PathBuf {
 }
 
 impl CacheDb {
-    /// Open (creating `.code-ctx/` and the database if needed) and migrate.
+    /// Open (creating `.code-rcl/` and the database if needed) and migrate.
     pub fn open(project_root: &Path) -> Result<Self> {
         let dir = ctx_dir(project_root);
         std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
