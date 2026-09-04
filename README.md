@@ -70,7 +70,7 @@ cargo install codebase-recall
 
 1. Clone the repository:
    ```bash
-   git clone [git@github.com:BknOrg/codebase-recall.git](https://github.com/BknOrg/codebase-recall.git)
+   git clone git@github.com:BknOrg/codebase-recall.git
    cd codebase-recall
    ```
 
