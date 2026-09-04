@@ -25,21 +25,6 @@
 
 ---
 
-## Commands
-
-`code-rcl` is organized into subcommands. **Note:** as of `0.4.0` the Markdown dump lives
-under `code-rcl dump` — running `code-rcl` with no subcommand now prints help.
-
-| Command | Purpose |
-| :--- | :--- |
-| `code-rcl dump`  | Bundle the codebase into a single Markdown context file (the original behavior). |
-| `code-rcl init`  | Create `.code-rcl/` (graph cache DB + `config.toml`) in the target project and add it to `.gitignore`. |
-| `code-rcl sync`  | Parse changed source files into the graph cache (hash-based incremental). |
-| `code-rcl graph` | Auto-sync, then render the relation graph to a file (HTML / DOT / JSON). |
-| `code-rcl serve` | Auto-sync, then serve the relation graph in the browser; the server exits when you close the tab. |
-
----
-
 ## Installation
 
 
@@ -48,13 +33,13 @@ under `code-rcl dump` — running `code-rcl` with no subcommand now prints help.
 
 
 ```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/BknOrg/codebase-recall/releases/latest/download/project-recall-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/BknOrg/codebase-recall/releases/latest/download/codebase-recall-installer.sh | sh
 ```
 
 ### Install prebuilt binaries via powershell script (Windows)
 
 ```sh
-irm https://github.com/BknOrg/project-recall/releases/latest/download/codebase-recall-installer.ps1 | iex
+irm https://github.com/BknOrg/codebase-recall/releases/latest/download/codebase-recall-installer.ps1 | iex
 ```
 
 ### or install with cargo
@@ -83,6 +68,21 @@ cargo install codebase-recall
    ```bash
    cargo install --path .
    ```
+
+
+
+# Commands
+
+`code-rcl` is organized into subcommands. **Note:** as of `0.4.0` the Markdown dump lives
+under `code-rcl dump` — running `code-rcl` with no subcommand now prints help.
+
+| Command | Purpose |
+| :--- | :--- |
+| `code-rcl dump`  | Bundle the codebase into a single Markdown context file (the original behavior). |
+| `code-rcl init`  | Create `.code-rcl/` (graph cache DB + `config.toml`) in the target project and add it to `.gitignore`. |
+| `code-rcl sync`  | Parse changed source files into the graph cache (hash-based incremental). |
+| `code-rcl graph` | Auto-sync, then render the relation graph to a file (HTML / DOT / JSON). |
+| `code-rcl serve` | Auto-sync, then serve the relation graph in the browser; the server exits when you close the tab. |
 
 ---
 

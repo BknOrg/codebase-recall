@@ -28,6 +28,10 @@ jobs:
             target: x86_64-apple-darwin
             bin_name: code-rcl
             archive_ext: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            bin_name: code-rcl
+            archive_ext: tar.gz 
 
     steps:
       - name: Checkout repository
