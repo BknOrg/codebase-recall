@@ -1,0 +1,89 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-binaries:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            bin_name: codebase-recall
+            archive_ext: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin_name: codebase-recall.exe
+            archive_ext: zip
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            bin_name: codebase-recall
+            archive_ext: tar.gz
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install musl tools (Linux)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get install -y musl-tools
+
+      - name: Compile Release
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package Binary (Unix)
+        if: matrix.archive_ext == 'tar.gz'
+        run: |
+          tar -C target/${{ matrix.target }}/release -czf codebase-recall-${{ matrix.target }}.tar.gz ${{ matrix.bin_name }}
+          shasum -a 256 codebase-recall-${{ matrix.target }}.tar.gz > codebase-recall-${{ matrix.target }}.tar.gz.sha256
+
+      - name: Package Binary (Windows)
+        if: matrix.archive_ext == 'zip'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path target/${{ matrix.target }}/release/${{ matrix.bin_name }} -DestinationPath codebase-recall-${{ matrix.target }}.zip
+          (Get-FileHash codebase-recall-${{ matrix.target }}.zip -Algorithm SHA256).Hash > codebase-recall-${{ matrix.target }}.zip.sha256
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: assets-${{ matrix.target }}
+          path: codebase-recall-${{ matrix.target }}.*
+
+  publish-release:
+    name: Publish Release
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*
+            scripts/codebase-recall-installer.sh
+            scripts/codebase-recall-installer.ps1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -28,12 +28,12 @@
 ## Commands
 
 `code-rcl` is organized into subcommands. **Note:** as of `0.4.0` the Markdown dump lives
-under `code-rcl dump` — running `code-ctx` with no subcommand now prints help.
+under `code-rcl dump` — running `code-rcl` with no subcommand now prints help.
 
 | Command | Purpose |
 | :--- | :--- |
 | `code-rcl dump`  | Bundle the codebase into a single Markdown context file (the original behavior). |
-| `code-rcl init`  | Create `.code-ctx/` (graph cache DB + `config.toml`) in the target project and add it to `.gitignore`. |
+| `code-rcl init`  | Create `.code-rcl/` (graph cache DB + `config.toml`) in the target project and add it to `.gitignore`. |
 | `code-rcl sync`  | Parse changed source files into the graph cache (hash-based incremental). |
 | `code-rcl graph` | Auto-sync, then render the relation graph to a file (HTML / DOT / JSON). |
 | `code-rcl serve` | Auto-sync, then serve the relation graph in the browser; the server exits when you close the tab. |
@@ -112,13 +112,13 @@ code-rcl dump . --max-size-kb 100 -f context.md
 ## Usage — Code Relation Graph
 
 ```bash
-# One-time: create .code-ctx/ in the project
+# One-time: create .code-rcl/ in the project
 code-rcl init
 
 # Parse the codebase into the cache (incremental on later runs)
 code-rcl sync
 
-# Render the graph — auto-syncs first, writes .code-ctx/code-graph.html
+# Render the graph — auto-syncs first, writes .code-rcl/code-graph.html
 code-rcl graph
 
 # All three formats at once, to a chosen path stem
@@ -135,9 +135,9 @@ code-rcl graph --focus build --depth 2
 
 | Flag | Default | Description |
 | :--- | :--- | :--- |
-| `--project <PATH>` | `.` | Project directory (cache lives at `<project>/.code-ctx/`) |
+| `--project <PATH>` | `.` | Project directory (cache lives at `<project>/.code-rcl/`) |
 | `--format <LIST>` | `html` | Comma-separated: `html`, `json`, `dot` |
-| `-o, --output <PATH>` | `.code-ctx/code-graph.<ext>` | Output file, or a path stem when multiple formats are requested |
+| `-o, --output <PATH>` | `.code-rcl/code-graph.<ext>` | Output file, or a path stem when multiple formats are requested |
 | `--scope <MODE>` | `both` | `file` (imports only), `symbol`, or `both` (layered) |
 | `--kinds <LIST>` | `imports,calls,references,contains` | Edge kinds to include |
 | `--path <GLOB>` | - | Restrict to files matching a glob |
