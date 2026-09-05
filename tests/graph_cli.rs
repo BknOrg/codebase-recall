@@ -138,6 +138,42 @@ fn python_fixture_graph() {
 }
 
 #[test]
+fn directory_rollup_and_degree() {
+    let g = graph_json("pkg_app");
+    let ids = node_ids(&g);
+
+    // A `dir:` roll-up node plus a contains edge down to the file it holds.
+    assert!(
+        ids.contains(&"dir:pkg".to_string()),
+        "expected a dir: node for the pkg/ directory"
+    );
+    assert!(
+        has_edge(&g, "dir:pkg", "file:pkg/util.py", "contains"),
+        "expected dir:pkg -> file:pkg/util.py contains edge"
+    );
+
+    // Nested files carry their parent directory.
+    let util = g["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == "file:pkg/util.py")
+        .expect("pkg/util.py node");
+    assert_eq!(util["dir"], "pkg");
+
+    // Every file/symbol node is annotated with a relation degree.
+    assert!(
+        g["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|n| n["kind"] == "file")
+            .all(|n| n["degree"].is_u64()),
+        "file nodes should all have a numeric degree"
+    );
+}
+
+#[test]
 fn sync_is_incremental() {
     let work = workdir("rust_app", "incremental");
 

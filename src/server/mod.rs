@@ -161,7 +161,7 @@ fn worker_loop(
                 let _ = req.respond(js(assets::D3_JS));
             }
             (true, "/assets/graph-view.js") => {
-                let _ = req.respond(js(assets::GRAPH_VIEW_JS));
+                let _ = req.respond(js(assets::GRAPH_VIEW_JS.as_str()));
             }
             (true, "/assets/live.js") => {
                 let _ = req.respond(js(assets::LIVE_JS));

@@ -8,12 +8,14 @@ pub fn render(graph: &CodeGraph) -> String {
     out.push_str("  node  [fontname=\"sans-serif\", fontsize=10, style=filled, fillcolor=\"#f5f5f5\"];\n");
     out.push_str("  edge  [fontname=\"sans-serif\", fontsize=8, color=\"#888888\"];\n\n");
 
-    // Group symbol nodes by their file path; file/external nodes stand alone.
+    // Group symbol nodes by their file path; file/dir/external nodes stand alone.
     let mut by_file: BTreeMap<&str, Vec<&Node>> = BTreeMap::new();
     let mut loose: Vec<&Node> = Vec::new();
     for n in &graph.nodes {
         match (&n.path, n.kind.as_str()) {
-            (Some(p), k) if k != "file" => by_file.entry(p.as_str()).or_default().push(n),
+            (Some(p), k) if k != "file" && k != "dir" => {
+                by_file.entry(p.as_str()).or_default().push(n)
+            }
             _ => loose.push(n),
         }
     }
@@ -60,6 +62,7 @@ pub fn render(graph: &CodeGraph) -> String {
 fn shape(kind: &str) -> &'static str {
     match kind {
         "file" => "box",
+        "dir" => "folder",
         "struct" | "enum" | "trait" | "interface" | "type" | "class" => "diamond",
         "variable" => "note",
         "external" => "box3d",

@@ -78,10 +78,11 @@ pub struct GraphQuery {
     pub scope: String,
 
     /// Edge kinds to include, comma-separated: imports, calls, references, contains
+    /// (`references` is noisy on large graphs, so it is off by default)
     #[arg(
         long,
         value_delimiter = ',',
-        default_value = "imports,calls,references,contains"
+        default_value = "imports,calls,contains"
     )]
     pub kinds: Vec<String>,
 
@@ -104,6 +105,11 @@ pub struct GraphQuery {
     /// Include edges to external modules (npm/pypi/crate deps)
     #[arg(long)]
     pub include_external: bool,
+
+    /// Cap on total graph nodes; past this the lowest-degree symbols are dropped
+    /// (files, dirs and externals are always kept). 0 disables the cap.
+    #[arg(long, default_value_t = 4000)]
+    pub max_nodes: usize,
 
     /// Do not auto-sync changed files before rendering
     #[arg(long)]

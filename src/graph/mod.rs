@@ -18,16 +18,24 @@ pub struct CodeGraph {
 #[derive(Debug, Clone, Serialize)]
 pub struct Node {
     pub id: String,
-    /// file | function | method | struct | enum | trait | type | variable | module | impl | macro | external
+    /// dir | file | function | method | struct | enum | trait | type | variable | module | impl | macro | external
     pub kind: String,
     pub label: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+    /// Parent directory of `path` (project-relative), or `None` at the repo root.
+    /// Lets the viewer group and roll a large graph up to a folder-level view.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dir: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
     pub exported: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lines: Option<[i64; 2]>,
+    /// Count of incident relation edges (imports/calls/references, not `contains`).
+    /// Used client-side to size hubs and to pick which symbols to drop first.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub degree: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -44,6 +52,11 @@ pub struct Edge {
 /// Stable node id for a file.
 pub fn file_id(rel_path: &str) -> String {
     format!("file:{rel_path}")
+}
+
+/// Stable node id for a directory roll-up node.
+pub fn dir_id(rel_dir: &str) -> String {
+    format!("dir:{rel_dir}")
 }
 
 /// Stable node id for a symbol.

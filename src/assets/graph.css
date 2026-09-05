@@ -6,6 +6,7 @@
   --border: #e2e5ea;
   --edge: #cbd2dc;
   --edge-strong: #4b5563;
+  --dir: #475569;
   --file: #2563eb;
   --func: #16a34a;
   --type: #d97706;
@@ -23,11 +24,16 @@
     --border: #262b36;
     --edge: #333c4a;
     --edge-strong: #94a3b8;
+    --dir: #94a3b8;
   }
 }
 
 * {
   box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 html,
@@ -93,98 +99,112 @@ header button:hover {
   border-color: var(--edge-strong);
 }
 
+header #focusCtl {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--muted);
+}
+
+header #focusCtl button {
+  padding: 1px 8px;
+}
+
+header #focusLabel {
+  color: var(--fg);
+  font-weight: 600;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 #stage {
   flex: 1;
   overflow: hidden;
   position: relative;
 }
 
-svg {
+#scene {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   display: block;
   cursor: grab;
+  touch-action: none;
 }
 
-svg.grabbing {
+#scene:active {
   cursor: grabbing;
 }
 
-.edge {
-  stroke: var(--edge);
-  stroke-width: 1.2px;
-  transition: stroke .15s ease, stroke-width .15s ease, stroke-opacity .15s ease;
+#sidePanel {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 232px;
+  max-height: calc(100% - 20px);
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
 }
 
-.edge.imports {
-  stroke-dasharray: 4 3;
+#sidePanel h2 {
+  font-size: 12px;
+  margin: 0 24px 2px 0;
+  word-break: break-all;
 }
 
-.edge.references {
-  stroke-dasharray: 1 3;
+#sidePanel .sp-kind {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
 }
 
-.edge.highlighted {
-  stroke: var(--accent);
-  stroke-width: 2.2px;
-  stroke-opacity: 1 !important;
+#sidePanel .sp-group {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
 }
 
-.node circle {
-  stroke: var(--bg);
-  stroke-width: 1.5;
+#sidePanel .row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  padding: 3px 4px;
+  border-radius: 4px;
   cursor: pointer;
-  transition: transform .15s ease, stroke .15s ease, stroke-width .15s ease;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.node circle,
-.node text {
-  transition: opacity .15s ease;
+#sidePanel .row:hover {
+  background: var(--border);
 }
 
-.node.dragging circle {
-  cursor: grabbing;
-}
-
-.node text {
-  fill: var(--fg);
-  paint-order: stroke;
-  stroke: var(--bg);
-  stroke-width: 3.5px;
-  font-size: 11px;
-  font-weight: 500;
-  pointer-events: none;
-  user-select: none;
-}
-
-/* Spotlight node & edges saat kursor menunjuk (hover) atau saat search aktif */
-.node.dim circle,
-.node.dim text {
-  opacity: .12;
-}
-
-.edge.dim {
-  stroke-opacity: .08;
-}
-
-.node.hovered circle {
-  stroke: var(--accent);
-  stroke-width: 3px;
-  transform: scale(1.25);
-}
-
-.node.connected circle {
-  stroke: var(--fg);
-  stroke-width: 2px;
-}
-
-.node.match circle {
-  stroke: var(--accent);
-  stroke-width: 2.5px;
-}
-
-.node.file circle {
+#sidePanel .sp-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  border: 0;
+  background: none;
+  color: var(--muted);
   cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
 }
 
 .legend {
@@ -211,6 +231,10 @@ svg.grabbing {
   height: 9px;
   border-radius: 50%;
   display: inline-block;
+}
+
+.dot.sq {
+  border-radius: 2px;
 }
 
 #status {

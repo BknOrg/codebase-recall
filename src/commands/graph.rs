@@ -55,6 +55,7 @@ pub fn build_graph(query: &GraphQuery) -> Result<CodeGraph> {
         path_glob,
         focus: query.focus.clone(),
         depth: query.depth,
+        max_nodes: query.max_nodes,
     };
 
     resolve::build(&db, &opts)
