@@ -1,4 +1,4 @@
-//! A throwaway local HTTP server for `code-ctx serve`.
+//! A throwaway local HTTP server for `code-rcl serve`.
 //!
 //! It serves the graph page plus its static assets on `127.0.0.1`, then shuts
 //! itself down as soon as the browser tab goes away — so it never lingers in the
@@ -6,12 +6,12 @@
 //! server also stops on `Ctrl-C` or a `/quit` request.
 
 use std::io::{self, Write};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use tiny_http::{Header, Method, Request, Response, Server};
 
 use crate::assets::{self, Delivery};
@@ -68,7 +68,7 @@ pub fn serve(graph: &CodeGraph, opts: ServeOptions) -> Result<()> {
 
     spawn_reaper(shutdown.clone(), live.clone());
 
-    println!("code-ctx graph  ->  {url}");
+    println!("code-rcl graph  ->  {url}");
     println!(
         "  serving {} nodes / {} edges; the server exits when you close the tab (or press Ctrl-C)",
         graph.nodes.len(),
@@ -92,7 +92,7 @@ pub fn serve(graph: &CodeGraph, opts: ServeOptions) -> Result<()> {
         let _ = w.join();
     }
 
-    println!("code-ctx serve: stopped.");
+    println!("code-rcl serve: stopped.");
     Ok(())
 }
 
@@ -134,8 +134,8 @@ fn worker_loop(
     while !shutdown.load(Ordering::SeqCst) {
         let req = match server.recv_timeout(Duration::from_millis(200)) {
             Ok(Some(r)) => r,
-            Ok(None) => continue,      // accept timed out — re-check `shutdown`
-            Err(_) => break,           // fatal accept error
+            Ok(None) => continue, // accept timed out — re-check `shutdown`
+            Err(_) => break,      // fatal accept error
         };
 
         let is_get = *req.method() == Method::Get;
@@ -167,7 +167,10 @@ fn worker_loop(
                 let _ = req.respond(js(assets::LIVE_JS));
             }
             (true, "/assets/graph.css") => {
-                let _ = req.respond(with_type(text(200, assets::GRAPH_CSS), "text/css; charset=utf-8"));
+                let _ = req.respond(with_type(
+                    text(200, assets::GRAPH_CSS),
+                    "text/css; charset=utf-8",
+                ));
             }
             _ => {
                 let _ = req.respond(text(404, "not found"));

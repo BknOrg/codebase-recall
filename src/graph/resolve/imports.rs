@@ -13,7 +13,7 @@ pub(super) fn resolve_import(
 ) -> Option<String> {
     match lang_group {
         "rust" => resolve_rust_import(importer_rel, &im.raw_specifier, path_set),
-        "javascript" | "typescript" => {
+        "javascript" | "typescript" | "vue" | "svelte" => {
             resolve_js_import(importer_rel, &im.raw_specifier, path_set)
         }
         "python" => resolve_python_import(importer_rel, &im.raw_specifier, path_set),
@@ -116,13 +116,17 @@ fn resolve_js_import(
         return None; // bare specifier -> external
     }
     let joined = normalize_join(&dir_components(importer_rel), spec).join("/");
-    const EXTS: &[&str] = &["", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".d.ts"];
+    const EXTS: &[&str] = &[
+        "", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".d.ts", ".vue", ".svelte",
+    ];
     const INDEX: &[&str] = &[
         "/index.ts",
         "/index.tsx",
         "/index.js",
         "/index.jsx",
         "/index.mjs",
+        "/index.vue",
+        "/index.svelte",
     ];
     for e in EXTS {
         let c = format!("{joined}{e}");

@@ -9,6 +9,8 @@ pub enum Language {
     TypeScript,
     Tsx,
     Python,
+    Vue,
+    Svelte,
 }
 
 impl Language {
@@ -22,6 +24,8 @@ impl Language {
             "ts" | "mts" | "cts" => Language::TypeScript,
             "tsx" => Language::Tsx,
             "py" | "pyi" => Language::Python,
+            "vue" => Language::Vue,
+            "svelte" => Language::Svelte,
             _ => return None,
         })
     }
@@ -33,6 +37,8 @@ impl Language {
             Language::JavaScript | Language::Jsx => "javascript",
             Language::TypeScript | Language::Tsx => "typescript",
             Language::Python => "python",
+            Language::Vue => "vue",
+            Language::Svelte => "svelte",
         }
     }
 
@@ -48,6 +54,8 @@ impl Language {
             "js" => self.group() == "javascript",
             "ts" => self.group() == "typescript",
             "py" => self.group() == "python",
+            "vue" => self.group() == "vue",
+            "svelte" => self.group() == "svelte",
             other => other == self.group(),
         }
     }

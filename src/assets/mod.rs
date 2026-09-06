@@ -1,8 +1,8 @@
 //! Front-end assets for the graph view, embedded into the binary at compile time.
 //!
 //! The same markup + view script drives two delivery modes:
-//! * [`Delivery::Inline`] — one self-contained `.html` file (`code-ctx graph`).
-//! * [`Delivery::Server`] — assets fetched from the local `code-ctx serve`
+//! * [`Delivery::Inline`] — one self-contained `.html` file (`code-rcl graph`).
+//! * [`Delivery::Server`] — assets fetched from the local `code-rcl serve`
 //!   process, plus a tiny script that keeps the server alive only while the tab is.
 
 use std::sync::LazyLock;
@@ -45,7 +45,7 @@ pub enum Delivery {
 
 const BODY: &str = r#"<div id="app">
   <header>
-    <h1>code-ctx graph</h1>
+    <h1>code-rcl graph</h1>
     <span class="stat">__STAT__</span>
     <label><input type="checkbox" data-kind="imports" checked> imports</label>
     <label><input type="checkbox" data-kind="calls" checked> calls</label>
@@ -108,7 +108,7 @@ pub fn graph_page(data_json: &str, stat: &str, delivery: Delivery) -> String {
 <head>\n\
 <meta charset=\"utf-8\">\n\
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
-<title>code-ctx graph</title>\n\
+<title>code-rcl graph</title>\n\
 {head}\n\
 </head>\n\
 <body>\n\

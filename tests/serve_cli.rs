@@ -1,4 +1,4 @@
-//! End-to-end test for `code-ctx serve`: spin up the server against a fixture,
+//! End-to-end test for `code-rcl serve`: spin up the server against a fixture,
 //! talk to it over raw TCP, and confirm `/quit` makes the process exit.
 
 use std::io::{BufRead, BufReader, Read, Write};
@@ -66,9 +66,9 @@ fn serve_starts_answers_and_quits() {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .expect("spawn code-ctx serve");
+        .expect("spawn code-rcl serve");
 
-    // First stdout line is: `code-ctx graph  ->  http://127.0.0.1:<port>/`
+    // First stdout line is: `code-rcl graph  ->  http://127.0.0.1:<port>/`
     let mut out = BufReader::new(child.stdout.take().unwrap());
     let port: u16 = {
         let deadline = Instant::now() + Duration::from_secs(30);
@@ -88,7 +88,7 @@ fn serve_starts_answers_and_quits() {
 
     let (status, body) = http_get(port, "/");
     assert!(status.contains("200"), "GET / status: {status}");
-    assert!(body.contains("code-ctx graph"), "GET / body missing header");
+    assert!(body.contains("code-rcl graph"), "GET / body missing header");
     assert!(
         body.contains(r#"id="graph-data""#),
         "GET / body missing data blob"

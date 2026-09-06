@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use models::{FileRow, ImportRow, NewImport, NewRef, NewSymbol, RefRow, SymbolRow};
 
-/// Directory that holds all code-ctx project state.
+/// Directory that holds all code-rcl project state.
 pub const CODE_CTX_DIR: &str = ".code-rcl";
 /// Cache database file name inside [`CODE_CTX_DIR`].
 pub const DB_FILE: &str = "cache.db";
@@ -18,12 +18,12 @@ pub struct CacheDb {
     conn: Connection,
 }
 
-/// Absolute path to `<project>/.code-ctx`.
+/// Absolute path to `<project>/.code-rcl`.
 pub fn ctx_dir(project_root: &Path) -> PathBuf {
     project_root.join(CODE_CTX_DIR)
 }
 
-/// Absolute path to `<project>/.code-ctx/cache.db`.
+/// Absolute path to `<project>/.code-rcl/cache.db`.
 pub fn db_path(project_root: &Path) -> PathBuf {
     ctx_dir(project_root).join(DB_FILE)
 }

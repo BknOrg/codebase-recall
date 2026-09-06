@@ -4,7 +4,7 @@
   const DATA = JSON.parse(document.getElementById("graph-data").textContent);
   const nodeById = new Map(DATA.nodes.map((n) => [n.id, n]));
 
-  const TYPE_KINDS = new Set(["struct", "enum", "trait", "interface", "type", "class"]);
+  const TYPE_KINDS = new Set(["struct", "enum", "trait", "interface", "type", "class", "component"]);
   const isSymId = (id) => typeof id === "string" && id.startsWith("sym:");
 
   // parent/child from `contains` edges: dir->dir, dir->file, file->symbol, sym->sym

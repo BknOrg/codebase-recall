@@ -24,14 +24,14 @@ pub(super) fn resolve_ref(
         return Some((sid, 1.0));
     }
 
-    // Only consider definitions in files of the same language.
+    // Only consider definitions in files of compatible language.
     let all = defs_by_name.get(rf.name.as_str())?;
     let list: Vec<&&SymbolRow> = all
         .iter()
         .filter(|s| {
             file_by_id
                 .get(&s.file_id)
-                .is_some_and(|f| f.language == importer.language)
+                .is_some_and(|f| languages_compatible(&f.language, &importer.language))
         })
         .collect();
     if list.is_empty() {
@@ -86,4 +86,12 @@ fn classify_receiver(recv: Option<&str>) -> Receiver {
     } else {
         Receiver::Value
     }
+}
+
+fn languages_compatible(a: &str, b: &str) -> bool {
+    if a == b {
+        return true;
+    }
+    let is_js_family = |lang: &str| matches!(lang, "javascript" | "typescript" | "vue" | "svelte");
+    is_js_family(a) && is_js_family(b)
 }

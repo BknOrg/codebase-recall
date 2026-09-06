@@ -221,3 +221,17 @@ fn sync_is_incremental() {
         "third sync should re-parse exactly one file: {third_out}"
     );
 }
+
+#[test]
+fn vue_fixture_graph() {
+    let g = graph_json("vue_app");
+    assert_no_externals(&g);
+
+    let ids = node_ids(&g);
+    assert!(ids.contains(&"file:App.vue".to_string()));
+    assert!(ids.contains(&"file:HeaderBar.vue".to_string()));
+
+    // Edge from App.vue to HeaderBar.vue
+    assert!(has_edge(&g, "file:App.vue", "file:HeaderBar.vue", "imports"));
+}
+

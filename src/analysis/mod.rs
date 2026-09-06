@@ -4,6 +4,7 @@ pub mod lang;
 mod javascript;
 mod python;
 mod rust;
+mod sfc;
 
 pub use lang::Language;
 
@@ -28,5 +29,6 @@ pub fn parse_file(language: Language, source: &str) -> ParsedFile {
             javascript::parse(source, language)
         }
         Language::Python => python::parse(source),
+        Language::Vue | Language::Svelte => sfc::parse(source, language),
     }
 }
