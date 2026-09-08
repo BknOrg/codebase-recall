@@ -2,6 +2,7 @@
 
 use tree_sitter::{Node, Parser};
 
+use crate::analysis::scope::{self, ScopeStack};
 use crate::analysis::{Language, ParsedFile};
 use crate::cache::models::{NewImport, NewRef, NewSymbol};
 
@@ -27,8 +28,11 @@ pub fn parse(source: &str, language: Language) -> ParsedFile {
             ..ParsedFile::default()
         },
         stack: Vec::new(),
+        sc: ScopeStack::new(source.len() as i64),
     };
     walker.walk(tree.root_node());
+    walker.sc.finish_into(&mut walker.out);
+    scope::resolve_locals(&mut walker.out);
     walker.out
 }
 
@@ -36,6 +40,7 @@ struct Walker<'a> {
     src: &'a [u8],
     out: ParsedFile,
     stack: Vec<usize>,
+    sc: ScopeStack,
 }
 
 impl<'a> Walker<'a> {
@@ -79,7 +84,9 @@ impl<'a> Walker<'a> {
                 if let Some(c) = node.child_by_field_name("constructor") {
                     let (name, receiver) = self.callee_name(c);
                     if !name.is_empty() {
-                        self.push_ref(name, "call", receiver, node);
+                        let rk = js_receiver_kind(receiver.as_deref());
+                        let ac = self.arg_count(node);
+                        self.push_ref(name, "call", receiver, rk, ac, node);
                     }
                 }
                 self.walk_children(node);
@@ -102,17 +109,117 @@ impl<'a> Walker<'a> {
     fn enter_symbol(&mut self, node: Node, name_host: Node, kind: &str, exported_hint: bool) {
         let idx = self.push_symbol(node, name_host, kind, exported_hint);
         if let Some(i) = idx {
+            let (name, real_kind) = {
+                let s = &self.out.symbols[i];
+                (s.name.clone(), s.kind.clone())
+            };
+            let scope_kind = match real_kind.as_str() {
+                "class" | "interface" => "class",
+                "method" => "method",
+                _ => "function",
+            };
+            if real_kind != "method" {
+                self.sc.bind(&name, "symbol", Some(i), None, None);
+            }
             self.stack.push(i);
-        }
-        self.walk_children(node);
-        if idx.is_some() {
+            self.sc
+                .push(scope_kind, Some(i), node.start_byte() as i64, node.end_byte() as i64);
+
+            match real_kind.as_str() {
+                "class" | "interface" => self.bind_class_fields(node),
+                "function" | "method" => self.bind_params(node),
+                _ => {}
+            }
+
+            self.walk_children(node);
+
+            self.sc.pop();
             self.stack.pop();
+        } else {
+            self.walk_children(node);
         }
     }
 
     /// A declaration with no nested symbols worth tracking.
     fn leaf_symbol(&mut self, node: Node, name_host: Node, kind: &str, exported_hint: bool) {
-        self.push_symbol(node, name_host, kind, exported_hint);
+        if let Some(i) = self.push_symbol(node, name_host, kind, exported_hint) {
+            let name = self.out.symbols[i].name.clone();
+            self.sc.bind(&name, "symbol", Some(i), None, None);
+        }
+    }
+
+    fn bind_params(&mut self, func: Node) {
+        let Some(params) = func.child_by_field_name("parameters") else {
+            return;
+        };
+        let kids: Vec<Node> = {
+            let mut c = params.walk();
+            params.named_children(&mut c).collect()
+        };
+        for p in kids {
+            let (name, ty) = match p.kind() {
+                "required_parameter" | "optional_parameter" => {
+                    let n = p
+                        .child_by_field_name("pattern")
+                        .map(|x| self.text(x).to_string())
+                        .unwrap_or_default();
+                    let t = p
+                        .child_by_field_name("type")
+                        .and_then(|ta| ta.named_child(0))
+                        .map(|x| simple_type_name(self.text(x)));
+                    (n, t)
+                }
+                "identifier" => (self.text(p).to_string(), None),
+                _ => continue,
+            };
+            self.sc.bind(&name, "param", None, None, ty);
+        }
+    }
+
+    fn bind_class_fields(&mut self, class: Node) {
+        let Some(body) = class.child_by_field_name("body") else {
+            return;
+        };
+        let kids: Vec<Node> = {
+            let mut c = body.walk();
+            body.named_children(&mut c).collect()
+        };
+        for m in kids {
+            if !matches!(m.kind(), "public_field_definition" | "property_signature") {
+                continue;
+            }
+            let Some(n) = m.child_by_field_name("name") else {
+                continue;
+            };
+            let name = self.text(n).to_string();
+            let ty = m
+                .child_by_field_name("type")
+                .and_then(|ta| ta.named_child(0))
+                .map(|x| simple_type_name(self.text(x)));
+            self.sc.bind(&name, "field", None, None, ty);
+        }
+    }
+
+    fn param_count(&self, node: Node) -> Option<i64> {
+        let params = node.child_by_field_name("parameters")?;
+        let mut c = params.walk();
+        let n = params
+            .named_children(&mut c)
+            .filter(|p| {
+                matches!(
+                    p.kind(),
+                    "required_parameter" | "optional_parameter" | "identifier" | "rest_pattern"
+                )
+            })
+            .count();
+        Some(n as i64)
+    }
+
+    fn enclosing_type_name(&self) -> Option<String> {
+        self.stack.iter().rev().find_map(|&i| {
+            let s = &self.out.symbols[i];
+            matches!(s.kind.as_str(), "class" | "interface").then(|| s.name.clone())
+        })
     }
 
     fn push_symbol(
@@ -134,6 +241,15 @@ impl<'a> Walker<'a> {
         };
         let exported = exported_hint || self.is_exported(node);
 
+        let (param_count, type_name) = if matches!(kind, "function" | "method") {
+            (
+                self.param_count(node),
+                self.enclosing_type_name().filter(|_| kind == "method"),
+            )
+        } else {
+            (None, None)
+        };
+
         self.out.symbols.push(NewSymbol {
             name,
             kind: kind.to_string(),
@@ -144,6 +260,8 @@ impl<'a> Walker<'a> {
             start_byte: node.start_byte() as i64,
             end_byte: node.end_byte() as i64,
             signature: None,
+            param_count,
+            type_name,
         });
         Some(self.out.symbols.len() - 1)
     }
@@ -192,11 +310,18 @@ impl<'a> Walker<'a> {
             let only_module_scope = self.stack.is_empty();
             let make_symbol = is_fn || only_module_scope;
 
+            // A `const x: T = ...` inside a function body is a local, and its
+            // declared type feeds field/receiver-type resolution.
+            let decl_type = d
+                .child_by_field_name("type")
+                .and_then(|ta| ta.named_child(0))
+                .map(|x| simple_type_name(self.text(x)));
+
             let mut pushed = None;
             if make_symbol {
                 let kind = if is_fn { "function" } else { "variable" };
                 self.out.symbols.push(NewSymbol {
-                    name,
+                    name: name.clone(),
                     kind: kind.to_string(),
                     parent_index: self.stack.last().copied(),
                     is_exported: exported,
@@ -205,8 +330,13 @@ impl<'a> Walker<'a> {
                     start_byte: d.start_byte() as i64,
                     end_byte: d.end_byte() as i64,
                     signature: None,
+                    param_count: None,
+                    type_name: None,
                 });
                 pushed = Some(self.out.symbols.len() - 1);
+                self.sc.bind(&name, "symbol", pushed, None, None);
+            } else {
+                self.sc.bind(&name, "local", None, None, decl_type);
             }
 
             // Always descend into the initializer so nested calls are captured.
@@ -291,6 +421,21 @@ impl<'a> Walker<'a> {
             (Some(l), None) => Some(l.to_string()),
             _ => None,
         };
+
+        let import_index = self.out.imports.len();
+        match (&imported_name, local) {
+            // `import * as ns from "..."` -> namespace binding
+            (None, Some(ns)) => {
+                self.sc.bind(ns, "namespace", None, Some(import_index), None);
+            }
+            // `import { a as b }` / `import def` -> named binding under its local name
+            (Some(n), l) => {
+                self.sc
+                    .bind(l.unwrap_or(n), "import", None, Some(import_index), None);
+            }
+            _ => {}
+        }
+
         self.out.imports.push(NewImport {
             raw_specifier: specifier.to_string(),
             imported_name,
@@ -318,8 +463,16 @@ impl<'a> Walker<'a> {
         }
         let (name, receiver) = self.callee_name(func);
         if !name.is_empty() {
-            self.push_ref(name, "call", receiver, node);
+            let rk = js_receiver_kind(receiver.as_deref());
+            let ac = self.arg_count(node);
+            self.push_ref(name, "call", receiver, rk, ac, node);
         }
+    }
+
+    fn arg_count(&self, call: Node) -> Option<i64> {
+        let args = call.child_by_field_name("arguments")?;
+        let mut c = args.walk();
+        Some(args.named_children(&mut c).count() as i64)
     }
 
     fn callee_name(&self, func: Node) -> (String, Option<String>) {
@@ -339,15 +492,41 @@ impl<'a> Walker<'a> {
         }
     }
 
-    fn push_ref(&mut self, name: String, kind: &str, receiver: Option<String>, node: Node) {
+    #[allow(clippy::too_many_arguments)]
+    fn push_ref(
+        &mut self,
+        name: String,
+        kind: &str,
+        receiver: Option<String>,
+        receiver_kind: &str,
+        arg_count: Option<i64>,
+        node: Node,
+    ) {
         self.out.refs.push(NewRef {
             name,
             ref_kind: kind.to_string(),
             receiver,
             start_line: self.line(node),
             start_byte: node.start_byte() as i64,
+            arg_count,
+            receiver_kind: receiver_kind.to_string(),
+            ..Default::default()
         });
     }
+}
+
+fn js_receiver_kind(receiver: Option<&str>) -> &'static str {
+    match receiver {
+        None => "none",
+        Some("this") => "self",
+        Some(_) => "value",
+    }
+}
+
+/// `import("mod").Foo<T>` -> `Foo`; `a.b.C` -> `C`; drops generics/whitespace.
+fn simple_type_name(raw: &str) -> String {
+    let head = raw.trim().split(['<', ' ', '|', '&']).next().unwrap_or(raw).trim();
+    head.rsplit('.').next().unwrap_or(head).to_string()
 }
 
 fn first_child_of_kind<'t>(node: Node<'t>, kind: &str) -> Option<Node<'t>> {
@@ -404,5 +583,46 @@ export const run = () => {
         assert!(calls.contains(&"build"));
         assert!(calls.contains(&"open"));
         assert!(calls.contains(&"Builder")); // new Builder()
+
+        // `helper()` inside `build` binds to the imported `helper`, not a local.
+        let helper_ref = p.refs.iter().find(|r| r.name == "helper").unwrap();
+        assert!(!helper_ref.local_only);
+        assert!(helper_ref.resolved_local_symbol_index.is_none());
+    }
+
+    #[test]
+    fn typed_class_fields_and_receiver_kinds() {
+        let src = r#"
+import { Pool } from "./pool";
+
+class Server {
+    private pool: Pool;
+    name: string;
+
+    handle(): void {
+        this.pool.acquire();
+        this.name;
+    }
+}
+"#;
+        let p = parse(src, Language::TypeScript);
+        assert!(p.parse_ok);
+
+        let pool_field = p
+            .bindings
+            .iter()
+            .find(|b| b.binding_kind == "field" && b.name == "pool")
+            .expect("pool field binding");
+        assert_eq!(pool_field.type_expr.as_deref(), Some("Pool"));
+
+        // `this.pool.acquire()` -> a value receiver call.
+        let acq = p.refs.iter().find(|r| r.name == "acquire").unwrap();
+        assert_eq!(acq.receiver.as_deref(), Some("this.pool"));
+        assert_eq!(acq.receiver_kind, "value");
+
+        // `handle` is a method whose owning type is `Server`.
+        let handle = p.symbols.iter().find(|s| s.name == "handle").unwrap();
+        assert_eq!(handle.kind, "method");
+        assert_eq!(handle.type_name.as_deref(), Some("Server"));
     }
 }

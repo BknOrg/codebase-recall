@@ -1,0 +1,13 @@
+{
+  "_comment": "Call edges the layered resolver must / must not produce. Tuples are [from_path, from_name, to_path, to_name].",
+  "must_have": [
+    ["job.rs", "start", "scheduler.rs", "run"],
+    ["job.rs", "start", "worker.rs", "run"],
+    ["scheduler.rs", "run", "scheduler.rs", "tick"]
+  ],
+  "must_not_have": [
+    ["main.rs", "main", "worker.rs", "run"],
+    ["scheduler.rs", "run", "worker.rs", "run"],
+    ["job.rs", "start", "worker.rs", "tick"]
+  ]
+}

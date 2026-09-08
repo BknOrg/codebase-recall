@@ -2,6 +2,7 @@
 
 use tree_sitter::{Node, Parser};
 
+use crate::analysis::scope::{self, ScopeStack};
 use crate::analysis::ParsedFile;
 use crate::cache::models::{NewImport, NewRef, NewSymbol};
 
@@ -22,8 +23,11 @@ pub fn parse(source: &str) -> ParsedFile {
             ..ParsedFile::default()
         },
         stack: Vec::new(),
+        sc: ScopeStack::new(source.len() as i64),
     };
     walker.walk(tree.root_node());
+    walker.sc.finish_into(&mut walker.out);
+    scope::resolve_locals(&mut walker.out);
     walker.out
 }
 
@@ -31,6 +35,7 @@ struct Walker<'a> {
     src: &'a [u8],
     out: ParsedFile,
     stack: Vec<usize>,
+    sc: ScopeStack,
 }
 
 impl<'a> Walker<'a> {
@@ -86,12 +91,114 @@ impl<'a> Walker<'a> {
     fn enter_symbol(&mut self, node: Node, kind: &str) {
         let idx = self.push_symbol(node, kind);
         if let Some(i) = idx {
+            let (name, real_kind) = {
+                let s = &self.out.symbols[i];
+                (s.name.clone(), s.kind.clone())
+            };
+            let scope_kind = match real_kind.as_str() {
+                "class" => "class",
+                "method" => "method",
+                _ => "function",
+            };
+            if real_kind != "method" {
+                self.sc.bind(&name, "symbol", Some(i), None, None);
+            }
             self.stack.push(i);
-        }
-        self.walk_children(node);
-        if idx.is_some() {
+            self.sc
+                .push(scope_kind, Some(i), node.start_byte() as i64, node.end_byte() as i64);
+
+            match real_kind.as_str() {
+                "function" | "method" => self.bind_params(node),
+                "class" => self.bind_class_fields(node),
+                _ => {}
+            }
+
+            self.walk_children(node);
+
+            self.sc.pop();
             self.stack.pop();
+        } else {
+            self.walk_children(node);
         }
+    }
+
+    fn bind_params(&mut self, func: Node) {
+        let Some(params) = func.child_by_field_name("parameters") else {
+            return;
+        };
+        let kids: Vec<Node> = {
+            let mut c = params.walk();
+            params.named_children(&mut c).collect()
+        };
+        for p in kids {
+            let (name, ty) = match p.kind() {
+                "identifier" => (self.text(p).to_string(), None),
+                "typed_parameter" | "typed_default_parameter" => {
+                    let n = p
+                        .named_child(0)
+                        .map(|x| self.text(x).to_string())
+                        .unwrap_or_default();
+                    let t = p
+                        .child_by_field_name("type")
+                        .map(|x| simple_type_name(self.text(x)));
+                    (n, t)
+                }
+                "default_parameter" => (
+                    p.child_by_field_name("name")
+                        .map(|x| self.text(x).to_string())
+                        .unwrap_or_default(),
+                    None,
+                ),
+                _ => continue,
+            };
+            self.sc.bind(&name, "param", None, None, ty);
+        }
+    }
+
+    /// Class-body `name: T` annotations (incl. dataclass fields) become field bindings.
+    fn bind_class_fields(&mut self, class: Node) {
+        let Some(body) = class.child_by_field_name("body") else {
+            return;
+        };
+        let stmts: Vec<Node> = {
+            let mut c = body.walk();
+            body.named_children(&mut c).collect()
+        };
+        for s in stmts {
+            let inner = if s.kind() == "expression_statement" {
+                s.named_child(0)
+            } else {
+                Some(s)
+            };
+            let Some(assign) = inner.filter(|n| n.kind() == "assignment") else {
+                continue;
+            };
+            let (Some(lhs), Some(ty)) = (
+                assign.child_by_field_name("left"),
+                assign.child_by_field_name("type"),
+            ) else {
+                continue;
+            };
+            if lhs.kind() != "identifier" {
+                continue;
+            }
+            let name = self.text(lhs).to_string();
+            self.sc
+                .bind(&name, "field", None, None, Some(simple_type_name(self.text(ty))));
+        }
+    }
+
+    fn param_count(&self, node: Node) -> Option<i64> {
+        let params = node.child_by_field_name("parameters")?;
+        let mut c = params.walk();
+        Some(params.named_children(&mut c).count() as i64)
+    }
+
+    fn enclosing_class_name(&self) -> Option<String> {
+        self.stack
+            .iter()
+            .rev()
+            .find_map(|&i| (self.out.symbols[i].kind == "class").then(|| self.out.symbols[i].name.clone()))
     }
 
     fn push_symbol(&mut self, node: Node, kind: &str) -> Option<usize> {
@@ -100,6 +207,15 @@ impl<'a> Walker<'a> {
             .map(|n| self.text(n).to_string())
             .filter(|s| !s.is_empty())?;
         let is_exported = !name.starts_with('_');
+
+        let (param_count, type_name) = if matches!(kind, "function" | "method") {
+            (
+                self.param_count(node),
+                self.enclosing_class_name().filter(|_| kind == "method"),
+            )
+        } else {
+            (None, None)
+        };
 
         self.out.symbols.push(NewSymbol {
             name,
@@ -111,6 +227,8 @@ impl<'a> Walker<'a> {
             start_byte: node.start_byte() as i64,
             end_byte: node.end_byte() as i64,
             signature: None,
+            param_count,
+            type_name,
         });
         Some(self.out.symbols.len() - 1)
     }
@@ -142,7 +260,13 @@ impl<'a> Walker<'a> {
             start_byte: node.start_byte() as i64,
             end_byte: node.end_byte() as i64,
             signature: None,
+            param_count: None,
+            type_name: None,
         });
+        let idx = self.out.symbols.len() - 1;
+        if at_module {
+            self.sc.bind(&name, "symbol", Some(idx), None, None);
+        }
     }
 
     fn collect_import(&mut self, node: Node, is_from: bool) {
@@ -159,7 +283,7 @@ impl<'a> Walker<'a> {
                     "dotted_name" => {
                         let path = self.text(child).to_string();
                         let bound = path.split('.').next().unwrap_or(&path).to_string();
-                        self.push_import(path, Some(&bound), None, false, line);
+                        self.push_import(path, Some(&bound), None, false, line, Some("namespace"));
                     }
                     "aliased_import" => {
                         let path = child
@@ -172,7 +296,7 @@ impl<'a> Walker<'a> {
                         let bound = alias
                             .clone()
                             .unwrap_or_else(|| path.split('.').next().unwrap_or("").to_string());
-                        self.push_import(path, Some(&bound), alias, false, line);
+                        self.push_import(path, Some(&bound), alias, false, line, Some("namespace"));
                     }
                     _ => {}
                 }
@@ -198,7 +322,7 @@ impl<'a> Walker<'a> {
             match child.kind() {
                 "dotted_name" | "identifier" => {
                     let n = self.text(child).to_string();
-                    self.push_import(module.clone(), Some(&n), None, is_relative, line);
+                    self.push_import(module.clone(), Some(&n), None, is_relative, line, Some("import"));
                     any = true;
                 }
                 "aliased_import" => {
@@ -209,18 +333,18 @@ impl<'a> Walker<'a> {
                     let alias = child
                         .child_by_field_name("alias")
                         .map(|x| self.text(x).to_string());
-                    self.push_import(module.clone(), Some(&n), alias, is_relative, line);
+                    self.push_import(module.clone(), Some(&n), alias, is_relative, line, Some("import"));
                     any = true;
                 }
                 "wildcard_import" => {
-                    self.push_import(module.clone(), None, None, is_relative, line);
+                    self.push_import(module.clone(), None, None, is_relative, line, None);
                     any = true;
                 }
                 _ => {}
             }
         }
         if !any {
-            self.push_import(module, None, None, is_relative, line);
+            self.push_import(module, None, None, is_relative, line, None);
         }
     }
 
@@ -231,7 +355,14 @@ impl<'a> Walker<'a> {
         alias: Option<String>,
         is_relative: bool,
         line: i64,
+        bind_kind: Option<&str>,
     ) {
+        let import_index = self.out.imports.len();
+        if let Some(kind) = bind_kind {
+            if let Some(local) = alias.as_deref().or(imported_name) {
+                self.sc.bind(local, kind, None, Some(import_index), None);
+            }
+        }
         self.out.imports.push(NewImport {
             raw_specifier: specifier,
             imported_name: imported_name.map(str::to_string),
@@ -262,14 +393,38 @@ impl<'a> Walker<'a> {
         if name.is_empty() {
             return;
         }
+        let receiver_kind = match receiver.as_deref() {
+            None => "none",
+            Some("self") | Some("cls") => "self",
+            Some(_) => "value",
+        };
+        let arg_count = node.child_by_field_name("arguments").map(|a| {
+            let mut c = a.walk();
+            a.named_children(&mut c).count() as i64
+        });
         self.out.refs.push(NewRef {
             name,
             ref_kind: "call".to_string(),
             receiver,
             start_line: self.line(node),
             start_byte: node.start_byte() as i64,
+            arg_count,
+            receiver_kind: receiver_kind.to_string(),
+            ..Default::default()
         });
     }
+}
+
+/// `pkg.mod.Foo[int]` -> `Foo`; drops subscripts, unions, whitespace.
+fn simple_type_name(raw: &str) -> String {
+    let head = raw
+        .trim()
+        .trim_start_matches(['"', '\''])
+        .split(['[', ' ', '|'])
+        .next()
+        .unwrap_or(raw)
+        .trim_end_matches(['"', '\'']);
+    head.rsplit('.').next().unwrap_or(head).to_string()
 }
 
 #[cfg(test)]

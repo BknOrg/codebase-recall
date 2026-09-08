@@ -51,6 +51,8 @@ pub fn parse(source: &str, _language: Language) -> ParsedFile {
             start_byte: 0,
             end_byte: total_bytes,
             signature: None,
+            param_count: None,
+            type_name: None,
         });
     }
 
@@ -273,6 +275,8 @@ fn scan_template_components(source: &str, script_blocks: &[ScriptBlock], refs: &
                 receiver: None,
                 start_line,
                 start_byte,
+                receiver_kind: "none".to_string(),
+                ..Default::default()
             });
             i = name_end;
             continue;

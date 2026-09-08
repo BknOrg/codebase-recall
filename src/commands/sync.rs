@@ -143,6 +143,8 @@ pub fn sync_cache(db: &mut CacheDb, args: &SyncArgs) -> Result<SyncStats> {
             &parsed.symbols,
             &parsed.imports,
             &parsed.refs,
+            &parsed.scopes,
+            &parsed.bindings,
         )
         .with_context(|| format!("caching analysis for {}", file.rel))?;
 

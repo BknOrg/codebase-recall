@@ -2,6 +2,7 @@
 
 use tree_sitter::{Node, Parser};
 
+use crate::analysis::scope::{self, ScopeStack};
 use crate::analysis::ParsedFile;
 use crate::cache::models::{NewImport, NewRef, NewSymbol};
 
@@ -22,8 +23,11 @@ pub fn parse(source: &str) -> ParsedFile {
             ..ParsedFile::default()
         },
         stack: Vec::new(),
+        sc: ScopeStack::new(source.len() as i64),
     };
     walker.walk(tree.root_node());
+    walker.sc.finish_into(&mut walker.out);
+    scope::resolve_locals(&mut walker.out);
     walker.out
 }
 
@@ -32,6 +36,7 @@ struct Walker<'a> {
     out: ParsedFile,
     /// Indices into `out.symbols` for the current lexical parent chain.
     stack: Vec<usize>,
+    sc: ScopeStack,
 }
 
 impl<'a> Walker<'a> {
@@ -44,6 +49,10 @@ impl<'a> Walker<'a> {
                 if !has_body {
                     if let Some(n) = node.child_by_field_name("name") {
                         let name = self.text(n).to_string();
+                        let import_index = self.out.imports.len();
+                        // `mod foo;` makes `foo` usable as a module path prefix.
+                        self.sc
+                            .bind(&name, "namespace", None, Some(import_index), None);
                         self.out.imports.push(NewImport {
                             raw_specifier: format!("self::{name}"),
                             imported_name: Some(name),
@@ -53,28 +62,21 @@ impl<'a> Walker<'a> {
                         });
                     }
                 }
-                let idx = self.push_symbol(node);
-                if let Some(i) = idx {
-                    self.stack.push(i);
-                }
-                self.walk_children(node);
-                if idx.is_some() {
-                    self.stack.pop();
-                }
+                self.enter_symbol(node, "module");
             }
-            "function_item" | "struct_item" | "enum_item" | "trait_item" | "union_item"
-            | "type_item" | "const_item" | "static_item" | "impl_item"
-            | "macro_definition" => {
-                let idx = self.push_symbol(node);
-                if let Some(i) = idx {
-                    self.stack.push(i);
-                }
-                self.walk_children(node);
-                if idx.is_some() {
-                    self.stack.pop();
-                }
+            "function_item" => self.enter_symbol(node, "function"),
+            "struct_item" | "union_item" => self.enter_symbol(node, "struct"),
+            "enum_item" => self.enter_symbol(node, "enum"),
+            "trait_item" => self.enter_symbol(node, "trait"),
+            "impl_item" => self.enter_symbol(node, "impl"),
+            "type_item" | "const_item" | "static_item" | "macro_definition" => {
+                self.enter_symbol(node, "block");
             }
             "use_declaration" => self.collect_use(node),
+            "let_declaration" => {
+                self.collect_let(node);
+                self.walk_children(node);
+            }
             "call_expression" => {
                 self.collect_call(node);
                 self.walk_children(node);
@@ -85,6 +87,101 @@ impl<'a> Walker<'a> {
             }
             _ => self.walk_children(node),
         }
+    }
+
+    /// Push a symbol, open a matching child scope, bind the symbol name in the
+    /// parent scope, record params/fields, walk the body, then close up.
+    fn enter_symbol(&mut self, node: Node, scope_kind: &str) {
+        let idx = self.push_symbol(node);
+
+        if let Some(i) = idx {
+            let (name, kind) = {
+                let s = &self.out.symbols[i];
+                (s.name.clone(), s.kind.clone())
+            };
+            // A bare `foo()` can reach a free function or a tuple-struct ctor,
+            // never a method or an `impl` block.
+            if !matches!(kind.as_str(), "method" | "impl") {
+                self.sc.bind(&name, "symbol", Some(i), None, None);
+            }
+            self.stack.push(i);
+            self.sc
+                .push(scope_kind, Some(i), node.start_byte() as i64, node.end_byte() as i64);
+
+            match node.kind() {
+                "function_item" => self.bind_params(node),
+                "struct_item" | "union_item" => self.bind_struct_fields(node),
+                _ => {}
+            }
+
+            self.walk_children(node);
+
+            self.sc.pop();
+            self.stack.pop();
+        } else {
+            self.walk_children(node);
+        }
+    }
+
+    fn bind_params(&mut self, func: Node) {
+        let Some(params) = func.child_by_field_name("parameters") else {
+            return;
+        };
+        let kids: Vec<Node> = {
+            let mut c = params.walk();
+            params.named_children(&mut c).collect()
+        };
+        for p in kids {
+            if p.kind() != "parameter" {
+                continue;
+            }
+            let Some(pat) = p.child_by_field_name("pattern") else {
+                continue;
+            };
+            let name = self.text(pat).to_string();
+            let ty = p
+                .child_by_field_name("type")
+                .map(|t| self.text(t).trim().to_string());
+            self.sc.bind(&name, "param", None, None, ty);
+        }
+    }
+
+    fn bind_struct_fields(&mut self, st: Node) {
+        let Some(body) = st.child_by_field_name("body") else {
+            return;
+        };
+        let kids: Vec<Node> = {
+            let mut c = body.walk();
+            body.named_children(&mut c).collect()
+        };
+        for f in kids {
+            if f.kind() != "field_declaration" {
+                continue;
+            }
+            let (Some(n), Some(t)) = (
+                f.child_by_field_name("name"),
+                f.child_by_field_name("type"),
+            ) else {
+                continue;
+            };
+            let name = self.text(n).to_string();
+            let ty = simple_type_name(self.text(t));
+            self.sc.bind(&name, "field", None, None, Some(ty));
+        }
+    }
+
+    fn collect_let(&mut self, node: Node) {
+        let Some(pat) = node.child_by_field_name("pattern") else {
+            return;
+        };
+        if pat.kind() != "identifier" {
+            return; // skip destructuring for now
+        }
+        let name = self.text(pat).to_string();
+        let ty = node
+            .child_by_field_name("type")
+            .map(|t| simple_type_name(self.text(t)));
+        self.sc.bind(&name, "local", None, None, ty);
     }
 
     fn walk_children(&mut self, node: Node) {
@@ -123,6 +220,35 @@ impl<'a> Walker<'a> {
         })
     }
 
+    /// Simple name of the type the current `impl`/`trait` scope is for.
+    fn enclosing_type_name(&self) -> Option<String> {
+        self.stack.iter().rev().find_map(|&i| {
+            let s = &self.out.symbols[i];
+            match s.kind.as_str() {
+                "impl" => Some(
+                    s.name
+                        .rsplit(" for ")
+                        .next()
+                        .unwrap_or(&s.name)
+                        .trim()
+                        .to_string(),
+                ),
+                "trait" => Some(s.name.clone()),
+                _ => None,
+            }
+        })
+    }
+
+    fn param_count(&self, node: Node) -> Option<i64> {
+        let params = node.child_by_field_name("parameters")?;
+        let mut c = params.walk();
+        let n = params
+            .named_children(&mut c)
+            .filter(|p| matches!(p.kind(), "parameter" | "self_parameter"))
+            .count();
+        Some(n as i64)
+    }
+
     fn push_symbol(&mut self, node: Node) -> Option<usize> {
         let (name, kind) = match node.kind() {
             "impl_item" => {
@@ -154,6 +280,11 @@ impl<'a> Walker<'a> {
         };
 
         let parent_index = self.stack.last().copied();
+        let (param_count, type_name) = if kind == "method" || kind == "function" {
+            (self.param_count(node), self.enclosing_type_name().filter(|_| kind == "method"))
+        } else {
+            (None, None)
+        };
         self.out.symbols.push(NewSymbol {
             name,
             kind: kind.to_string(),
@@ -164,6 +295,8 @@ impl<'a> Walker<'a> {
             start_byte: node.start_byte() as i64,
             end_byte: node.end_byte() as i64,
             signature: None,
+            param_count,
+            type_name,
         });
         Some(self.out.symbols.len() - 1)
     }
@@ -193,6 +326,15 @@ impl<'a> Walker<'a> {
             } else {
                 path.rsplit("::").next().map(str::to_string)
             };
+            let import_index = self.out.imports.len();
+            // Bind the locally visible name so refs resolve to this import.
+            let local = alias.clone().or_else(|| imported_name.clone());
+            if wildcard {
+                let ns = path.rsplit("::").next().unwrap_or(&path).to_string();
+                self.sc.bind(&ns, "namespace", None, Some(import_index), None);
+            } else if let Some(l) = &local {
+                self.sc.bind(l, "import", None, Some(import_index), None);
+            }
             self.out.imports.push(NewImport {
                 raw_specifier: path,
                 imported_name,
@@ -275,12 +417,22 @@ impl<'a> Walker<'a> {
         if name.is_empty() {
             return;
         }
+        let receiver_kind = classify_rust_receiver(func.kind(), receiver.as_deref());
+        let arg_count = node
+            .child_by_field_name("arguments")
+            .map(|a| {
+                let mut c = a.walk();
+                a.named_children(&mut c).count() as i64
+            });
         self.out.refs.push(NewRef {
             name,
             ref_kind: "call".to_string(),
             receiver,
             start_line: node.start_position().row as i64 + 1,
             start_byte: node.start_byte() as i64,
+            arg_count,
+            receiver_kind: receiver_kind.to_string(),
+            ..Default::default()
         });
     }
 
@@ -329,8 +481,29 @@ impl<'a> Walker<'a> {
             receiver: None,
             start_line: node.start_position().row as i64 + 1,
             start_byte: node.start_byte() as i64,
+            receiver_kind: "none".to_string(),
+            ..Default::default()
         });
     }
+}
+
+/// `foo::bar` / `Foo::bar` -> path; `expr.method()` -> value (or self); bare -> none.
+fn classify_rust_receiver(func_kind: &str, receiver: Option<&str>) -> &'static str {
+    match (func_kind, receiver) {
+        (_, None) => "none",
+        ("scoped_identifier", _) => "path",
+        (_, Some("self")) | (_, Some("Self")) => "self",
+        _ => "value",
+    }
+}
+
+/// Strip references, lifetimes and generics down to the leading path's last
+/// segment: `&mut Vec<Foo>` -> `Vec`, `crate::a::Bar` -> `Bar`.
+fn simple_type_name(raw: &str) -> String {
+    let t = raw.trim().trim_start_matches('&').trim();
+    let t = t.strip_prefix("mut ").unwrap_or(t).trim();
+    let head = t.split(['<', ' ', '(']).next().unwrap_or(t);
+    head.rsplit("::").next().unwrap_or(head).to_string()
 }
 
 struct UsePath {
@@ -390,6 +563,7 @@ pub fn run() {
         assert_eq!(by_name("Widget").unwrap().kind, "struct");
         assert!(by_name("Widget").unwrap().is_exported);
         assert_eq!(by_name("new").unwrap().kind, "method");
+        assert_eq!(by_name("new").unwrap().type_name.as_deref(), Some("Widget"));
         assert_eq!(by_name("grow").unwrap().kind, "method");
         assert_eq!(by_name("helper").unwrap().kind, "function");
         assert!(!by_name("helper").unwrap().is_exported);
@@ -402,6 +576,25 @@ pub fn run() {
         let call_names: Vec<&str> = p.refs.iter().map(|r| r.name.as_str()).collect();
         assert!(call_names.contains(&"new")); // Widget::new()
         assert!(call_names.contains(&"helper"));
+
+        // `helper()` inside `run` resolves in-file to the `helper` symbol.
+        let helper_ref = p.refs.iter().find(|r| r.name == "helper").unwrap();
+        assert!(helper_ref.resolved_local_symbol_index.is_some());
+    }
+
+    #[test]
+    fn struct_fields_become_typed_bindings() {
+        let src = r#"
+struct Pool;
+struct Server { pool: Pool, name: String }
+"#;
+        let p = parse(src);
+        let field = p
+            .bindings
+            .iter()
+            .find(|b| b.binding_kind == "field" && b.name == "pool")
+            .expect("pool field binding");
+        assert_eq!(field.type_expr.as_deref(), Some("Pool"));
     }
 
     #[test]
@@ -423,5 +616,15 @@ use anyhow::*;
         let sup = spec("super::walker").unwrap();
         assert_eq!(sup.alias.as_deref(), Some("w"));
         assert!(p.imports.iter().any(|i| i.raw_specifier == "anyhow"));
+
+        // `w` is bound as an import; `anyhow::*` as a namespace.
+        assert!(p
+            .bindings
+            .iter()
+            .any(|b| b.binding_kind == "import" && b.name == "w"));
+        assert!(p
+            .bindings
+            .iter()
+            .any(|b| b.binding_kind == "namespace" && b.name == "anyhow"));
     }
 }

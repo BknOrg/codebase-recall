@@ -1,6 +1,7 @@
 //! AST-based extraction of symbols, imports, and references from source files.
 
 pub mod lang;
+pub mod scope;
 mod javascript;
 mod python;
 mod rust;
@@ -8,7 +9,7 @@ mod sfc;
 
 pub use lang::Language;
 
-use crate::cache::models::{NewImport, NewRef, NewSymbol};
+use crate::cache::models::{NewBinding, NewImport, NewRef, NewScope, NewSymbol};
 
 /// Everything an analyzer extracts from a single file.
 #[derive(Debug, Default)]
@@ -17,6 +18,10 @@ pub struct ParsedFile {
     pub symbols: Vec<NewSymbol>,
     pub imports: Vec<NewImport>,
     pub refs: Vec<NewRef>,
+    /// Lexical scopes, ordered outermost-first (parents before children).
+    pub scopes: Vec<NewScope>,
+    /// Names introduced in each scope (locals, params, fields, imports, ...).
+    pub bindings: Vec<NewBinding>,
     /// False if the parser reported syntax errors or the language is unsupported.
     pub parse_ok: bool,
 }

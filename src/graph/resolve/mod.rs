@@ -10,7 +10,7 @@ use std::path::Path;
 use anyhow::Result;
 use globset::GlobMatcher;
 
-use crate::cache::models::{FileRow, SymbolRow};
+use crate::cache::models::{FileRow, ImportRow, SymbolRow};
 use crate::cache::CacheDb;
 use crate::graph::{external_id, file_id, symbol_id, CodeGraph, Edge, Node};
 
@@ -19,7 +19,7 @@ use postprocess::{
     apply_focus, collapse_to_files, degree_map, enforce_max_nodes, prune_unreferenced_externals,
     rollup_directories,
 };
-use refs::resolve_ref;
+use refs::{resolve_ref, ResolveCtx, Target};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Scope {
@@ -47,6 +47,8 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
     let symbols = db.all_symbols()?;
     let imports = db.all_imports()?;
     let refs = db.all_refs()?;
+    let scopes = db.all_scopes()?;
+    let bindings = db.all_bindings()?;
 
     let file_by_id: HashMap<i64, &FileRow> = files.iter().map(|f| (f.id, f)).collect();
     let path_set: HashSet<String> = files.iter().map(|f| f.path.clone()).collect();
@@ -58,6 +60,9 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
     for s in &symbols {
         syms_by_file.entry(s.file_id).or_default().push(s);
     }
+    let import_by_id: HashMap<i64, &ImportRow> = imports.iter().map(|i| (i.id, i)).collect();
+    let scope_owner: HashMap<i64, Option<i64>> =
+        scopes.iter().map(|s| (s.id, s.owner_symbol_id)).collect();
 
     // Does this file pass the --path glob?
     let keep_file = |path: &str| opts.path_glob.as_ref().map_or(true, |g| g.is_match(path));
@@ -131,9 +136,9 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
         }
     }
 
-    // ---- imports + symbol bindings -------------------------------------
-    // (importer file id, local name) -> resolved target symbol db id
-    let mut binding: HashMap<(i64, String), i64> = HashMap::new();
+    // ---- imports: file->file edges, externals, module reachability -------
+    // file id -> file ids it imports (used by L4 disambiguation scoring).
+    let mut imports_files: HashMap<i64, HashSet<i64>> = HashMap::new();
 
     for im in &imports {
         let Some(importer) = file_by_id.get(&im.file_id) else {
@@ -142,6 +147,11 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
         let resolved = resolve_import(&importer.language, &importer.path, im, &path_set);
 
         if let Some(target_path) = resolved.as_deref() {
+            if let Some(tf) = frow_by_path.get(target_path) {
+                if tf.id != im.file_id {
+                    imports_files.entry(im.file_id).or_default().insert(tf.id);
+                }
+            }
             if target_path != importer.path
                 && opts.kinds.contains("imports")
                 && keep_file(&importer.path)
@@ -154,22 +164,6 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
                     1.0,
                     None,
                 );
-            }
-            // symbol binding for call resolution
-            if let (Some(name), Some(tf)) = (
-                im.imported_name.as_deref(),
-                resolved.as_deref().and_then(|p| frow_by_path.get(p)),
-            ) {
-                if let Some(list) = syms_by_file.get(&tf.id) {
-                    let hit = list
-                        .iter()
-                        .find(|s| s.name == name && s.is_exported)
-                        .or_else(|| list.iter().find(|s| s.name == name));
-                    if let Some(s) = hit {
-                        let local = im.alias.clone().unwrap_or_else(|| name.to_string());
-                        binding.insert((im.file_id, local), s.id);
-                    }
-                }
             }
         } else if opts.include_external && opts.kinds.contains("imports") && keep_file(&importer.path)
         {
@@ -204,6 +198,99 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
         defs_by_name.entry(s.name.as_str()).or_default().push(s);
     }
 
+    // Locally-visible name -> cross-file target, from the `bindings` table.
+    let mut binding: HashMap<(i64, String), Target> = HashMap::new();
+    for b in &bindings {
+        let Some(imp) = b.import_id.and_then(|i| import_by_id.get(&i)) else {
+            continue;
+        };
+        let Some(importer) = file_by_id.get(&b.file_id) else {
+            continue;
+        };
+        let Some(tpath) = resolve_import(&importer.language, &importer.path, imp, &path_set) else {
+            continue;
+        };
+        let Some(tf) = frow_by_path.get(tpath.as_str()) else {
+            continue;
+        };
+        match b.binding_kind.as_str() {
+            "import" => {
+                let want = imp.imported_name.as_deref().unwrap_or(b.name.as_str());
+                let sym = syms_by_file.get(&tf.id).and_then(|list| {
+                    list.iter()
+                        .find(|s| s.name == want && s.is_exported)
+                        .or_else(|| list.iter().find(|s| s.name == want))
+                });
+                match sym {
+                    Some(s) => {
+                        binding.insert((b.file_id, b.name.clone()), Target::Symbol(s.id));
+                    }
+                    // e.g. Rust `use crate::scheduler;` — a module, not a symbol.
+                    None => {
+                        binding.insert((b.file_id, b.name.clone()), Target::Module(tf.id));
+                    }
+                }
+            }
+            "namespace" => {
+                binding.insert((b.file_id, b.name.clone()), Target::Module(tf.id));
+            }
+            _ => {}
+        }
+    }
+
+    // type simple name -> { method name -> symbol id }
+    let mut type_methods: HashMap<String, HashMap<String, i64>> = HashMap::new();
+    for s in &symbols {
+        if s.kind == "method" {
+            if let Some(t) = &s.type_name {
+                type_methods
+                    .entry(t.clone())
+                    .or_default()
+                    .entry(s.name.clone())
+                    .or_insert(s.id);
+            }
+        }
+    }
+
+    // type simple name -> { field name -> field type }, and
+    // (enclosing symbol id, param/local name) -> declared type.
+    let mut type_fields: HashMap<String, HashMap<String, String>> = HashMap::new();
+    let mut local_types: HashMap<(i64, String), String> = HashMap::new();
+    for b in &bindings {
+        let Some(ty) = b.type_expr.clone() else {
+            continue;
+        };
+        let owner = scope_owner.get(&b.scope_id).copied().flatten();
+        match b.binding_kind.as_str() {
+            "field" => {
+                if let Some(owner_sym) = owner.and_then(|id| sym_by_id.get(&id)) {
+                    type_fields
+                        .entry(owner_sym.name.clone())
+                        .or_default()
+                        .insert(b.name.clone(), ty);
+                }
+            }
+            "param" | "local" => {
+                if let Some(oid) = owner {
+                    local_types.insert((oid, b.name.clone()), ty);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let ctx = ResolveCtx {
+        file_by_id: &file_by_id,
+        sym_by_id: &sym_by_id,
+        syms_by_file: &syms_by_file,
+        defs_by_name: &defs_by_name,
+        binding: &binding,
+        type_methods: &type_methods,
+        type_fields: &type_fields,
+        local_types: &local_types,
+        imports_files: &imports_files,
+    };
+
     for rf in &refs {
         let edge_kind = if rf.ref_kind == "call" {
             "calls"
@@ -225,14 +312,7 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
             _ => file_id(&importer.path),
         };
 
-        let Some((target, confidence)) = resolve_ref(
-            rf,
-            importer,
-            &syms_by_file,
-            &binding,
-            &defs_by_name,
-            &file_by_id,
-        ) else {
+        let Some((target, confidence)) = resolve_ref(rf, importer, &ctx) else {
             continue;
         };
         if confidence < opts.min_confidence {
@@ -247,8 +327,6 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
         }
         edges.add(src, tgt, edge_kind, confidence, None);
     }
-
-    let _ = sym_by_id; // reserved for future receiver-type resolution
 
     // ---- finalize ------------------------------------------------------
     let mut edges = edges.into_vec();
