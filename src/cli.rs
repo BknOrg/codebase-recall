@@ -37,6 +37,15 @@ pub struct DumpArgs {
 
     #[arg(long, default_value_t = 50)]
     pub max_size_kb: u64,
+
+    #[arg(short = 'r', long = "relation")]
+    pub relation: Option<String>,
+
+    #[arg(long, default_value_t = 2)]
+    pub depth: u32,
+
+    #[arg(long)]
+    pub no_sync: bool,
 }
 
 #[derive(Parser, Debug)]
@@ -79,11 +88,7 @@ pub struct GraphQuery {
 
     /// Edge kinds to include, comma-separated: imports, calls, references, contains
     /// (`references` is noisy on large graphs, so it is off by default)
-    #[arg(
-        long,
-        value_delimiter = ',',
-        default_value = "imports,calls,contains"
-    )]
+    #[arg(long, value_delimiter = ',', default_value = "imports,calls,contains")]
     pub kinds: Vec<String>,
 
     /// Only include files matching this glob

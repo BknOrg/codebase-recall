@@ -4,7 +4,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::graph::{dir_id, Edge, Node};
+use crate::graph::{Edge, Node, dir_id};
 
 use super::parent_dir;
 
@@ -25,8 +25,14 @@ pub(super) fn collapse_to_files(
         if e.kind == "contains" {
             continue;
         }
-        let s = sym_to_file.get(e.source.as_str()).map(|s| s.to_string()).unwrap_or(e.source);
-        let t = sym_to_file.get(e.target.as_str()).map(|s| s.to_string()).unwrap_or(e.target);
+        let s = sym_to_file
+            .get(e.source.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or(e.source);
+        let t = sym_to_file
+            .get(e.target.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or(e.target);
         if s == t {
             continue;
         }
@@ -44,9 +50,13 @@ pub(super) fn collapse_to_files(
 }
 
 pub(super) fn apply_focus(nodes: &mut Vec<Node>, edges: &mut Vec<Edge>, focus: &str, depth: u32) {
+    let focus_normalized = focus.replace("\\", "/");
+    let focus_clean = focus_normalized
+        .strip_prefix("./")
+        .unwrap_or(&focus_normalized);
     let seeds: HashSet<&str> = nodes
         .iter()
-        .filter(|n| n.label == focus || n.id.contains(focus))
+        .filter(|n| n.label == focus_clean || n.id.contains(&focus_clean))
         .map(|n| n.id.as_str())
         .collect();
     if seeds.is_empty() {
@@ -60,8 +70,7 @@ pub(super) fn apply_focus(nodes: &mut Vec<Node>, edges: &mut Vec<Edge>, focus: &
     }
 
     let mut keep: HashSet<String> = seeds.iter().map(|s| s.to_string()).collect();
-    let mut frontier: VecDeque<(String, u32)> =
-        seeds.iter().map(|s| (s.to_string(), 0)).collect();
+    let mut frontier: VecDeque<(String, u32)> = seeds.iter().map(|s| (s.to_string(), 0)).collect();
     while let Some((id, d)) = frontier.pop_front() {
         if d >= depth {
             continue;

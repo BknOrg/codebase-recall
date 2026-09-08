@@ -10,16 +10,16 @@ use std::path::Path;
 use anyhow::Result;
 use globset::GlobMatcher;
 
-use crate::cache::models::{FileRow, ImportRow, SymbolRow};
 use crate::cache::CacheDb;
-use crate::graph::{external_id, file_id, symbol_id, CodeGraph, Edge, Node};
+use crate::cache::models::{FileRow, ImportRow, SymbolRow};
+use crate::graph::{CodeGraph, Edge, Node, external_id, file_id, symbol_id};
 
 use imports::{external_root, resolve_import};
 use postprocess::{
     apply_focus, collapse_to_files, degree_map, enforce_max_nodes, prune_unreferenced_externals,
     rollup_directories,
 };
-use refs::{resolve_ref, ResolveCtx, Target};
+use refs::{ResolveCtx, Target, resolve_ref};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Scope {
@@ -165,7 +165,9 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
                     None,
                 );
             }
-        } else if opts.include_external && opts.kinds.contains("imports") && keep_file(&importer.path)
+        } else if opts.include_external
+            && opts.kinds.contains("imports")
+            && keep_file(&importer.path)
         {
             let label = external_root(&im.raw_specifier, &importer.language);
             let ext = external_id(&label);
@@ -321,7 +323,11 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
         let Some((tgt, tgt_file)) = sym_node.get(&target) else {
             continue;
         };
-        let tgt = if want_symbols { tgt.clone() } else { tgt_file.clone() };
+        let tgt = if want_symbols {
+            tgt.clone()
+        } else {
+            tgt_file.clone()
+        };
         if tgt == src {
             continue;
         }
@@ -373,7 +379,14 @@ struct EdgeSet {
 }
 
 impl EdgeSet {
-    fn add(&mut self, source: String, target: String, kind: &str, conf: f32, external: Option<String>) {
+    fn add(
+        &mut self,
+        source: String,
+        target: String,
+        kind: &str,
+        conf: f32,
+        external: Option<String>,
+    ) {
         let key = (source, target, kind.to_string());
         let entry = self.map.entry(key).or_insert((0.0, None));
         if conf >= entry.0 {
@@ -407,5 +420,9 @@ fn now() -> u64 {
 
 /// Compile a `--path` glob relative to `root` (used by the caller).
 pub fn compile_glob(pattern: &str, _root: &Path) -> Result<GlobMatcher> {
-    Ok(globset::Glob::new(pattern)?.compile_matcher())
+    let normalized_pattern = pattern.replace('\\', "/");
+    let clean_pattern = normalized_pattern
+        .strip_prefix("./")
+        .unwrap_or(&normalized_pattern);
+    Ok(globset::Glob::new(clean_pattern)?.compile_matcher())
 }

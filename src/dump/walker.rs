@@ -103,6 +103,40 @@ pub fn collect_source_files(root: &Path) -> anyhow::Result<Vec<PathBuf>> {
     Ok(paths)
 }
 
+pub fn collect_related_files(
+    root: &Path,
+    relative_path: &[PathBuf],
+    max_size_kb: u64,
+) -> (Vec<PathBuf>, Vec<FileEntry>) {
+    let max_byte = max_size_kb * 1024;
+    let mut tree_paths = Vec::new();
+    let mut files = Vec::new();
+
+    for rel in relative_path {
+        let abs = root.join(rel);
+        if !abs.is_file() {
+            continue;
+        }
+
+        tree_paths.push(rel.clone());
+
+        if let Ok(metadata) = abs.metadata() {
+            if metadata.len() > max_byte {
+                continue;
+            }
+        }
+        if let Ok(content) = std::fs::read_to_string(&abs) {
+            files.push(FileEntry {
+                relative_path: rel.clone(),
+                content,
+            });
+        }
+    }
+    tree_paths.sort();
+    files.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    (tree_paths, files)
+}
+
 pub fn collect_files(
     root: &Path,
     max_size_kb: u64,

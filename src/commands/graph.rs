@@ -6,9 +6,9 @@ use std::path::PathBuf;
 use crate::cache::CacheDb;
 use crate::cli::{GraphArgs, GraphQuery, SyncArgs};
 use crate::commands::sync;
+use crate::graph::CodeGraph;
 use crate::graph::render::{self, Format};
 use crate::graph::resolve::{self, GraphOptions, Scope};
-use crate::graph::CodeGraph;
 
 /// Auto-sync (unless disabled) and resolve the graph selected by `query`.
 /// Shared by `graph` (file output) and `serve` (browser).
@@ -42,7 +42,10 @@ pub fn build_graph(query: &GraphQuery) -> Result<CodeGraph> {
         .filter(|k| !k.is_empty())
         .collect();
     let path_glob = match &query.path {
-        Some(p) => Some(resolve::compile_glob(p, &project)?),
+        Some(p) => {
+            let normalized_path = p.replace("\\", "/");
+            Some(resolve::compile_glob(&normalized_path, &project)?)
+        }
         None => None,
     };
 
