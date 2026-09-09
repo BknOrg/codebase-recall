@@ -11,6 +11,7 @@ pub fn run(args: ServeArgs) -> Result<()> {
         ServeOptions {
             port: args.port,
             open: !args.no_open,
+            project: args.query.project.clone(),
         },
     )
 }

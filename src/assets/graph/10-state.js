@@ -8,7 +8,13 @@
   const DIR_IN = 0.32;
   const DIR_OUT = 0.95;
   const expanded = new Set(); // file ids whose symbols are shown
-  const state = { kinds: new Set(["imports", "calls"]), query: "", isolate: false };
+  const state = {
+    kinds: new Set(["imports", "calls"]),
+    query: "",
+    isolate: false,
+    dumpDepth: 2,
+    dumpName: "codebase-context.md",
+  };
   let inFileRegime = true;
   let hovered = null;
   let selected = null;

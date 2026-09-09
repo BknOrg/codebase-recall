@@ -27,6 +27,7 @@ const GRAPH_VIEW_PARTS: &[&str] = &[
     include_str!("graph/60-interaction.js"),
     include_str!("graph/70-tooltip-panel.js"),
     include_str!("graph/80-controls.js"),
+    include_str!("graph/85-legend.js"),
     include_str!("graph/90-main.js"),
 ];
 
@@ -51,9 +52,7 @@ const BODY: &str = r#"<div id="app">
     <label><input type="checkbox" data-kind="calls" checked> calls</label>
     <label><input type="checkbox" data-kind="references"> references</label>
     <label><input type="checkbox" id="expandAll"> expand all</label>
-    <button id="collapseAll" type="button">collapse</button>
-    <input type="search" id="search" placeholder="filter nodes&hellip;">
-    <label><input type="checkbox" id="isolate"> isolate</label>
+    <input type="search" id="search" placeholder="filter &amp; isolate nodes&hellip;">
     <button id="fitBtn" type="button">fit</button>
     <span id="focusCtl" hidden>
       <span id="focusLabel"></span>
@@ -66,13 +65,7 @@ const BODY: &str = r#"<div id="app">
   <div id="stage">
     <canvas id="scene"></canvas>
     <aside id="sidePanel" hidden></aside>
-    <div class="legend">
-      <div><span class="dot sq" style="background:var(--dir)"></span>directory</div>
-      <div><span class="dot" style="background:var(--file)"></span>file</div>
-      <div><span class="dot" style="background:var(--func)"></span>function / method</div>
-      <div><span class="dot" style="background:var(--type)"></span>type</div>
-      <div><span class="dot" style="background:var(--var)"></span>variable</div>
-    </div>
+    <div class="legend" id="legend"></div>
     <div id="status"></div>
   </div>
 </div>"#;

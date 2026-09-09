@@ -15,7 +15,7 @@ schema_version = 1
 # Skip source files larger than this many KB.
 max_file_kb = 512
 # Languages to analyze.
-languages = ["rust", "javascript", "typescript", "python"]
+languages = ["rust", "javascript", "typescript", "python", "java", "kotlin"]
 
 [graph]
 # Drop resolved edges below this confidence.

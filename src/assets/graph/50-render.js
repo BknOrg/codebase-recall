@@ -11,6 +11,17 @@
     });
   }
 
+  // Transient message in the bottom-left status pill.
+  const statusEl = document.getElementById("status");
+  let statusT = 0;
+  function showStatus(msg, ms = 2500) {
+    if (!statusEl) return;
+    statusEl.textContent = msg;
+    statusEl.classList.add("show");
+    clearTimeout(statusT);
+    if (ms > 0) statusT = setTimeout(() => statusEl.classList.remove("show"), ms);
+  }
+
   function draw() {
     const k = transform.k;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

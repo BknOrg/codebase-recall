@@ -73,7 +73,18 @@
     (ev) => {
       if (ev.button !== 0) return;
       const n = nodeAt(ev.clientX, ev.clientY);
-      if (!n) return;
+      if (!n) {
+        // A plain click on empty space (not the start of a pan) drops isolate
+        // and any selection; a drag still pans as usual.
+        const sx = ev.clientX;
+        const sy = ev.clientY;
+        const up = (e) => {
+          canvas.removeEventListener("pointerup", up);
+          if (Math.abs(e.clientX - sx) + Math.abs(e.clientY - sy) <= 3) onEmptyClick();
+        };
+        canvas.addEventListener("pointerup", up);
+        return;
+      }
       ev.stopImmediatePropagation();
       ev.preventDefault();
       try {
@@ -114,6 +125,23 @@
   canvas.addEventListener("dblclick", (ev) => {
     if (!nodeAt(ev.clientX, ev.clientY)) fit(true);
   });
+
+  function onEmptyClick() {
+    if (state.isolate) {
+      state.query = "";
+      state.isolate = false;
+      const s = document.getElementById("search");
+      if (s) s.value = "";
+      selected = null;
+      rebuild(0.4);
+      return;
+    }
+    if (selected) {
+      selected = null;
+      updatePanel();
+      scheduleDraw();
+    }
+  }
 
   function onNodeClick(n, ev) {
     if (ev && (ev.altKey || ev.metaKey)) {

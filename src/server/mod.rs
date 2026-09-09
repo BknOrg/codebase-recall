@@ -6,6 +6,7 @@
 //! server also stops on `Ctrl-C` or a `/quit` request.
 
 use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
@@ -22,6 +23,8 @@ pub struct ServeOptions {
     pub port: u16,
     /// Open the URL in the default browser once the server is up.
     pub open: bool,
+    /// Project root — needed by the `/dump` endpoint (viewer "dump -r" button).
+    pub project: PathBuf,
 }
 
 /// Worker threads pulling from the shared accept queue. A held `/live` stream
@@ -58,6 +61,7 @@ pub fn serve(graph: &CodeGraph, opts: ServeOptions) -> Result<()> {
 
     let shutdown = Arc::new(AtomicBool::new(false));
     let live = Arc::new(AtomicUsize::new(0));
+    let project = Arc::new(opts.project);
 
     // Ctrl-C -> ask everything to wind down. Workers poll `shutdown` between
     // short accept timeouts, so flipping the flag is all it takes.
@@ -84,8 +88,9 @@ pub fn serve(graph: &CodeGraph, opts: ServeOptions) -> Result<()> {
         let shutdown = shutdown.clone();
         let live = live.clone();
         let page = page.clone();
+        let project = project.clone();
         workers.push(thread::spawn(move || {
-            worker_loop(&server, &shutdown, &live, &page);
+            worker_loop(&server, &shutdown, &live, &page, &project);
         }));
     }
     for w in workers {
@@ -130,6 +135,7 @@ fn worker_loop(
     shutdown: &Arc<AtomicBool>,
     live: &Arc<AtomicUsize>,
     page: &str,
+    project: &Path,
 ) {
     while !shutdown.load(Ordering::SeqCst) {
         let req = match server.recv_timeout(Duration::from_millis(200)) {
@@ -139,9 +145,24 @@ fn worker_loop(
         };
 
         let is_get = *req.method() == Method::Get;
-        let path = req.url().split('?').next().unwrap_or("/").to_owned();
+        let url = req.url().to_owned();
+        let path = url.split('?').next().unwrap_or("/").to_owned();
 
         match (is_get, path.as_str()) {
+            (_, "/dump") => {
+                let body = run_dump(project, &url);
+                let _ = req.respond(with_type(
+                    text(
+                        if body.contains("\"ok\":true") {
+                            200
+                        } else {
+                            500
+                        },
+                        &body,
+                    ),
+                    "application/json; charset=utf-8",
+                ));
+            }
             (_, "/quit") => {
                 let _ = req.respond(text(204, ""));
                 shutdown.store(true, Ordering::SeqCst);
@@ -224,6 +245,93 @@ impl Drop for Decrement<'_> {
     fn drop(&mut self) {
         self.0.fetch_sub(1, Ordering::SeqCst);
     }
+}
+
+// --- /dump: relation-aware context bundle for the viewer's "dump -r" button ---
+
+/// Runs `dump -r` for `?target=…&depth=…` and returns a small JSON reply.
+/// NOTE: unlike the rest of `serve`, this writes `codebase-context.md` to disk.
+fn run_dump(project: &Path, url: &str) -> String {
+    let Some(target) = query_param(url, "target").filter(|t| !t.is_empty()) else {
+        return r#"{"ok":false,"error":"missing target"}"#.to_string();
+    };
+    let depth = query_param(url, "depth")
+        .and_then(|d| d.parse::<u32>().ok())
+        .unwrap_or(2)
+        .clamp(1, 5);
+    // Output name: basename only, no traversal / drive-relative paths.
+    let name = query_param(url, "name")
+        .map(|s| s.trim().to_string())
+        .and_then(|s| {
+            let base = s.rsplit(['/', '\\']).next().unwrap_or("").to_string();
+            (!base.is_empty() && base != "." && base != ".." && !base.contains(':')).then_some(base)
+        })
+        .unwrap_or_else(|| "codebase-context.md".to_string());
+    let output = project.join(&name);
+
+    match crate::commands::dump::relation_bundle(project, &target, depth, 50, false, &output) {
+        Ok((path, n)) => format!(
+            r#"{{"ok":true,"path":"{}","files":{}}}"#,
+            json_escape(&path.display().to_string()),
+            n
+        ),
+        Err(e) => format!(
+            r#"{{"ok":false,"error":"{}"}}"#,
+            json_escape(&e.to_string())
+        ),
+    }
+}
+
+/// First `key=value` from a URL query string, percent-decoded (`+` -> space).
+fn query_param(url: &str, key: &str) -> Option<String> {
+    let q = url.split_once('?')?.1;
+    for pair in q.split('&') {
+        let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+        if k == key {
+            return Some(percent_decode(v));
+        }
+    }
+    None
+}
+
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'+' => out.push(b' '),
+            b'%' if i + 2 < b.len() => {
+                let hex = |c: u8| (c as char).to_digit(16);
+                match (hex(b[i + 1]), hex(b[i + 2])) {
+                    (Some(h), Some(l)) => {
+                        out.push((h * 16 + l) as u8);
+                        i += 2;
+                    }
+                    _ => out.push(b'%'),
+                }
+            }
+            c => out.push(c),
+        }
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn json_escape(s: &str) -> String {
+    let mut o = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => o.push_str("\\\""),
+            '\\' => o.push_str("\\\\"),
+            '\n' => o.push_str("\\n"),
+            '\r' => o.push_str("\\r"),
+            '\t' => o.push_str("\\t"),
+            c if (c as u32) < 0x20 => o.push_str(&format!("\\u{:04x}", c as u32)),
+            c => o.push(c),
+        }
+    }
+    o
 }
 
 // --- small response helpers ------------------------------------------------

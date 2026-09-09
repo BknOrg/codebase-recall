@@ -235,5 +235,10 @@ fn languages_compatible(a: &str, b: &str) -> bool {
         return true;
     }
     let is_js_family = |lang: &str| matches!(lang, "javascript" | "typescript" | "vue" | "svelte");
-    is_js_family(a) && is_js_family(b)
+    if is_js_family(a) && is_js_family(b) {
+        return true;
+    }
+    // Java and Kotlin share the JVM and routinely call into each other.
+    let is_jvm_family = |lang: &str| matches!(lang, "java" | "kotlin");
+    is_jvm_family(a) && is_jvm_family(b)
 }

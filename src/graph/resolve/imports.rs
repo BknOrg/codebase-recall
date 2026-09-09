@@ -17,8 +17,54 @@ pub(super) fn resolve_import(
             resolve_js_import(importer_rel, &im.raw_specifier, path_set)
         }
         "python" => resolve_python_import(importer_rel, &im.raw_specifier, path_set),
+        "java" | "kotlin" => resolve_jvm_import(im, path_set),
         _ => None,
     }
+}
+
+/// Java / Kotlin: map a dotted FQN (`com.example.util.Greeter`, or a static
+/// import `...Helpers.log`) to a source file under a common source root.
+/// Wildcard imports (`imported_name == None`) name a package, not a file.
+fn resolve_jvm_import(im: &ImportRow, path_set: &HashSet<String>) -> Option<String> {
+    im.imported_name.as_deref()?; // wildcard import -> a package, not a file
+    let segs: Vec<&str> = im
+        .raw_specifier
+        .split('.')
+        .filter(|s| !s.is_empty())
+        .collect();
+    if segs.is_empty() {
+        return None;
+    }
+
+    const ROOTS: &[&str] = &[
+        "",
+        "src/main/java/",
+        "src/main/kotlin/",
+        "src/",
+        "app/src/main/java/",
+        "app/src/main/kotlin/",
+        "src/commonMain/kotlin/",
+        "java/",
+        "kotlin/",
+    ];
+    const EXTS: &[&str] = &[".java", ".kt"];
+
+    // Try the full path, then drop the trailing segment (static-member imports).
+    for cut in [0usize, 1] {
+        if segs.len() <= cut {
+            continue;
+        }
+        let rel = segs[..segs.len() - cut].join("/");
+        for root in ROOTS {
+            for ext in EXTS {
+                let cand = format!("{root}{rel}{ext}");
+                if path_set.contains(&cand) {
+                    return Some(cand);
+                }
+            }
+        }
+    }
+    None
 }
 
 fn dir_components(rel: &str) -> Vec<String> {
@@ -192,7 +238,9 @@ fn resolve_python_import(
 pub(super) fn external_root(spec: &str, lang_group: &str) -> String {
     match lang_group {
         "rust" => spec.split("::").next().unwrap_or(spec).to_string(),
-        "python" => spec.trim_start_matches('.').split('.').next().unwrap_or(spec).to_string(),
+        "python" | "java" | "kotlin" => {
+            spec.trim_start_matches('.').split('.').next().unwrap_or(spec).to_string()
+        }
         _ => {
             if let Some(scoped) = spec.strip_prefix('@') {
                 let mut it = scoped.split('/');

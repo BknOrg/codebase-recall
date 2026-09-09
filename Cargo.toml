@@ -1,6 +1,6 @@
 [package]
 name = "codebase-recall"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2024"
 authors = ["Bkn Org"]
 description = "CLI based application for codebase dumper for LLMs and fast review/recall project"
@@ -23,6 +23,8 @@ tree-sitter-rust = "0.24"
 tree-sitter-javascript = "0.23"
 tree-sitter-typescript = "0.23"
 tree-sitter-python = "0.23"
+tree-sitter-java = "0.23"
+tree-sitter-kotlin-ng = "1.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 globset = "0.4"

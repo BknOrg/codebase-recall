@@ -125,6 +125,7 @@
     }
     sim.alpha(Math.max(sim.alpha(), reheat)).restart();
 
+    buildLegend();
     updateHeader();
     updatePanel();
     scheduleDraw();

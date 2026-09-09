@@ -2,7 +2,9 @@
 
 pub mod lang;
 pub mod scope;
+mod java;
 mod javascript;
+mod kotlin;
 mod python;
 mod rust;
 mod sfc;
@@ -34,6 +36,8 @@ pub fn parse_file(language: Language, source: &str) -> ParsedFile {
             javascript::parse(source, language)
         }
         Language::Python => python::parse(source),
+        Language::Java => java::parse(source),
+        Language::Kotlin => kotlin::parse(source),
         Language::Vue | Language::Svelte => sfc::parse(source, language),
     }
 }

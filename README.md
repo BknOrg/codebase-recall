@@ -4,7 +4,7 @@
 
 `codebase-recall` (`code-rcl`) is a command-line tool built with Rust 🦀 designed for two primary developer workflows:
 1. **Context Bundling for LLMs:** Scan your directory structure and bundle your codebase—or a focused, dependency-aware slice of it—into a clean, well-structured Markdown document ready for LLMs (ChatGPT, Claude, Gemini, DeepSeek).
-2. **Code Relation Graph & Architecture Visualization:** Parse ASTs across multiple languages (Rust, JS/TS, Python, Vue, Svelte) to discover definitions, imports, and cross-file calls. Visualize interactions in real-time in an interactive browser UI or export to self-contained HTML, Graphviz DOT, or JSON.
+2. **Code Relation Graph & Architecture Visualization:** Parse ASTs across multiple languages (Rust, JS/TS, Python, Java, Kotlin, Vue, Svelte) to discover definitions, imports, and cross-file calls. Visualize interactions in real-time in an interactive browser UI or export to self-contained HTML, Graphviz DOT, or JSON.
 
 ---
 
@@ -21,7 +21,7 @@
 - **Size Limits & Path Normalization:** Configurable per-file size limit (default: 50 KB) and automated path separator normalization across OS platforms.
 
 ### 🕸️ Code Relation Graph (`graph` & `serve`)
-- **Multi-Language AST Parsing:** Powered by tree-sitter for **Rust**, **JavaScript/JSX**, **TypeScript/TSX**, **Python**, and Single-File Components (**Vue**, **Svelte**).
+- **Multi-Language AST Parsing:** Powered by tree-sitter for **Rust**, **JavaScript/JSX**, **TypeScript/TSX**, **Python**, **Java**, **Kotlin**, and Single-File Components (**Vue**, **Svelte**).
 - **Multi-Tier Resolution:** Tracks symbols (functions, structs, classes, enums, methods), imports, and call references across files with confidence scoring.
 - **Incremental SQLite Caching:** Stores file hashes (Blake3) and AST entities in `.code-rcl/cache.db`. Re-runs only parse files modified since the last sync.
 - **Interactive Browser Viewer (`serve`):**
@@ -240,6 +240,8 @@ code-rcl serve --scope symbol --focus handle_request --depth 3
 | **TypeScript** | `.ts`, `.mts`, `.cts` | Tree-sitter | Interfaces, types, classes, functions, modules, imports |
 | **TSX** | `.tsx` | Tree-sitter | TS types, React components, hooks, imports, calls |
 | **Python** | `.py`, `.pyi` | Tree-sitter | Functions, classes, methods, `import` / `from ... import`, calls |
+| **Java** | `.java` | Tree-sitter | Classes, interfaces, enums, records, methods, `import` (incl. `static` / `.*`), calls |
+| **Kotlin** | `.kt`, `.kts` | Tree-sitter | Classes, objects, top-level & member functions (incl. `@Composable`), properties, `import` (incl. `as` / `.*`), calls |
 | **Vue** | `.vue` | SFC Extractor + TS/JS | `<script>` & `<script setup>` symbols, imports, components |
 | **Svelte** | `.svelte` | SFC Extractor + TS/JS | `<script>` symbols, imports, reactive calls |
 

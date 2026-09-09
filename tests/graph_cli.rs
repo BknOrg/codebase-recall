@@ -138,6 +138,34 @@ fn python_fixture_graph() {
 }
 
 #[test]
+fn java_fixture_graph() {
+    let g = graph_json("java_app");
+    let ids = node_ids(&g);
+    assert!(ids.contains(&"file:App.java".to_string()));
+    assert!(ids.contains(&"file:util/Greeter.java".to_string()));
+    assert!(
+        has_edge(&g, "file:App.java", "file:util/Greeter.java", "imports"),
+        "expected App.java -> util/Greeter.java import edge"
+    );
+    assert!(calls_into(&g, "greet"), "expected a call edge into greet");
+    assert_no_externals(&g);
+}
+
+#[test]
+fn kotlin_fixture_graph() {
+    let g = graph_json("kotlin_app");
+    let ids = node_ids(&g);
+    assert!(ids.contains(&"file:Main.kt".to_string()));
+    assert!(ids.contains(&"file:util/Greeter.kt".to_string()));
+    assert!(
+        has_edge(&g, "file:Main.kt", "file:util/Greeter.kt", "imports"),
+        "expected Main.kt -> util/Greeter.kt import edge"
+    );
+    assert!(calls_into(&g, "greet"), "expected a call edge into greet");
+    assert_no_externals(&g);
+}
+
+#[test]
 fn directory_rollup_and_degree() {
     let g = graph_json("pkg_app");
     let ids = node_ids(&g);

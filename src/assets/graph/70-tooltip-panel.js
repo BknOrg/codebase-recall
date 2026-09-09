@@ -108,10 +108,33 @@
         html += `<button class="row" data-id="${esc(id)}">${esc(labelFor(id))}</button>`;
     }
     if (!any) html += `<div class="sp-group">no visible relations</div>`;
+
+    // While isolating, offer a one-click "code-rcl dump -r" context bundle for
+    // this node (values live in `state` so they survive panel re-renders).
+    if (state.isolate) {
+      html +=
+        `<div class="sp-group">context bundle · code-rcl dump -r</div>` +
+        `<div class="sp-dump">` +
+        `<label>depth <input type="number" id="spDepth" min="1" max="5" value="${state.dumpDepth}"></label>` +
+        `<label>file <input type="text" id="spOut" value="${esc(state.dumpName)}"></label>` +
+        `<button class="sp-btn" id="spDumpGo">generate</button>` +
+        `<div class="sp-dump-result" id="spDumpResult"></div>` +
+        `</div>`;
+    }
+
     panel.innerHTML = html;
     panel.hidden = false;
   }
+  panel.addEventListener("input", (ev) => {
+    if (ev.target.id === "spDepth")
+      state.dumpDepth = Math.min(5, Math.max(1, parseInt(ev.target.value, 10) || 2));
+    else if (ev.target.id === "spOut") state.dumpName = ev.target.value;
+  });
   panel.addEventListener("click", (ev) => {
+    if (ev.target.id === "spDumpGo") {
+      runDumpBundle();
+      return;
+    }
     if (ev.target.classList.contains("sp-close")) {
       selected = null;
       updatePanel();
