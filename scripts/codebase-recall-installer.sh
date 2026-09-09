@@ -4,9 +4,12 @@ set -e
 REPO="BknOrg/codebase-recall"
 BIN_NAME="code-rcl"
 PACKAGE_NAME="codebase-recall"
-INSTALL_DIR="${HOME}/.local/bin"
+BASE_DIR="${HOME}/.code-rcl"
+INSTALL_DIR="${BASE_DIR}/bin"
+PLUGIN_DIR="${BASE_DIR}/plugins"
 
 mkdir -p "$INSTALL_DIR"
+mkdir -p "$PLUGIN_DIR"
 
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
@@ -43,3 +46,40 @@ curl -fsSL "$URL" | tar -xz -C "$INSTALL_DIR"
 
 chmod +x "${INSTALL_DIR}/${BIN_NAME}"
 echo "${BIN_NAME} installed to ${INSTALL_DIR}"
+
+# --- Automatic add to PATH Unix ---
+case ":$PATH:" in
+  *":$INSTALL_DIR:"*)
+    echo "$INSTALL_DIR is already in your PATH."
+    ;;
+  *)
+    EXPORT_LINE="export PATH=\"${INSTALL_DIR}:\$PATH\""
+    ADDED=false
+
+    add_to_file() {
+      file="$1"
+      if [ -f "$file" ]; then
+        if ! grep -qsF "$INSTALL_DIR" "$file"; then
+          printf "\n# codebase-recall\n%s\n" "$EXPORT_LINE" >> "$file"
+          ADDED=true
+        fi
+      fi
+    }
+
+    add_to_file "${HOME}/.zshrc"
+    add_to_file "${HOME}/.bashrc"
+
+    if [ "$ADDED" = false ] && [ -f "${HOME}/.profile" ]; then
+      add_to_file "${HOME}/.profile"
+    fi
+
+    if [ "$ADDED" = true ]; then
+      echo "Added ${INSTALL_DIR} to your shell profile."
+      echo "Please restart your terminal or run: export PATH=\"${INSTALL_DIR}:\$PATH\""
+    else
+      echo "Please manually add to your PATH: export PATH=\"${INSTALL_DIR}:\$PATH\""
+    fi
+    ;;
+esac
+
+printf "\nDone! You can now run '%s --help' from any directory.\n" "$BIN_NAME"
