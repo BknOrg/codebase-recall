@@ -33,7 +33,7 @@ impl TreeNode {
     }
 }
 
-fn calculate_fence(content: &str) -> String {
+pub fn calculate_fence(content: &str) -> String {
     let mut max_streak = 0;
     let mut current_streak = 0;
 

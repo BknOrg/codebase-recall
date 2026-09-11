@@ -7,7 +7,22 @@ use crate::cli::{DumpArgs, GraphQuery};
 use crate::commands::graph::build_graph;
 use crate::dump::{formatter, walker};
 
+fn ensure_md_extension(path: &PathBuf) -> PathBuf {
+    let mut normalized = path.to_path_buf();
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("codebase-context");
+
+    if !file_name.to_lowercase().ends_with(".md") {
+        normalized.set_file_name(format!("{file_name}.md"));
+    }
+    normalized
+}
+
 pub fn run(args: DumpArgs) -> Result<()> {
+    let output_file = ensure_md_extension(&args.output);
+
     if let Some(focus_target) = &args.relation {
         let (path, n) = relation_bundle(
             &args.path,
@@ -21,17 +36,20 @@ pub fn run(args: DumpArgs) -> Result<()> {
             "Focused dump: target '{}' (depth {}) -> {} connected files",
             focus_target, args.depth, n
         );
-        println!("Codebase context successfully written to: {}", path.display());
+        println!(
+            "Codebase context successfully written to: {}",
+            path.display()
+        );
         return Ok(());
     }
 
     let (tree_paths, files) = walker::collect_files(&args.path, args.max_size_kb)?;
     let tree_view = formatter::build_tree_view(&tree_paths);
     let file_view = formatter::build_content_view(&tree_view, &files);
-    fs::write(&args.output, &file_view)?;
+    fs::write(&output_file, &file_view)?;
     println!(
         "Codebase context successfully written to: {}",
-        args.output.display()
+        output_file.display()
     );
     Ok(())
 }

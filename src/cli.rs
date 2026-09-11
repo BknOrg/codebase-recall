@@ -32,7 +32,7 @@ pub struct DumpArgs {
     #[arg(default_value = ".")]
     pub path: PathBuf,
 
-    #[arg(short = 'f', long = "file", default_value = "codebase-context.md")]
+    #[arg(short = 'f', long = "file", default_value = "codebase-context")]
     pub output: PathBuf,
 
     #[arg(long, default_value_t = 50)]

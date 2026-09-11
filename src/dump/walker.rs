@@ -25,6 +25,13 @@ const IGNORED_DIRECTORIES: &[&str] = &[
     "dist",
     ".gradle",
     ".dart_tool",
+    "build",
+    ".cxx",
+    ".idea",
+    ".vscode",
+    "Pods",
+    ".symlinks",
+    "target",
 ];
 
 const IGNORED_EXTENSIONS_FOR_CONTENT: &[&str] = &[
@@ -163,13 +170,33 @@ pub fn collect_files(
         tree_paths.push(rel_path.clone());
 
         if path.is_file() && !should_skip_content(path) {
+            let is_ipynb = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("ipynb"))
+                .unwrap_or(false);
+
             if let Ok(metadata) = std::fs::metadata(path) {
-                if metadata.len() <= max_bytes {
-                    if let Ok(content) = std::fs::read_to_string(path) {
-                        file_entries.push(FileEntry {
-                            relative_path: rel_path,
-                            content,
-                        });
+                let allow_read = if is_ipynb {
+                    metadata.len() <= 10 * 1024 * 1024
+                } else {
+                    metadata.len() <= max_bytes
+                };
+
+                if allow_read {
+                    if let Ok(raw_content) = std::fs::read_to_string(path) {
+                        let content = if is_ipynb {
+                            crate::analysis::python::ipynb::cleaning_ipynb(&raw_content)
+                                .unwrap_or(raw_content)
+                        } else {
+                            raw_content
+                        };
+                        if (content.len() as u64) <= max_bytes {
+                            file_entries.push(FileEntry {
+                                relative_path: rel_path,
+                                content,
+                            });
+                        }
                     }
                 }
             }

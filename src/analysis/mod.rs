@@ -1,12 +1,12 @@
 //! AST-based extraction of symbols, imports, and references from source files.
 
-pub mod lang;
-pub mod scope;
 mod java;
 mod javascript;
 mod kotlin;
-mod python;
+pub mod lang;
+pub mod python;
 mod rust;
+pub mod scope;
 mod sfc;
 
 pub use lang::Language;
@@ -35,7 +35,7 @@ pub fn parse_file(language: Language, source: &str) -> ParsedFile {
         Language::JavaScript | Language::Jsx | Language::TypeScript | Language::Tsx => {
             javascript::parse(source, language)
         }
-        Language::Python => python::parse(source),
+        Language::Python => python::python::parse(source),
         Language::Java => java::parse(source),
         Language::Kotlin => kotlin::parse(source),
         Language::Vue | Language::Svelte => sfc::parse(source, language),

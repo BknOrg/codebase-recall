@@ -3,6 +3,7 @@
 > **High-performance CLI codebase context dumper for LLMs and AST-based code relation grapher.**
 
 `codebase-recall` (`code-rcl`) is a command-line tool built with Rust 🦀 designed for two primary developer workflows:
+
 1. **Context Bundling for LLMs:** Scan your directory structure and bundle your codebase—or a focused, dependency-aware slice of it—into a clean, well-structured Markdown document ready for LLMs (ChatGPT, Claude, Gemini, DeepSeek).
 2. **Code Relation Graph & Architecture Visualization:** Parse ASTs across multiple languages (Rust, JS/TS, Python, Java, Kotlin, Vue, Svelte) to discover definitions, imports, and cross-file calls. Visualize interactions in real-time in an interactive browser UI or export to self-contained HTML, Graphviz DOT, or JSON.
 
@@ -11,6 +12,7 @@
 ## Key Features
 
 ### 📦 Codebase Context Dumper (`dump`)
+
 - **Full & Targeted Dumps:**
   - **Full Dump:** Pack the entire repository with directory trees and filtered source contents.
   - **Targeted / Relation-Aware Dump (`-r / --relation`):** Provide a target symbol or file; `code-rcl` traverses the dependency graph up to `--depth <N>` and dumps *only* connected and relevant files—saving prompt tokens and eliminating hallucination noise.
@@ -21,6 +23,7 @@
 - **Size Limits & Path Normalization:** Configurable per-file size limit (default: 50 KB) and automated path separator normalization across OS platforms.
 
 ### 🕸️ Code Relation Graph (`graph` & `serve`)
+
 - **Multi-Language AST Parsing:** Powered by tree-sitter for **Rust**, **JavaScript/JSX**, **TypeScript/TSX**, **Python**, **Java**, **Kotlin**, and Single-File Components (**Vue**, **Svelte**).
 - **Multi-Tier Resolution:** Tracks symbols (functions, structs, classes, enums, methods), imports, and call references across files with confidence scoring.
 - **Incremental SQLite Caching:** Stores file hashes (Blake3) and AST entities in `.code-rcl/cache.db`. Re-runs only parse files modified since the last sync.
@@ -39,22 +42,27 @@
 ### Prebuilt Binaries
 
 #### macOS / Linux (Shell Script)
+
 ```sh
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/BknOrg/codebase-recall/releases/latest/download/codebase-recall-installer.sh | sh
 ```
 
 #### Windows (PowerShell)
+
 ```powershell
 irm https://github.com/BknOrg/codebase-recall/releases/latest/download/codebase-recall-installer.ps1 | iex
 ```
 
 ### Install via Cargo (crates.io)
+
 Ensure you have Rust and Cargo installed:
+
 ```bash
 cargo install codebase-recall
 ```
 
 ### Build from Source
+
 ```bash
 git clone https://github.com/BknOrg/codebase-recall.git
 cd codebase-recall
@@ -83,19 +91,22 @@ The compiled binary is available as `code-rcl`.
 ## Usage — `dump` (LLM Context Generator)
 
 ### 1. Standard Full Dump
+
 Scan the repository and produce a comprehensive `codebase-context.md`:
+
 ```bash
 # Scan current directory -> codebase-context.md
 code-rcl dump
 
 # Scan specific project directory and specify output filename
-code-rcl dump ./path/to/project -f context.md
+code-rcl dump ./path/to/project -f context
 
 # Increase per-file size limit to 100 KB
-code-rcl dump . --max-size-kb 100 -f full-context.md
+code-rcl dump . --max-size-kb 100 -f full-context
 ```
 
 ### 2. Relation-Aware / Targeted Dump
+
 When working with large codebases, dumping everything can exceed token context windows or degrade LLM reasoning. Use `--relation` (`-r`) to extract only the target file/symbol and its connected dependency neighborhood:
 
 ```bash
@@ -103,7 +114,7 @@ When working with large codebases, dumping everything can exceed token context w
 code-rcl dump -r build_graph
 
 # Dump files connected to a specific module/file with a custom depth of 3
-code-rcl dump -r src/commands/dump.rs --depth 3 -f dump-feature-context.md
+code-rcl dump -r src/commands/dump.rs --depth 3 -f dump-feature-context
 
 # Skip auto-sync if cache is already fresh
 code-rcl dump -r App --no-sync
@@ -217,11 +228,13 @@ code-rcl serve --scope symbol --focus handle_request --depth 3
 ```
 
 #### How `serve` Works
+
 - **Self-Terminating / Zero Background Leak:** An active browser tab maintains an `EventSource` connection (`/live`). Closing the browser tab drops the connection, causing the server to cleanly exit within 2 seconds.
 - **Ctrl-C:** Instantly halts the server.
 - **No External Network Dependencies:** D3.js and frontend styles are bundled inside the binary; no external CDNs or network connections are made.
 
 #### Browser UI Features
+
 - **Force Simulation:** Real-time physics layout with smooth zooming, panning, and node dragging.
 - **Dynamic Filtering:** Checkbox controls for `imports`, `calls`, and `references`.
 - **Search & Isolate:** Real-time search bar with instant node filtering and single-click node isolation.
@@ -248,6 +261,7 @@ code-rcl serve --scope symbol --focus handle_request --depth 3
 ### Edge Resolution & Confidence Scoring
 
 Relationships between symbols and files are resolved via multi-tier heuristics:
+
 1. **Import Edges (`confidence = 1.0`):** Language-specific path and module resolution.
 2. **Local References (`confidence = 0.95`):** Definitions and references within the same lexical scope or file.
 3. **Imported Calls (`confidence = 0.8 - 0.9`):** Calling an identifier explicitly imported from another module.
