@@ -1,0 +1,18 @@
+{
+  "_comment": "Tuples are [from_path, from_name, to_path, to_name]. `must_*` hold in both modes; `precise_*` are what only a real compiler frontend can get right. `run` calls Real::handle, but the AST cannot type `let h = Real::new()`, so scoring picks the `handle` this file has a `use` for.",
+  "must_have": [
+    ["src/main.rs", "main", "src/app.rs", "run"],
+    ["src/main.rs", "main", "src/app.rs", "poke"],
+    ["src/app.rs", "poke", "src/decoy.rs", "handle"],
+    ["src/app.rs", "run", "src/real.rs", "new"]
+  ],
+  "must_not_have": [
+    ["src/app.rs", "poke", "src/real.rs", "handle"]
+  ],
+  "precise_must_have": [
+    ["src/app.rs", "run", "src/real.rs", "handle"]
+  ],
+  "precise_must_not_have": [
+    ["src/app.rs", "run", "src/decoy.rs", "handle"]
+  ]
+}

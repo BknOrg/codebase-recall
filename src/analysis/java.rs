@@ -315,6 +315,7 @@ impl<'a> Walker<'a> {
             receiver,
             start_line: self.line(node),
             start_byte: node.start_byte() as i64,
+            name_start_byte: Some(name_node.start_byte() as i64),
             arg_count,
             receiver_kind: receiver_kind.to_string(),
             ..Default::default()
@@ -339,11 +340,23 @@ impl<'a> Walker<'a> {
             receiver: None,
             start_line: self.line(node),
             start_byte: node.start_byte() as i64,
+            name_start_byte: Some(last_type_identifier(ty).start_byte() as i64),
             arg_count,
             receiver_kind: "none".to_string(),
             ..Default::default()
         });
     }
+}
+
+/// The final identifier of a (possibly qualified) type node: `a.b.Foo` -> `Foo`.
+/// `--precise` points a language server at this offset, and the head of the
+/// qualified name would resolve to the package `a` instead of the type.
+fn last_type_identifier(ty: Node) -> Node {
+    let mut cursor = ty.walk();
+    ty.children(&mut cursor)
+        .filter(|c| c.kind() == "type_identifier")
+        .last()
+        .unwrap_or(ty)
 }
 
 /// `java.util.Map<String, T>[]` -> `Map`; drops generics, arrays, package.

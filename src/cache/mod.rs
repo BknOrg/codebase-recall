@@ -8,8 +8,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 use std::path::{Path, PathBuf};
 
 use models::{
-    BindingRow, FileRow, ImportRow, NewBinding, NewImport, NewRef, NewScope, NewSymbol, RefRow,
-    ScopeRow, SymbolRow,
+    BindingRow, FileRow, ImportRow, NewBinding, NewImport, NewRef, NewScope, NewSymbol,
+    PreciseStatus, RefRow, ScopeRow, SymbolRow,
 };
 
 /// Directory that holds all code-rcl project state.
@@ -88,7 +88,8 @@ impl CacheDb {
 
     pub fn all_files(&self) -> Result<Vec<FileRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, path, language, content_hash, mtime, size, parsed_ok FROM files",
+            "SELECT id, path, language, content_hash, mtime, size, parsed_ok, precise_synced_at
+             FROM files",
         )?;
         let rows = stmt
             .query_map([], |r| {
@@ -100,6 +101,7 @@ impl CacheDb {
                     mtime: r.get(4)?,
                     size: r.get(5)?,
                     parsed_ok: r.get::<_, i64>(6)? != 0,
+                    precise_synced_at: r.get(7)?,
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -157,28 +159,20 @@ impl CacheDb {
     }
 
     pub fn all_refs(&self) -> Result<Vec<RefRow>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, file_id, from_symbol_id, name, ref_kind, receiver, start_line,
-                    arg_count, receiver_kind, local_only, resolved_symbol_id, resolved_confidence
-             FROM refs",
-        )?;
+        let mut stmt = self.conn.prepare(&format!("{REF_COLUMNS} FROM refs"))?;
         let rows = stmt
-            .query_map([], |r| {
-                Ok(RefRow {
-                    id: r.get(0)?,
-                    file_id: r.get(1)?,
-                    from_symbol_id: r.get(2)?,
-                    name: r.get(3)?,
-                    ref_kind: r.get(4)?,
-                    receiver: r.get(5)?,
-                    start_line: r.get(6)?,
-                    arg_count: r.get(7)?,
-                    receiver_kind: r.get(8)?,
-                    local_only: r.get::<_, i64>(9)? != 0,
-                    resolved_symbol_id: r.get(10)?,
-                    resolved_confidence: r.get(11)?,
-                })
-            })?
+            .query_map([], map_ref_row)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// Every ref recorded for one file, in source order.
+    pub fn refs_in_file(&self, file_id: i64) -> Result<Vec<RefRow>> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!("{REF_COLUMNS} FROM refs WHERE file_id = ?1 ORDER BY id"))?;
+        let rows = stmt
+            .query_map([file_id], map_ref_row)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
     }
@@ -235,6 +229,56 @@ impl CacheDb {
         Ok(())
     }
 
+    /// Store one file's language-server answers and stamp the file as done.
+    ///
+    /// Written as a single transaction so a run that is interrupted half way
+    /// leaves the file un-stamped and it simply gets re-queried next time.
+    pub fn set_precise_results(
+        &mut self,
+        file_id: i64,
+        results: &[(i64, PreciseStatus, Option<i64>, f64)],
+    ) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        {
+            let mut upd = tx.prepare(
+                "UPDATE refs
+                    SET precise_status = ?2, precise_symbol_id = ?3, precise_confidence = ?4
+                  WHERE id = ?1",
+            )?;
+            for (ref_id, status, symbol_id, confidence) in results {
+                let conf = matches!(status, PreciseStatus::Hit).then_some(*confidence);
+                upd.execute(params![ref_id, status.as_str(), symbol_id, conf])?;
+            }
+        }
+        tx.execute(
+            "UPDATE files SET precise_synced_at = ?2 WHERE id = ?1",
+            params![file_id, unix_now()],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Forget every language-server answer for the given files, so the next
+    /// `--precise` run asks again from scratch.
+    pub fn clear_precise(&mut self, file_ids: &[i64]) -> Result<()> {
+        let tx = self.conn.transaction()?;
+        {
+            let mut clear_refs = tx.prepare(
+                "UPDATE refs
+                    SET precise_status = NULL, precise_symbol_id = NULL, precise_confidence = NULL
+                  WHERE file_id = ?1",
+            )?;
+            let mut clear_file =
+                tx.prepare("UPDATE files SET precise_synced_at = NULL WHERE id = ?1")?;
+            for id in file_ids {
+                clear_refs.execute([id])?;
+                clear_file.execute([id])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Replace all analysis rows for a single file in one transaction.
     ///
     /// `symbols` must be ordered outermost-first so `parent_index` always
@@ -267,7 +311,10 @@ impl CacheDb {
                  mtime = excluded.mtime,
                  size = excluded.size,
                  parsed_ok = excluded.parsed_ok,
-                 updated_at = excluded.updated_at",
+                 updated_at = excluded.updated_at,
+                 -- the file changed, so any language-server answers for it are
+                 -- stale and must be asked again on the next --precise run
+                 precise_synced_at = NULL",
             params![
                 path,
                 language,
@@ -401,8 +448,8 @@ impl CacheDb {
             let mut ins = tx.prepare(
                 "INSERT INTO refs(file_id, from_symbol_id, name, ref_kind, receiver, start_line,
                                   arg_count, receiver_kind, local_only,
-                                  resolved_symbol_id, resolved_confidence)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                                  resolved_symbol_id, resolved_confidence, name_start_byte)
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             )?;
             for rf in refs {
                 let enclosing = innermost_symbol(symbols, &ids, rf.start_byte);
@@ -420,6 +467,7 @@ impl CacheDb {
                     rf.local_only as i64,
                     resolved,
                     resolved_conf,
+                    rf.name_start_byte,
                 ])?;
             }
         }
@@ -427,6 +475,33 @@ impl CacheDb {
         tx.commit()?;
         Ok(())
     }
+}
+
+/// Column list shared by every `refs` query, so the indexes in [`map_ref_row`]
+/// only have to be kept in step with one place.
+const REF_COLUMNS: &str = "SELECT id, file_id, from_symbol_id, name, ref_kind, receiver, start_line,
+            arg_count, receiver_kind, local_only, resolved_symbol_id, resolved_confidence,
+            name_start_byte, precise_symbol_id, precise_confidence, precise_status";
+
+fn map_ref_row(r: &rusqlite::Row) -> rusqlite::Result<RefRow> {
+    Ok(RefRow {
+        id: r.get(0)?,
+        file_id: r.get(1)?,
+        from_symbol_id: r.get(2)?,
+        name: r.get(3)?,
+        ref_kind: r.get(4)?,
+        receiver: r.get(5)?,
+        start_line: r.get(6)?,
+        arg_count: r.get(7)?,
+        receiver_kind: r.get(8)?,
+        local_only: r.get::<_, i64>(9)? != 0,
+        resolved_symbol_id: r.get(10)?,
+        resolved_confidence: r.get(11)?,
+        name_start_byte: r.get(12)?,
+        precise_symbol_id: r.get(13)?,
+        precise_confidence: r.get(14)?,
+        precise_status: r.get(15)?,
+    })
 }
 
 /// Innermost (narrowest) symbol whose byte range contains `byte`.

@@ -21,12 +21,22 @@ pub fn build_graph(query: &GraphQuery) -> Result<CodeGraph> {
             project: project.clone(),
             max_file_kb: 512,
             language: Vec::new(),
+            precise: query.precise.clone(),
         };
         let s = sync::sync_cache(&mut db, &sync_args)?;
         eprintln!(
             "auto-sync: +{} ~{} ={} -{} ({} symbols)",
             s.added, s.changed, s.unchanged, s.removed, s.symbols
         );
+
+        if query.precise.precise {
+            // Unlike `sync --precise`, a failure here is reported but does not
+            // abort: the graph built from heuristic edges is still worth
+            // rendering, and `report_precise` makes clear it is not the
+            // compiler-grade one that was asked for.
+            let stats = sync::run_precise(&mut db, &sync_args)?;
+            sync::report_precise(&stats);
+        }
     }
 
     let scope = match query.scope.to_ascii_lowercase().as_str() {

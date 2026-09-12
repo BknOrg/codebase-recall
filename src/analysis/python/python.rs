@@ -376,20 +376,19 @@ impl<'a> Walker<'a> {
         let Some(func) = node.child_by_field_name("function") else {
             return;
         };
-        let (name, receiver) = match func.kind() {
-            "identifier" => (self.text(func).to_string(), None),
+        // The name *node*, not just its text: `--precise` asks the language
+        // server about that exact offset, and `a.b()` must point at `b`.
+        let (name_node, receiver) = match func.kind() {
+            "identifier" => (Some(func), None),
             "attribute" => {
-                let attr = func
-                    .child_by_field_name("attribute")
-                    .map(|n| self.text(n))
-                    .unwrap_or_default();
                 let obj = func
                     .child_by_field_name("object")
                     .map(|n| self.text(n).to_string());
-                (attr.to_string(), obj)
+                (func.child_by_field_name("attribute"), obj)
             }
-            _ => (String::new(), None),
+            _ => (None, None),
         };
+        let name = name_node.map(|n| self.text(n).to_string()).unwrap_or_default();
         if name.is_empty() {
             return;
         }
@@ -408,6 +407,7 @@ impl<'a> Walker<'a> {
             receiver,
             start_line: self.line(node),
             start_byte: node.start_byte() as i64,
+            name_start_byte: name_node.map(|n| n.start_byte() as i64),
             arg_count,
             receiver_kind: receiver_kind.to_string(),
             ..Default::default()

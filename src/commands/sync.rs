@@ -1,13 +1,14 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::analysis::{self, Language};
 use crate::cache::CacheDb;
 use crate::cache::models::FileRow;
-use crate::cli::SyncArgs;
+use crate::cli::{PreciseArgs, SyncArgs};
 use crate::dump::walker;
+use crate::precise::{self, PreciseOptions, PreciseStats};
 
 pub fn run(args: SyncArgs) -> Result<()> {
     let project = args.project.clone();
@@ -30,7 +31,60 @@ pub fn run(args: SyncArgs) -> Result<()> {
             stats.unsupported
         );
     }
+
+    if args.precise.precise {
+        let precise = run_precise(&mut db, &args)?;
+        report_precise(&precise);
+        // The user asked for compiler-grade resolution explicitly, so a pass
+        // that broke down must not pass for success — the heuristic edges that
+        // remain are not what was asked for.
+        if !precise.errors.is_empty() {
+            bail!("`--precise` did not finish for every language (see the errors above)");
+        }
+    }
     Ok(())
+}
+
+/// Run the language-server pass for the languages this sync covered.
+pub fn run_precise(db: &mut CacheDb, args: &SyncArgs) -> Result<PreciseStats> {
+    let opts = precise_options(&args.precise, &args.language);
+    precise::run_precise_pass(db, &args.project, &opts)
+}
+
+pub fn precise_options(args: &PreciseArgs, language_filter: &[String]) -> PreciseOptions {
+    PreciseOptions {
+        full: args.precise_full,
+        request_timeout: Duration::from_secs(args.precise_timeout.max(1)),
+        language_filter: language_filter.to_vec(),
+    }
+}
+
+/// Print what the precise pass did. Warnings and errors go to stderr so they
+/// stay visible when stdout is piped somewhere.
+pub fn report_precise(stats: &PreciseStats) {
+    for outcome in &stats.languages {
+        println!(
+            "precise[{}]: {} resolved {}/{} refs in {} file(s) \
+             ({} external, {} untracked, {} unresolved)",
+            outcome.language,
+            outcome.server,
+            outcome.hits,
+            outcome.queried,
+            outcome.files,
+            outcome.external,
+            outcome.nonode,
+            outcome.unresolved,
+        );
+    }
+    if stats.languages.is_empty() && stats.warnings.is_empty() && stats.errors.is_empty() {
+        println!("precise: everything was already up to date (use --precise-full to redo it)");
+    }
+    for warning in &stats.warnings {
+        eprintln!("warning: {warning}");
+    }
+    for error in &stats.errors {
+        eprintln!("error: precise pass failed for {error}");
+    }
 }
 
 #[derive(Default)]

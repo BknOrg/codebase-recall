@@ -1,0 +1,10 @@
+# An empty [workspace] table keeps this fixture a crate of its own, so neither
+# cargo nor rust-analyzer tries to attach it to the repository around it.
+[workspace]
+
+[package]
+name = "rust_precise_app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]

@@ -81,6 +81,7 @@ pub fn relation_bundle(
         include_external: false,
         max_nodes: 4000,
         no_sync,
+        precise: Default::default(),
     };
 
     let graph = build_graph(&query)?;

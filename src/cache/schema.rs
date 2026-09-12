@@ -4,10 +4,10 @@
 //! [`MIGRATIONS`] moves the database from version `i` to version `i + 1`.
 
 /// Current schema version. Must equal `MIGRATIONS.len()`.
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 
 /// Ordered migration scripts. `MIGRATIONS[0]` upgrades v0 -> v1, etc.
-pub const MIGRATIONS: &[&str] = &[V1, V2];
+pub const MIGRATIONS: &[&str] = &[V1, V2, V3];
 
 const V1: &str = r#"
 CREATE TABLE meta (
@@ -110,4 +110,35 @@ ALTER TABLE refs ADD COLUMN resolved_confidence REAL;
 
 ALTER TABLE symbols ADD COLUMN param_count INTEGER;
 ALTER TABLE symbols ADD COLUMN type_name   TEXT;          -- method: owning type's simple name
+"#;
+
+/// v3 — ground-truth resolution from a real language server (`sync --precise`).
+///
+/// * `refs.name_start_byte` — byte offset of the *name token* of the reference
+///   (`bar` in `foo.bar()`), which is where a `textDocument/definition` request
+///   has to point. The whole-expression offset would resolve `foo` instead.
+/// * `refs.precise_status` — what the server answered:
+///   `hit` (a definition inside the project, `precise_symbol_id` is set),
+///   `external` (a definition outside the project tree — stdlib or a dependency),
+///   `nonode` (inside the project but at a place we keep no symbol node for),
+///   `unresolved` (the server had no answer). `NULL` means never queried.
+///   Only `hit` yields an edge; `external`/`nonode` deliberately yield none,
+///   which is how precise mode removes the false edges heuristics would invent.
+/// * `files.precise_synced_at` — when this file's refs were last queried. Reset
+///   to `NULL` whenever the file is re-analyzed, so stale answers are re-asked.
+///
+/// Existing rows predate `name_start_byte`, and unchanged files are never
+/// re-parsed, so the file table is cleared to force one full re-analysis. Only
+/// the derived cache is dropped; nothing in the working tree is touched.
+const V3: &str = r#"
+ALTER TABLE refs ADD COLUMN name_start_byte    INTEGER;
+ALTER TABLE refs ADD COLUMN precise_symbol_id  INTEGER REFERENCES symbols(id) ON DELETE SET NULL;
+ALTER TABLE refs ADD COLUMN precise_confidence REAL;
+ALTER TABLE refs ADD COLUMN precise_status     TEXT;      -- hit|external|nonode|unresolved
+
+ALTER TABLE files ADD COLUMN precise_synced_at INTEGER;
+
+CREATE INDEX idx_refs_precise ON refs(file_id, precise_status);
+
+DELETE FROM files;
 "#;

@@ -3,6 +3,10 @@
 //!
 //! The layers, tried most-certain first:
 //!
+//! * **L0** — ground truth from a real language server, recorded by
+//!   `sync --precise`. It both adds edges the heuristics cannot see and
+//!   *removes* ones they would invent, because it knows when a reference
+//!   points outside the project.
 //! * **L1** — same-file scope resolution, already computed at sync time and
 //!   carried on the [`RefRow`] (`local_only` / `resolved_symbol_id`).
 //! * **L2** — precise import binding (named imports and `ns.foo()` namespaces).
@@ -46,6 +50,27 @@ pub(super) fn resolve_ref(
     importer: &FileRow,
     ctx: &ResolveCtx,
 ) -> Option<(i64, f32)> {
+    // ---- L0: ground truth from a language server ---------------------------
+    // Deliberately ahead of `local_only`: the server's answer outranks every
+    // heuristic, including the analyzer's own same-file scope walk.
+    match rf.precise_status.as_deref() {
+        Some("hit") => {
+            if let Some(id) = rf.precise_symbol_id {
+                return Some((id, rf.precise_confidence.unwrap_or(1.0) as f32));
+            }
+            // The target file was re-analyzed after the precise pass ran, so the
+            // id was dropped. Fall through and let the heuristics answer until
+            // the next `--precise` run refreshes it.
+        }
+        // The server resolved this reference, just not to a node in this graph:
+        // the standard library, a third-party dependency, or a spot we keep no
+        // symbol for. A heuristic guess here would be a false edge.
+        Some("external") | Some("nonode") => return None,
+        // `unresolved` (or never queried) — the server had nothing, so the
+        // heuristic layers below are still the best available answer.
+        _ => {}
+    }
+
     // ---- L1: settled at sync time ------------------------------------------
     if rf.local_only {
         return None;

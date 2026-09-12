@@ -5,6 +5,7 @@ mod cli;
 mod commands;
 mod dump;
 mod graph;
+mod precise;
 mod server;
 
 use anyhow::Result;

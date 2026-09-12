@@ -350,8 +350,10 @@ impl<'a> Walker<'a> {
         let Some(callee) = node.named_child(0) else {
             return;
         };
-        let (name, receiver) = match callee.kind() {
-            "identifier" => (self.text(callee).to_string(), None),
+        // The name *node*, not just its text: `--precise` asks the language
+        // server about that exact offset, and `a.b()` must point at `b`.
+        let (name_node, receiver) = match callee.kind() {
+            "identifier" => (Some(callee), None),
             "navigation_expression" => {
                 let ids: Vec<Node> = {
                     let mut c = callee.walk();
@@ -360,13 +362,13 @@ impl<'a> Walker<'a> {
                         .filter(|x| x.kind() != "." && x.is_named())
                         .collect()
                 };
-                let method = ids.last().map(|n| self.text(*n).to_string()).unwrap_or_default();
                 let recv_node = callee.child(0);
                 let receiver = recv_node.map(|n| self.text(n).to_string());
-                (method, receiver)
+                (ids.last().copied(), receiver)
             }
             _ => return,
         };
+        let name = name_node.map(|n| self.text(n).to_string()).unwrap_or_default();
         if name.is_empty() {
             return;
         }
@@ -385,6 +387,7 @@ impl<'a> Walker<'a> {
             receiver,
             start_line: self.line(node),
             start_byte: node.start_byte() as i64,
+            name_start_byte: name_node.map(|n| n.start_byte() as i64),
             arg_count,
             receiver_kind: receiver_kind.to_string(),
             ..Default::default()

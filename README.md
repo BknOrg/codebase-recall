@@ -209,6 +209,7 @@ code-rcl graph --max-nodes 2000
 | `--include-external` | `false` | Include external dependencies (npm, PyPI, crates.io packages) |
 | `--max-nodes <N>` | `4000` | Node cap; drops lowest-degree symbols if exceeded (`0` to disable) |
 | `--no-sync` | `false` | Render directly from cache without checking/re-parsing modified files |
+| `--precise` | `false` | Resolve calls through real language servers ([see below](#compiler-grade-accuracy---precise)) |
 
 ---
 
@@ -269,6 +270,70 @@ Relationships between symbols and files are resolved via multi-tier heuristics:
 5. **Receiver / Method Match (`confidence = 0.4 - 0.5`):** Associated methods matched by signature and receiver heuristics.
 
 Adjust `--min-confidence` (default: `0.4`) to fine-tune graph density.
+
+---
+
+## Compiler-Grade Accuracy (`--precise`)
+
+The heuristics above read the AST only, so they cannot follow generics, trait
+and interface dispatch, or overloads. `--precise` asks the real language server
+for each language where a name is defined, and stores that answer as the top
+resolution layer:
+
+```bash
+# Resolve through the installed language servers instead of guessing
+code-rcl sync --precise
+
+# Only one language, and give a slow server more time per answer
+code-rcl sync --precise --language rust --precise-timeout 30
+
+# Re-ask about every file (edits can change how *other* files resolve)
+code-rcl sync --precise --precise-full
+
+# graph and serve take the same flag
+code-rcl graph --precise
+```
+
+Resolved edges come back at `confidence = 1.0`. Just as importantly, when the
+real definition turns out to live in the standard library or a dependency, the
+reference produces **no edge at all** — so `--precise` removes false edges as
+well as adding missing ones.
+
+### Required Language Servers
+
+Nothing is bundled. Install the servers for the languages you care about; a
+missing one is reported with its install command and that language simply keeps
+its heuristic edges.
+
+| Language | Server | Install | Override |
+| :--- | :--- | :--- | :--- |
+| **Rust** | `rust-analyzer` | `rustup component add rust-analyzer` | `CODE_RCL_LSP_RUST` |
+| **Python** | `pyright-langserver` | `npm install -g pyright` | `CODE_RCL_LSP_PYTHON` |
+| **Java** | `jdtls` (Eclipse JDT LS) | [eclipse.jdt.ls releases](https://github.com/eclipse-jdtls/eclipse.jdt.ls) (needs JDK 17+) | `CODE_RCL_LSP_JAVA` |
+| **Kotlin** | `kotlin-language-server` | [kotlin-language-server releases](https://github.com/fwcd/kotlin-language-server/releases) | `CODE_RCL_LSP_KOTLIN` |
+
+Each `CODE_RCL_LSP_*` variable takes the full path to the executable, for
+servers installed outside `PATH`.
+
+### What Affects Accuracy
+
+- **Rust, Java and Kotlin need a real project model** — `Cargo.toml`,
+  `pom.xml` or `build.gradle(.kts)`. Without one the server can only do
+  syntax-level analysis, and code-rcl warns before wasting time on it. Pyright
+  works fine on a plain folder of `.py` files.
+- **The first run is slow**: the server indexes the project, then answers one
+  request per reference. Later runs only re-ask about files that changed.
+- **A language server is not optional for its language** — `--precise` improves
+  the graph, it never empties it, so any language whose server is missing keeps
+  exactly the edges it had before.
+
+#### `sync --precise` Options
+
+| Flag | Default | Description |
+| :--- | :--- | :--- |
+| `--precise` | `false` | Resolve references through the real language servers |
+| `--precise-full` | `false` | Re-ask about every file, not just the ones with no answer yet |
+| `--precise-timeout <SECONDS>` | `15` | Budget for a single language-server answer |
 
 ---
 

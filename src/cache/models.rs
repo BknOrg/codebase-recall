@@ -14,6 +14,9 @@ pub struct FileRow {
     pub mtime: Option<i64>,
     pub size: Option<i64>,
     pub parsed_ok: bool,
+    /// When a language server last resolved this file's refs (`sync --precise`).
+    /// `None` once the file changes, so the answers get re-asked.
+    pub precise_synced_at: Option<i64>,
 }
 
 /// A declared symbol (function, method, type, module-level variable, ...).
@@ -66,6 +69,39 @@ pub struct RefRow {
     /// Same-file scope resolution result, computed at sync time.
     pub resolved_symbol_id: Option<i64>,
     pub resolved_confidence: Option<f64>,
+    /// Byte offset of the reference's name token — where a language server has
+    /// to be asked for the definition. `None` for analyzers that don't record it.
+    pub name_start_byte: Option<i64>,
+    /// Ground-truth target from a language server, when `precise_status` is `hit`.
+    pub precise_symbol_id: Option<i64>,
+    pub precise_confidence: Option<f64>,
+    /// [`PreciseStatus`] as stored; `None` means the ref was never queried.
+    pub precise_status: Option<String>,
+}
+
+/// What a language server answered for one reference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreciseStatus {
+    /// Resolved to a definition we hold a symbol node for.
+    Hit,
+    /// Resolved outside the project tree (stdlib, or a third-party dependency).
+    External,
+    /// Resolved inside the project, but to a place with no symbol node
+    /// (a macro body, a type alias, a `const`, ...).
+    NoNode,
+    /// The server had no answer.
+    Unresolved,
+}
+
+impl PreciseStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PreciseStatus::Hit => "hit",
+            PreciseStatus::External => "external",
+            PreciseStatus::NoNode => "nonode",
+            PreciseStatus::Unresolved => "unresolved",
+        }
+    }
 }
 
 /// A lexical scope. `id`/`parent_scope_id`/`owner_symbol_id` are database ids.
@@ -129,6 +165,9 @@ pub struct NewRef {
     pub receiver: Option<String>,
     pub start_line: i64,
     pub start_byte: i64,
+    /// Byte offset of the name token itself (`bar` in `foo.bar()`), when the
+    /// analyzer can point at it. Falls back to `start_byte` when `None`.
+    pub name_start_byte: Option<i64>,
     pub arg_count: Option<i64>,
     /// `none` | `path` | `value` | `self` (defaults to `none`).
     pub receiver_kind: String,

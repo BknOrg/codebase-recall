@@ -413,7 +413,8 @@ impl<'a> Walker<'a> {
         let Some(func) = node.child_by_field_name("function") else {
             return;
         };
-        let (name, receiver) = self.callee_name(func);
+        let (name_node, receiver) = self.callee_parts(func);
+        let name = name_node.map(|n| self.text(n).to_string()).unwrap_or_default();
         if name.is_empty() {
             return;
         }
@@ -430,40 +431,36 @@ impl<'a> Walker<'a> {
             receiver,
             start_line: node.start_position().row as i64 + 1,
             start_byte: node.start_byte() as i64,
+            name_start_byte: name_node.map(|n| n.start_byte() as i64),
             arg_count,
             receiver_kind: receiver_kind.to_string(),
             ..Default::default()
         });
     }
 
-    fn callee_name(&self, func: Node) -> (String, Option<String>) {
+    /// The callee's name node and its receiver text. The node — not just the
+    /// text — because `--precise` asks the language server about that exact
+    /// offset, and `a.b()` must point at `b`, not at `a`.
+    fn callee_parts(&self, func: Node<'a>) -> (Option<Node<'a>>, Option<String>) {
         match func.kind() {
-            "identifier" => (self.text(func).to_string(), None),
+            "identifier" => (Some(func), None),
             "field_expression" => {
-                let field = func
-                    .child_by_field_name("field")
-                    .map(|n| self.text(n))
-                    .unwrap_or_default();
                 let receiver = func
                     .child_by_field_name("value")
                     .map(|n| self.text(n).to_string());
-                (field.to_string(), receiver)
+                (func.child_by_field_name("field"), receiver)
             }
             "scoped_identifier" => {
-                let name = func
-                    .child_by_field_name("name")
-                    .map(|n| self.text(n))
-                    .unwrap_or_default();
                 let path = func
                     .child_by_field_name("path")
                     .map(|n| self.text(n).to_string());
-                (name.to_string(), path)
+                (func.child_by_field_name("name"), path)
             }
             "generic_function" => func
                 .child_by_field_name("function")
-                .map(|inner| self.callee_name(inner))
-                .unwrap_or_default(),
-            _ => (String::new(), None),
+                .map(|inner| self.callee_parts(inner))
+                .unwrap_or((None, None)),
+            _ => (None, None),
         }
     }
 
@@ -481,6 +478,7 @@ impl<'a> Walker<'a> {
             receiver: None,
             start_line: node.start_position().row as i64 + 1,
             start_byte: node.start_byte() as i64,
+            name_start_byte: Some(m.start_byte() as i64),
             receiver_kind: "none".to_string(),
             ..Default::default()
         });

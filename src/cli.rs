@@ -72,6 +72,39 @@ pub struct SyncArgs {
     /// Restrict to a subset of languages (e.g. rust,js,py)
     #[arg(long, value_delimiter = ',')]
     pub language: Vec<String>,
+
+    #[command(flatten)]
+    pub precise: PreciseArgs,
+}
+
+/// Opt-in compiler-grade resolution, shared by `sync`, `graph` and `serve`.
+#[derive(Parser, Debug, Clone)]
+pub struct PreciseArgs {
+    /// Resolve references through the real language server for each language
+    /// (rust-analyzer, pyright, jdtls, kotlin-language-server) instead of
+    /// guessing from the AST. Needs those servers installed; any that are
+    /// missing are reported and their language keeps its heuristic edges.
+    #[arg(long)]
+    pub precise: bool,
+
+    /// Re-ask the language servers about every file, not just the ones with no
+    /// answer yet. Use after edits whose effects reach other files.
+    #[arg(long, requires = "precise")]
+    pub precise_full: bool,
+
+    /// Seconds to wait for a single language-server answer
+    #[arg(long, default_value_t = 15, value_name = "SECONDS", requires = "precise")]
+    pub precise_timeout: u64,
+}
+
+impl Default for PreciseArgs {
+    fn default() -> Self {
+        Self {
+            precise: false,
+            precise_full: false,
+            precise_timeout: 15,
+        }
+    }
 }
 
 /// Filters shared by `graph` and `serve`: they select which nodes and edges the
@@ -119,6 +152,9 @@ pub struct GraphQuery {
     /// Do not auto-sync changed files before rendering
     #[arg(long)]
     pub no_sync: bool,
+
+    #[command(flatten)]
+    pub precise: PreciseArgs,
 }
 
 #[derive(Parser, Debug)]

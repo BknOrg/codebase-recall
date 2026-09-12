@@ -1,0 +1,17 @@
+{
+  "_comment": "Tuples are [from_path, from_name, to_path, to_name]. `must_*` hold in both modes; `precise_*` are what only a real type checker can get right. `run` calls Store.get, but the AST cannot type `s = make_store()`, so scoring picks the `get` this file has an import for.",
+  "must_have": [
+    ["main.py", "run", "factory.py", "make_store"],
+    ["main.py", "clear", "cache.py", "get"],
+    ["factory.py", "make_store", "store.py", "Store"]
+  ],
+  "must_not_have": [
+    ["main.py", "clear", "store.py", "get"]
+  ],
+  "precise_must_have": [
+    ["main.py", "run", "store.py", "get"]
+  ],
+  "precise_must_not_have": [
+    ["main.py", "run", "cache.py", "get"]
+  ]
+}
