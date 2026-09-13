@@ -454,16 +454,15 @@ impl<'a> Walker<'a> {
             return;
         };
         // CommonJS require("x")
-        if func.kind() == "identifier" && self.text(func) == "require" {
-            if let Some(args) = node.child_by_field_name("arguments") {
-                if let Some(arg) = args.named_child(0) {
-                    if arg.kind() == "string" {
-                        let spec = unquote(self.text(arg));
-                        self.push_import(&spec, None, None, self.line(node));
-                        return;
-                    }
-                }
-            }
+        if func.kind() == "identifier"
+            && self.text(func) == "require"
+            && let Some(args) = node.child_by_field_name("arguments")
+            && let Some(arg) = args.named_child(0)
+            && arg.kind() == "string"
+        {
+            let spec = unquote(self.text(arg));
+            self.push_import(&spec, None, None, self.line(node));
+            return;
         }
         let (name, receiver, name_node) = self.callee_name(func);
         if !name.is_empty() {

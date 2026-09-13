@@ -117,7 +117,7 @@ fn resolve_rust_import(
         }
     }
 
-    let mut module: Vec<String> = base.drain(..).collect();
+    let mut module: Vec<String> = std::mem::take(&mut base);
     module.extend(rest.iter().map(|s| s.to_string()));
 
     // Try the full module path, then drop the trailing item name.

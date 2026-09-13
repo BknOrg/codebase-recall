@@ -122,7 +122,7 @@ pub fn resolve_locals(parsed: &mut ParsedFile) {
         for (i, sc) in parsed.scopes.iter().enumerate() {
             if at >= sc.start_byte && at < sc.end_byte {
                 let w = sc.end_byte - sc.start_byte;
-                if best.map_or(true, |(bw, _)| w < bw) {
+                if best.is_none_or(|(bw, _)| w < bw) {
                     best = Some((w, i));
                 }
             }

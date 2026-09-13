@@ -57,7 +57,7 @@ pub(super) fn apply_focus(nodes: &mut Vec<Node>, edges: &mut Vec<Edge>, focus: &
         .unwrap_or(&focus_normalized);
     let seeds: HashSet<&str> = nodes
         .iter()
-        .filter(|n| n.label == focus_clean || n.id.contains(&focus_clean))
+        .filter(|n| n.label == focus_clean || n.id.contains(focus_clean))
         .map(|n| n.id.as_str())
         .collect();
     if seeds.is_empty() {

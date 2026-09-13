@@ -46,9 +46,10 @@ impl<'a> Walker<'a> {
                 // `mod foo;` (no inline body) pulls in a sibling file.
                 let has_body = node.child_by_field_name("body").is_some()
                     || child_of_kind(node, "declaration_list").is_some();
-                if !has_body {
-                    if let Some(n) = node.child_by_field_name("name") {
-                        let name = self.text(n).to_string();
+                if !has_body
+                    && let Some(n) = node.child_by_field_name("name")
+                {
+                    let name = self.text(n).to_string();
                         let import_index = self.out.imports.len();
                         // `mod foo;` makes `foo` usable as a module path prefix.
                         self.sc
@@ -59,8 +60,7 @@ impl<'a> Walker<'a> {
                             alias: None,
                             is_relative: true,
                             start_line: self.line(node),
-                        });
-                    }
+                    });
                 }
                 self.enter_symbol(node, "module");
             }

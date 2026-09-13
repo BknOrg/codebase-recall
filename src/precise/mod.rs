@@ -373,15 +373,10 @@ impl Resolver<'_> {
             match self.file_id_for_uri(uri) {
                 Some(file_id) => {
                     let symbols = self.symbols_by_file.get(&file_id);
-                    match symbols.and_then(|s| symbol_at_line(s, *line)) {
-                        Some(symbol) => {
-                            if !hits.contains(&symbol.id) {
-                                hits.push(symbol.id);
-                            }
-                        }
-                        // In the project, but at a spot we keep no node for
-                        // (a macro body, a type alias, a bare constant).
-                        None => {}
+                    if let Some(symbol) = symbols.and_then(|s| symbol_at_line(s, *line))
+                        && !hits.contains(&symbol.id)
+                    {
+                        hits.push(symbol.id);
                     }
                 }
                 None => saw_outside = true,

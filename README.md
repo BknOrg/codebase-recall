@@ -81,10 +81,14 @@ The compiled binary is available as `code-rcl`.
 | Command | Description |
 | :--- | :--- |
 | `code-rcl dump` | Bundle the codebase (or a symbol's neighborhood) into a single Markdown file for LLM context. |
+| `code-rcl digest` | Generate an architecture outline and public API signature digest without function bodies. |
+| `code-rcl impact` | Analyze blast radius and downstream/upstream callers affected by modifying a symbol. |
 | `code-rcl init` | Initialize `.code-rcl/` (SQLite cache DB + `config.toml`) and ensure it is in `.gitignore`. |
 | `code-rcl sync` | Incrementally parse changed source files into the graph cache. |
 | `code-rcl graph` | Auto-sync, then export the relation graph to file(s) (`html`, `json`, `dot`). |
 | `code-rcl serve` | Auto-sync, then host an interactive relation graph in the browser; exits when the tab closes. |
+
+> **Interactive Help:** You can view parameter options and real usage examples for any command with `code-rcl <cmd> help` (e.g. `code-rcl dump help`, `code-rcl digest help`).
 
 ---
 
@@ -99,10 +103,10 @@ Scan the repository and produce a comprehensive `codebase-context.md`:
 code-rcl dump
 
 # Scan specific project directory and specify output filename
-code-rcl dump ./path/to/project -f context
+code-rcl dump ./path/to/project -o context.md
 
 # Increase per-file size limit to 100 KB
-code-rcl dump . --max-size-kb 100 -f full-context
+code-rcl dump . --max-size-kb 100 -o full-context.md
 ```
 
 ### 2. Relation-Aware / Targeted Dump
@@ -114,7 +118,7 @@ When working with large codebases, dumping everything can exceed token context w
 code-rcl dump -r build_graph
 
 # Dump files connected to a specific module/file with a custom depth of 3
-code-rcl dump -r src/commands/dump.rs --depth 3 -f dump-feature-context
+code-rcl dump -r src/commands/dump.rs --depth 3 -o dump-feature-context.md
 
 # Skip auto-sync if cache is already fresh
 code-rcl dump -r App --no-sync
@@ -125,7 +129,7 @@ code-rcl dump -r App --no-sync
 | Flag / Option | Short | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `[PATH]` | - | `.` | Target project directory path to scan |
-| `-f, --file <PATH>` | `-f` | `codebase-context.md` | Path or name of the output Markdown file |
+| `-o, --output <PATH>` | `-o` | `codebase-context.md` | Path or name of output Markdown file (auto-appends `.md` if omitted) |
 | `--max-size-kb <N>` | - | `50` | Maximum file size (in KB) for content extraction |
 | `-r, --relation <NAME>` | `-r` | `None` | Restrict dump to the target symbol/file and its connected dependency graph |
 | `--depth <N>` | - | `2` | BFS traversal depth when using `--relation` |
@@ -241,6 +245,82 @@ code-rcl serve --scope symbol --focus handle_request --depth 3
 - **Search & Isolate:** Real-time search bar with instant node filtering and single-click node isolation.
 - **Live Depth Controls:** Adjust BFS depth (`+` / `-`) directly from the browser navigation bar.
 - **Node Spotlighting:** Long-press any node to spotlight its immediate connections while dimming the rest of the graph.
+
+---
+
+## Usage — `digest` (Architecture Outline & Public API Digest)
+
+Generate a high-level architectural skeleton and public API index. `digest` strips function bodies (`{ ... }`), preserving types, interfaces, methods, and exported signatures to save 80–90% prompt tokens while giving LLMs full structural visibility. It also detects **Core Architecture Hubs** (the highest-degree connected symbols) to highlight the central pillars of the codebase.
+
+### Examples
+
+```bash
+# 1. Generate architecture digest for current project to stdout
+code-rcl digest
+
+# 2. Save digest to a markdown file (-o / --output, alias: -f)
+code-rcl digest -o architecture.md
+
+# 3. Digest a specific sub-directory or sub-module
+code-rcl digest src/analysis
+
+# 4. Include private and internal symbols
+code-rcl digest --all
+
+# 5. Output structured JSON for automated tooling
+code-rcl digest --json
+```
+
+### `digest` Options
+
+| Flag / Option | Short | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `[PATH]` | - | `.` | Target project directory or sub-path to outline |
+| `-o, --output <PATH>` | `-o` | *stdout* | Output file path for the generated markdown digest |
+| `--all` | - | `false` | Include private/internal functions and types (default: public only) |
+| `--json` | - | `false` | Output result as structured JSON instead of Markdown |
+| `--no-sync` | - | `false` | Skip auto-syncing changed files before generating digest |
+
+---
+
+## Usage — `impact` (Blast Radius & Impact Analysis)
+
+Analyze the blast radius of modifying a function, class, or module. `impact` performs reverse dependency traversal (`calls` and `imports`) on the relation graph to show every symbol and file that will be affected by your change.
+
+### Examples
+
+```bash
+# 1. Inspect who calls or imports `decorate` (terminal ASCII tree)
+code-rcl impact decorate
+
+# 2. Increase search depth to 3 hops
+code-rcl impact decorate --depth 3
+
+# 3. Output as structured JSON for CI/CD or PR review
+code-rcl impact decorate --json
+```
+
+### Example Terminal Output
+
+```text
+Impact Analysis for: decorate [function]
+Direct callers: 1 | Total affected: 2 symbols across 2 files | Max depth: 2
+
+decorate (util.rs)
+└── greet [calls] - function (util.rs:2)
+    └── main [calls] - function (main.rs:4)
+```
+
+### `impact` Options
+
+| Flag / Option | Short | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `<TARGET>` | - | *required* | Target symbol name or file path to analyze |
+| `--project <PATH>` | - | `.` | Target project directory |
+| `--depth <N>` | - | `2` | Max reverse traversal depth (hop count) |
+| `--kinds <KINDS>` | - | `calls,imports` | Edge kinds to traverse in reverse, comma-separated |
+| `--json` | - | `false` | Output result as JSON instead of ASCII tree |
+| `--no-sync` | - | `false` | Skip auto-syncing changed files before analyzing |
 
 ---
 

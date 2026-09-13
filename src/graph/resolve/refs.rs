@@ -82,31 +82,31 @@ pub(super) fn resolve_ref(
     let rk = rf.receiver_kind.as_deref().unwrap_or("none");
 
     // ---- L2: precise import binding --------------------------------------
-    if matches!(rk, "none" | "path") {
-        if let Some(Target::Symbol(id)) = ctx.binding.get(&(rf.file_id, rf.name.clone())) {
-            return Some((*id, 0.90));
-        }
+    if matches!(rk, "none" | "path")
+        && let Some(Target::Symbol(id)) = ctx.binding.get(&(rf.file_id, rf.name.clone()))
+    {
+        return Some((*id, 0.90));
     }
-    if matches!(rk, "path" | "value" | "self") {
-        if let Some(recv) = rf.receiver.as_deref() {
-            // `foo.bar()` -> `foo`; `crate::a::mod::bar()` -> try `crate` and `mod`.
-            let first = recv.split(['.', ':']).next().unwrap_or(recv);
-            let last = recv.rsplit("::").next().unwrap_or(recv);
-            for key in [first, last] {
-                if let Some(Target::Module(fid)) = ctx.binding.get(&(rf.file_id, key.to_string())) {
-                    if let Some(id) = exported_in(ctx, *fid, &rf.name) {
-                        return Some((id, 0.90));
-                    }
-                }
+    if matches!(rk, "path" | "value" | "self")
+        && let Some(recv) = rf.receiver.as_deref()
+    {
+        // `foo.bar()` -> `foo`; `crate::a::mod::bar()` -> try `crate` and `mod`.
+        let first = recv.split(['.', ':']).next().unwrap_or(recv);
+        let last = recv.rsplit("::").next().unwrap_or(recv);
+        for key in [first, last] {
+            if let Some(Target::Module(fid)) = ctx.binding.get(&(rf.file_id, key.to_string()))
+                && let Some(id) = exported_in(ctx, *fid, &rf.name)
+            {
+                return Some((id, 0.90));
             }
         }
     }
 
     // ---- L3: receiver-type resolution ---------------------------------------
-    if let Some((ty, conf)) = infer_receiver_type(rf, ctx) {
-        if let Some(&id) = ctx.type_methods.get(&ty).and_then(|m| m.get(&rf.name)) {
-            return Some((id, conf));
-        }
+    if let Some((ty, conf)) = infer_receiver_type(rf, ctx)
+        && let Some(&id) = ctx.type_methods.get(&ty).and_then(|m| m.get(&rf.name))
+    {
+        return Some((id, conf));
     }
 
     // ---- L4: scored disambiguation ----------------------------------------
@@ -155,7 +155,7 @@ pub(super) fn resolve_ref(
     };
 
     let mut scored: Vec<(i32, &SymbolRow)> = cands.iter().map(|c| (score(c), *c)).collect();
-    scored.sort_by(|a, b| b.0.cmp(&a.0));
+    scored.sort_by_key(|b| std::cmp::Reverse(b.0));
     let best = scored[0];
     let margin = match scored.get(1) {
         Some(runner_up) => best.0 - runner_up.0,

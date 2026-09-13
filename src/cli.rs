@@ -25,30 +25,48 @@ pub enum Command {
     Graph(GraphArgs),
     /// Serve the relation graph in the browser; the server exits when you close the tab
     Serve(ServeArgs),
+    /// Analyze blast radius and downstream/upstream callers affected by modifying a symbol
+    Impact(ImpactArgs),
+    /// Generate an architecture outline and public API digest of the codebase
+    Digest(DigestArgs),
 }
 
 #[derive(Parser, Debug)]
+#[command(
+    about = "Dump the codebase into a single Markdown context file",
+    after_help = "Examples:\n  code-rcl dump\n  code-rcl dump path/to/project -o my-context.md\n  code-rcl dump -r handle_request --depth 2\n  code-rcl dump --max-size-kb 100"
+)]
 pub struct DumpArgs {
+    /// Target project directory or root path to dump
     #[arg(default_value = ".")]
     pub path: PathBuf,
 
-    #[arg(short = 'f', long = "file", default_value = "codebase-context")]
+    /// Output markdown file path stem or full filename
+    #[arg(short = 'o', long = "output", default_value = "codebase-context")]
     pub output: PathBuf,
 
+    /// Skip source files larger than this many KB
     #[arg(long, default_value_t = 50)]
     pub max_size_kb: u64,
 
+    /// Focus on a symbol or file and dump only its connected neighborhood
     #[arg(short = 'r', long = "relation")]
     pub relation: Option<String>,
 
+    /// Hop depth for relation neighborhood extraction
     #[arg(long, default_value_t = 2)]
     pub depth: u32,
 
+    /// Skip auto-syncing changed files before dumping
     #[arg(long)]
     pub no_sync: bool,
 }
 
 #[derive(Parser, Debug)]
+#[command(
+    about = "Create .code-rcl/ (graph cache DB + config) in the target project",
+    after_help = "Examples:\n  code-rcl init\n  code-rcl init --project path/to/project\n  code-rcl init --force"
+)]
 pub struct InitArgs {
     /// Project directory to initialize
     #[arg(long, default_value = ".")]
@@ -60,6 +78,10 @@ pub struct InitArgs {
 }
 
 #[derive(Parser, Debug)]
+#[command(
+    about = "Parse changed source files into the graph cache",
+    after_help = "Examples:\n  code-rcl sync\n  code-rcl sync --language rust,py\n  code-rcl sync --precise\n  code-rcl sync --precise --precise-full"
+)]
 pub struct SyncArgs {
     /// Project directory to sync
     #[arg(long, default_value = ".")]
@@ -77,7 +99,7 @@ pub struct SyncArgs {
     pub precise: PreciseArgs,
 }
 
-/// Opt-in compiler-grade resolution, shared by `sync`, `graph` and `serve`.
+/// Opt-in compiler-grade resolution, shared by `sync`, `graph`, `serve`, and `impact`.
 #[derive(Parser, Debug, Clone)]
 pub struct PreciseArgs {
     /// Resolve references through the real language server for each language
@@ -163,6 +185,10 @@ pub struct GraphQuery {
 }
 
 #[derive(Parser, Debug)]
+#[command(
+    about = "Render a relation graph to a file (html, json, dot)",
+    after_help = "Examples:\n  code-rcl graph\n  code-rcl graph --format json -o graph.json\n  code-rcl graph --focus calculate_total --depth 2\n  code-rcl graph --kinds calls --path \"src/**/*.rs\""
+)]
 pub struct GraphArgs {
     #[command(flatten)]
     pub query: GraphQuery,
@@ -177,6 +203,10 @@ pub struct GraphArgs {
 }
 
 #[derive(Parser, Debug)]
+#[command(
+    about = "Serve the relation graph in the browser; the server exits when you close the tab",
+    after_help = "Examples:\n  code-rcl serve\n  code-rcl serve --port 8080 --no-open\n  code-rcl serve --focus execute_query"
+)]
 pub struct ServeArgs {
     #[command(flatten)]
     pub query: GraphQuery,
@@ -188,4 +218,64 @@ pub struct ServeArgs {
     /// Do not open a browser window automatically
     #[arg(long)]
     pub no_open: bool,
+}
+
+#[derive(Parser, Debug)]
+#[command(
+    about = "Analyze blast radius and downstream/upstream callers affected by modifying a symbol",
+    after_help = "Examples:\n  code-rcl impact parse_config\n  code-rcl impact execute_query --depth 10\n  code-rcl impact validate_input --kinds calls\n  code-rcl impact delete_user --json"
+)]
+pub struct ImpactArgs {
+    /// Target symbol name or identifier to analyze blast radius for
+    pub symbol: String,
+
+    /// Project directory to inspect
+    #[arg(long, default_value = ".")]
+    pub project: PathBuf,
+
+    /// Maximum upstream caller traversal depth
+    #[arg(long, default_value_t = 5)]
+    pub depth: u32,
+
+    /// Edge kinds to traverse in reverse, comma-separated (e.g. calls,imports)
+    #[arg(long, value_delimiter = ',', default_value = "calls,imports")]
+    pub kinds: Vec<String>,
+
+    /// Output result as JSON instead of ASCII tree
+    #[arg(long)]
+    pub json: bool,
+
+    /// Skip auto-syncing changed files before analyzing
+    #[arg(long)]
+    pub no_sync: bool,
+
+    #[command(flatten)]
+    pub precise: PreciseArgs,
+}
+
+#[derive(Parser, Debug)]
+#[command(
+    about = "Generate an architecture outline and public API digest of the codebase",
+    after_help = "Examples:\n  code-rcl digest\n  code-rcl digest src/analysis\n  code-rcl digest -o architecture.md\n  code-rcl digest --all\n  code-rcl digest --json"
+)]
+pub struct DigestArgs {
+    /// Target project directory or sub-path to outline [default: .]
+    #[arg(default_value = ".")]
+    pub path: PathBuf,
+
+    /// Output file path for the generated markdown digest
+    #[arg(short = 'o', long = "output")]
+    pub output: Option<PathBuf>,
+
+    /// Include private/internal functions and types (default: public only)
+    #[arg(long)]
+    pub all: bool,
+
+    /// Output result as structured JSON instead of Markdown
+    #[arg(long)]
+    pub json: bool,
+
+    /// Skip auto-syncing changed files before generating digest
+    #[arg(long)]
+    pub no_sync: bool,
 }

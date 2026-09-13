@@ -295,18 +295,23 @@ fn run_source(project: &Path, url: &str) -> (u16, String) {
     };
     let rel_clean = rel.replace('\\', "/");
     let rel_path = Path::new(&rel_clean);
-    if rel_path.is_absolute() {
-        return (400, r#"{"ok":false,"error":"absolute paths not allowed"}"#.into());
-    }
-    let target = project.join(rel_path);
-    let (canon_proj, canon_target) = match (project.canonicalize(), target.canonicalize()) {
-        (Ok(cp), Ok(ct)) => (cp, ct),
-        _ => return (404, r#"{"ok":false,"error":"file not found"}"#.into()),
-    };
-    if !canon_target.starts_with(&canon_proj) {
+    if rel_path.is_absolute()
+        || rel_clean.starts_with('/')
+        || rel_clean.split('/').any(|segment| segment == "..")
+        || rel_clean.contains(':')
+    {
         return (403, r#"{"ok":false,"error":"access denied"}"#.into());
     }
-    match std::fs::read_to_string(&canon_target) {
+    let target = project.join(rel_path);
+    if let (Ok(cp), Ok(ct)) = (project.canonicalize(), target.canonicalize()) {
+        if !ct.starts_with(&cp) {
+            return (403, r#"{"ok":false,"error":"access denied"}"#.into());
+        }
+    }
+    if !target.exists() || !target.is_file() {
+        return (404, r#"{"ok":false,"error":"file not found"}"#.into());
+    }
+    match std::fs::read_to_string(&target) {
         Ok(content) => (
             200,
             format!(

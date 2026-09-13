@@ -168,12 +168,10 @@ fn find_tag_case_insensitive(source: &str, mut start: usize, tag: &str) -> Optio
 /// Find the `>` that closes an opening tag, skipping quoted strings in attributes.
 fn find_closing_gt(source: &str, start: usize) -> Option<usize> {
     let bytes = source.as_bytes();
-    let len = bytes.len();
     let mut in_single_quote = false;
     let mut in_double_quote = false;
 
-    for i in start..len {
-        let b = bytes[i];
+    for (i, &b) in bytes.iter().enumerate().skip(start) {
         if b == b'"' && !in_single_quote {
             in_double_quote = !in_double_quote;
         } else if b == b'\'' && !in_double_quote {
@@ -239,23 +237,26 @@ fn scan_template_components(source: &str, script_blocks: &[ScriptBlock], refs: &
         }
 
         // Skip HTML comments
-        if i + 4 <= len && &bytes[i..i + 4] == b"<!--" {
-            if let Some(end) = source[i + 4..].find("-->") {
-                let skipped = &source[i..i + 4 + end + 3];
-                current_line += skipped.chars().filter(|&c| c == '\n').count() as i64;
-                i += 4 + end + 3;
-                continue;
-            }
+        if i + 4 <= len
+            && &bytes[i..i + 4] == b"<!--"
+            && let Some(end) = source[i + 4..].find("-->")
+        {
+            let skipped = &source[i..i + 4 + end + 3];
+            current_line += skipped.chars().filter(|&c| c == '\n').count() as i64;
+            i += 4 + end + 3;
+            continue;
         }
 
         // Skip `<style>...</style>`
-        if i + 6 <= len && bytes[i] == b'<' && bytes[i + 1..i + 6].eq_ignore_ascii_case(b"style") {
-            if let Some(end) = source[i..].find("</style>") {
-                let skipped = &source[i..i + end + 8];
-                current_line += skipped.chars().filter(|&c| c == '\n').count() as i64;
-                i += end + 8;
-                continue;
-            }
+        if i + 6 <= len
+            && bytes[i] == b'<'
+            && bytes[i + 1..i + 6].eq_ignore_ascii_case(b"style")
+            && let Some(end) = source[i..].find("</style>")
+        {
+            let skipped = &source[i..i + end + 8];
+            current_line += skipped.chars().filter(|&c| c == '\n').count() as i64;
+            i += end + 8;
+            continue;
         }
 
         // Check for `<` followed immediately by an uppercase ASCII character (PascalCase component)

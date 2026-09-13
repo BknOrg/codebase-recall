@@ -65,7 +65,7 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
         scopes.iter().map(|s| (s.id, s.owner_symbol_id)).collect();
 
     // Does this file pass the --path glob?
-    let keep_file = |path: &str| opts.path_glob.as_ref().map_or(true, |g| g.is_match(path));
+    let keep_file = |path: &str| opts.path_glob.as_ref().is_none_or(|g| g.is_match(path));
 
     // ---- nodes -------------------------------------------------------------
     let mut nodes: Vec<Node> = Vec::new();
@@ -147,10 +147,10 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
         let resolved = resolve_import(&importer.language, &importer.path, im, &path_set);
 
         if let Some(target_path) = resolved.as_deref() {
-            if let Some(tf) = frow_by_path.get(target_path) {
-                if tf.id != im.file_id {
-                    imports_files.entry(im.file_id).or_default().insert(tf.id);
-                }
+            if let Some(tf) = frow_by_path.get(target_path)
+                && tf.id != im.file_id
+            {
+                imports_files.entry(im.file_id).or_default().insert(tf.id);
             }
             if target_path != importer.path
                 && opts.kinds.contains("imports")
@@ -245,14 +245,14 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
     // type simple name -> { method name -> symbol id }
     let mut type_methods: HashMap<String, HashMap<String, i64>> = HashMap::new();
     for s in &symbols {
-        if s.kind == "method" {
-            if let Some(t) = &s.type_name {
-                type_methods
-                    .entry(t.clone())
-                    .or_default()
-                    .entry(s.name.clone())
-                    .or_insert(s.id);
-            }
+        if s.kind == "method"
+            && let Some(t) = &s.type_name
+        {
+            type_methods
+                .entry(t.clone())
+                .or_default()
+                .entry(s.name.clone())
+                .or_insert(s.id);
         }
     }
 
@@ -375,9 +375,18 @@ pub(super) fn parent_dir(path: &str) -> Option<String> {
     path.rfind('/').map(|i| path[..i].to_string())
 }
 
+type EdgeKey = (String, String, String);
+
+#[derive(Default)]
+struct EdgeMeta {
+    confidence: f32,
+    external: Option<String>,
+    line: Option<i64>,
+}
+
 #[derive(Default)]
 struct EdgeSet {
-    map: HashMap<(String, String, String), (f32, Option<String>, Option<i64>)>,
+    map: HashMap<EdgeKey, EdgeMeta>,
 }
 
 impl EdgeSet {
@@ -391,28 +400,28 @@ impl EdgeSet {
         line: Option<i64>,
     ) {
         let key = (source, target, kind.to_string());
-        let entry = self.map.entry(key).or_insert((0.0, None, None));
-        if conf >= entry.0 {
-            entry.0 = conf;
+        let entry = self.map.entry(key).or_default();
+        if conf >= entry.confidence {
+            entry.confidence = conf;
         }
-        if entry.1.is_none() {
-            entry.1 = external;
+        if entry.external.is_none() {
+            entry.external = external;
         }
-        if entry.2.is_none() {
-            entry.2 = line;
+        if entry.line.is_none() {
+            entry.line = line;
         }
     }
 
     fn into_vec(self) -> Vec<Edge> {
         self.map
             .into_iter()
-            .map(|((source, target, kind), (confidence, external, line))| Edge {
+            .map(|((source, target, kind), meta)| Edge {
                 source,
                 target,
                 kind,
-                confidence,
-                external,
-                line,
+                confidence: meta.confidence,
+                external: meta.external,
+                line: meta.line,
             })
             .collect()
     }

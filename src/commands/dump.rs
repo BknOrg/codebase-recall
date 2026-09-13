@@ -7,7 +7,7 @@ use crate::cli::{DumpArgs, GraphQuery};
 use crate::commands::graph::build_graph;
 use crate::dump::{formatter, walker};
 
-fn ensure_md_extension(path: &PathBuf) -> PathBuf {
+fn ensure_md_extension(path: &Path) -> PathBuf {
     let mut normalized = path.to_path_buf();
     let file_name = path
         .file_name()
@@ -30,7 +30,7 @@ pub fn run(args: DumpArgs) -> Result<()> {
             args.depth,
             args.max_size_kb,
             args.no_sync,
-            &args.output,
+            &output_file,
         )?;
         println!(
             "Focused dump: target '{}' (depth {}) -> {} connected files",

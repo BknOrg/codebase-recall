@@ -358,10 +358,10 @@ impl<'a> Walker<'a> {
         bind_kind: Option<&str>,
     ) {
         let import_index = self.out.imports.len();
-        if let Some(kind) = bind_kind {
-            if let Some(local) = alias.as_deref().or(imported_name) {
-                self.sc.bind(local, kind, None, Some(import_index), None);
-            }
+        if let Some(kind) = bind_kind
+            && let Some(local) = alias.as_deref().or(imported_name)
+        {
+            self.sc.bind(local, kind, None, Some(import_index), None);
         }
         self.out.imports.push(NewImport {
             raw_specifier: specifier,

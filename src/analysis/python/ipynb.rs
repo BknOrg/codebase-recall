@@ -20,11 +20,16 @@ enum CellSource {
     Single(String),
 }
 
-impl CellSource {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for CellSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CellSource::Lines(lines) => lines.join(""),
-            CellSource::Single(s) => s.clone(),
+            CellSource::Lines(lines) => {
+                for l in lines {
+                    write!(f, "{l}")?;
+                }
+                Ok(())
+            }
+            CellSource::Single(s) => write!(f, "{s}"),
         }
     }
 }

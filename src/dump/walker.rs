@@ -55,12 +55,11 @@ pub struct FileEntry {
 }
 
 fn is_ignored_dir(entry: &DirEntry) -> bool {
-    if entry.file_type().is_some_and(|ft| ft.is_dir()) {
-        if let Some(name) = entry.file_name().to_str() {
-            if IGNORED_DIRECTORIES.contains(&name) {
-                return false;
-            }
-        }
+    if entry.file_type().is_some_and(|ft| ft.is_dir())
+        && let Some(name) = entry.file_name().to_str()
+        && IGNORED_DIRECTORIES.contains(&name)
+    {
+        return false;
     }
     true
 }
@@ -80,10 +79,10 @@ fn should_skip_content(path: &Path) -> bool {
         return true;
     }
 
-    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-        if IGNORED_EXTENSIONS_FOR_CONTENT.contains(&ext.to_lowercase().as_str()) {
-            return true;
-        }
+    if let Some(ext) = path.extension().and_then(|e| e.to_str())
+        && IGNORED_EXTENSIONS_FOR_CONTENT.contains(&ext.to_lowercase().as_str())
+    {
+        return true;
     }
 
     false
@@ -127,10 +126,10 @@ pub fn collect_related_files(
 
         tree_paths.push(rel.clone());
 
-        if let Ok(metadata) = abs.metadata() {
-            if metadata.len() > max_byte {
-                continue;
-            }
+        if let Ok(metadata) = abs.metadata()
+            && metadata.len() > max_byte
+        {
+            continue;
         }
         if let Ok(content) = std::fs::read_to_string(&abs) {
             files.push(FileEntry {
@@ -183,9 +182,10 @@ pub fn collect_files(
                     metadata.len() <= max_bytes
                 };
 
-                if allow_read {
-                    if let Ok(raw_content) = std::fs::read_to_string(path) {
-                        let content = if is_ipynb {
+                if allow_read
+                    && let Ok(raw_content) = std::fs::read_to_string(path)
+                {
+                    let content = if is_ipynb {
                             crate::analysis::python::ipynb::cleaning_ipynb(&raw_content)
                                 .unwrap_or(raw_content)
                         } else {
@@ -201,7 +201,6 @@ pub fn collect_files(
                 }
             }
         }
-    }
 
     Ok((tree_paths, file_entries))
 }

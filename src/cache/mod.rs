@@ -366,10 +366,10 @@ impl CacheDb {
         {
             let mut upd = tx.prepare("UPDATE symbols SET parent_symbol_id = ?1 WHERE id = ?2")?;
             for (i, s) in symbols.iter().enumerate() {
-                if let Some(pidx) = s.parent_index {
-                    if let Some(&pid) = ids.get(pidx) {
-                        upd.execute(params![pid, ids[i]])?;
-                    }
+                if let Some(pidx) = s.parent_index
+                    && let Some(&pid) = ids.get(pidx)
+                {
+                    upd.execute(params![pid, ids[i]])?;
                 }
             }
         }
@@ -390,10 +390,10 @@ impl CacheDb {
         {
             let mut upd = tx.prepare("UPDATE scopes SET parent_scope_id = ?1 WHERE id = ?2")?;
             for (i, sc) in scopes.iter().enumerate() {
-                if let Some(pidx) = sc.parent_index {
-                    if let Some(&pid) = scope_ids.get(pidx) {
-                        upd.execute(params![pid, scope_ids[i]])?;
-                    }
+                if let Some(pidx) = sc.parent_index
+                    && let Some(&pid) = scope_ids.get(pidx)
+                {
+                    upd.execute(params![pid, scope_ids[i]])?;
                 }
             }
         }
@@ -510,7 +510,7 @@ fn innermost_symbol(symbols: &[NewSymbol], ids: &[i64], byte: i64) -> Option<i64
     for (i, s) in symbols.iter().enumerate() {
         if byte >= s.start_byte && byte < s.end_byte {
             let width = s.end_byte - s.start_byte;
-            if best.map_or(true, |(w, _)| width < w) {
+            if best.is_none_or(|(w, _)| width < w) {
                 best = Some((width, ids[i]));
             }
         }
