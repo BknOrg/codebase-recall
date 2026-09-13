@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 
+use crate::assets;
 use crate::cache::CacheDb;
 use crate::cli::{GraphArgs, GraphQuery, SyncArgs};
 use crate::commands::sync;
@@ -83,12 +84,42 @@ pub fn run(args: GraphArgs) -> Result<()> {
 
     let targets = output_targets(&project, &args.output, &formats);
     for (format, path) in targets {
-        let body = render::render(&graph, format)?;
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).ok();
         }
-        fs::write(&path, body).with_context(|| format!("writing {}", path.display()))?;
-        println!("wrote {} ({} format)", path.display(), format.extension());
+
+        if format == Format::Html {
+            let data = serde_json::to_string(&graph).unwrap_or_else(|_| "{}".to_string());
+            let stat = format!(
+                "{} nodes \u{00b7} {} edges",
+                graph.nodes.len(),
+                graph.edges.len()
+            );
+            let bundle = assets::graph_separated_bundle(&data, &stat);
+
+            let dir = path.parent().unwrap_or(std::path::Path::new("."));
+            fs::create_dir_all(dir.join("js"))
+                .with_context(|| format!("creating js directory in {}", dir.display()))?;
+            fs::write(&path, &bundle.html)
+                .with_context(|| format!("writing {}", path.display()))?;
+            fs::write(dir.join("style.css"), bundle.css)
+                .with_context(|| format!("writing {}/style.css", dir.display()))?;
+            fs::write(dir.join("data.js"), &bundle.data_js)
+                .with_context(|| format!("writing {}/data.js", dir.display()))?;
+            fs::write(dir.join("js").join("d3.min.js"), bundle.d3_js)
+                .with_context(|| format!("writing {}/js/d3.min.js", dir.display()))?;
+            fs::write(dir.join("js").join("graph-view.js"), &bundle.graph_view_js)
+                .with_context(|| format!("writing {}/js/graph-view.js", dir.display()))?;
+
+            println!(
+                "wrote {} and separated assets (style.css, data.js, js/d3.min.js, js/graph-view.js)",
+                path.display()
+            );
+        } else {
+            let body = render::render(&graph, format)?;
+            fs::write(&path, body).with_context(|| format!("writing {}", path.display()))?;
+            println!("wrote {} ({} format)", path.display(), format.extension());
+        }
     }
 
     println!(

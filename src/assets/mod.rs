@@ -40,13 +40,15 @@ pub static GRAPH_VIEW_JS: LazyLock<String> = LazyLock::new(|| {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Delivery {
+    #[allow(dead_code)]
     Inline,
     Server,
+    Separated,
 }
 
 const BODY: &str = r#"<div id="app">
   <header>
-    <h1>code-rcl graph</h1>
+    <h1>codebase recall graph</h1>
     <span class="stat">__STAT__</span>
     <label><input type="checkbox" data-kind="imports" checked> imports</label>
     <label><input type="checkbox" data-kind="calls" checked> calls</label>
@@ -82,15 +84,26 @@ pub fn graph_page(data_json: &str, stat: &str, delivery: Delivery) -> String {
         Delivery::Inline => (
             format!("<style>{GRAPH_CSS}</style>"),
             format!(
-                "<script>{D3_JS}</script>\n<script>{}</script>",
+                "<script id=\"graph-data\" type=\"application/json\">{safe}</script>\n\
+                 <script>{D3_JS}</script>\n\
+                 <script>{}</script>",
                 &*GRAPH_VIEW_JS
             ),
         ),
         Delivery::Server => (
             "<link rel=\"stylesheet\" href=\"/assets/graph.css\">".to_string(),
-            "<script src=\"/assets/d3.min.js\"></script>\n\
-             <script src=\"/assets/graph-view.js\"></script>\n\
-             <script src=\"/assets/live.js\"></script>"
+            format!(
+                "<script id=\"graph-data\" type=\"application/json\">{safe}</script>\n\
+                 <script src=\"/assets/d3.min.js\"></script>\n\
+                 <script src=\"/assets/graph-view.js\"></script>\n\
+                 <script src=\"/assets/live.js\"></script>"
+            ),
+        ),
+        Delivery::Separated => (
+            "<link rel=\"stylesheet\" href=\"./style.css\">".to_string(),
+            "<script src=\"./data.js\"></script>\n\
+             <script src=\"./js/d3.min.js\"></script>\n\
+             <script src=\"./js/graph-view.js\"></script>"
                 .to_string(),
         ),
     };
@@ -101,14 +114,34 @@ pub fn graph_page(data_json: &str, stat: &str, delivery: Delivery) -> String {
 <head>\n\
 <meta charset=\"utf-8\">\n\
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
-<title>code-rcl graph</title>\n\
+<title>codebase recall graph</title>\n\
 {head}\n\
 </head>\n\
 <body>\n\
 {body}\n\
-<script id=\"graph-data\" type=\"application/json\">{safe}</script>\n\
 {tail}\n\
 </body>\n\
 </html>\n"
     )
+}
+
+/// Bundle of separated assets for offline directory export.
+pub struct HtmlBundle {
+    pub html: String,
+    pub css: &'static str,
+    pub data_js: String,
+    pub d3_js: &'static str,
+    pub graph_view_js: String,
+}
+
+pub fn graph_separated_bundle(data_json: &str, stat: &str) -> HtmlBundle {
+    let html = graph_page(data_json, stat, Delivery::Separated);
+    let data_js = format!("window.__GRAPH_DATA__ = {data_json};\n");
+    HtmlBundle {
+        html,
+        css: GRAPH_CSS,
+        data_js,
+        d3_js: D3_JS,
+        graph_view_js: GRAPH_VIEW_JS.clone(),
+    }
 }

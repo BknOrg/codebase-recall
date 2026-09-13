@@ -259,73 +259,92 @@ code-rcl serve --scope symbol --focus handle_request --depth 3
 | **Vue** | `.vue` | SFC Extractor + TS/JS | `<script>` & `<script setup>` symbols, imports, components |
 | **Svelte** | `.svelte` | SFC Extractor + TS/JS | `<script>` symbols, imports, reactive calls |
 
-### Edge Resolution & Confidence Scoring
+## Resolution Semantics, Accuracy & Limitations
 
-Relationships between symbols and files are resolved via multi-tier heuristics:
+`code-rcl` implements a tiered reference resolver. By default, it runs a fast AST-based heuristic engine that requires no compilation or external toolchain. For exact resolution, `--precise` integrates Language Server Protocol (LSP) backends to compute compiler-grade definitions.
 
-1. **Import Edges (`confidence = 1.0`):** Language-specific path and module resolution.
-2. **Local References (`confidence = 0.95`):** Definitions and references within the same lexical scope or file.
-3. **Imported Calls (`confidence = 0.8 - 0.9`):** Calling an identifier explicitly imported from another module.
-4. **Project-Wide Unique Match (`confidence = 0.6 - 0.7`):** Unambiguous reference matching a unique exported symbol across the workspace.
-5. **Receiver / Method Match (`confidence = 0.4 - 0.5`):** Associated methods matched by signature and receiver heuristics.
+### Resolution Pipeline (L0 – L4)
 
-Adjust `--min-confidence` (default: `0.4`) to fine-tune graph density.
+References are resolved through a 5-tier pipeline ordered by confidence:
+
+1. **L0 — Compiler Backend (`--precise`):** Queries language servers (`rust-analyzer`, `pyright`, `typescript-language-server`, `jdtls`, etc.) via JSON-RPC (`confidence = 1.0`). References resolving to external packages or standard libraries produce no edge, preventing false cross-file links.
+2. **L1 — Lexical Scope:** Resolves same-file definitions during the AST walk (`confidence = 0.95`). Identifiers bound to local variables, parameters, or closures are tagged `local_only = true` and quarantined from cross-file matching.
+3. **L2 — Explicit Imports & Namespaces:** Resolves qualified paths (`module::func()`) and explicit symbol imports (`use crate::worker::Retry`) (`confidence = 0.90`).
+4. **L3 — Receiver Type Deduction:** Resolves calls on `self`, `this`, `Type::method`, and struct field access chains (`self.worker.run()`) against the project's indexed type definitions (`confidence = 0.80 - 0.85`).
+5. **L4 — Scored Disambiguation:** Fallback when the receiver type is unannotated or absent from local definitions. Candidates sharing the callee name are scored by import reachability (+3), export visibility (+2), parameter arity match (+1 to +2), and directory proximity (+1). To prevent false positives, an edge is emitted only if the score margin between the top candidate and runner-up is at least 2 (`margin >= 2`). Exact ties emit no edge.
+
+```mermaid
+graph TD
+    Ref[Call Site Reference] --> L0{L0: Language Server?}
+    L0 -->|Hit| Res0[Target Symbol (1.00)]
+    L0 -->|External / Nonode| Drop[Drop Edge]
+    L0 -->|Disabled / Unresolved| L1{L1: Lexical Scope?}
+    
+    L1 -->|local_only| LocalDrop[Local Binding (No Edge)]
+    L1 -->|Same-File Symbol| Res1[Local Symbol (0.95)]
+    L1 -->|Unresolved| L2{L2: Explicit Import?}
+    
+    L2 -->|Named Import / Module Prefix| Res2[Import Target (0.90)]
+    L2 -->|Unresolved| L3{L3: Receiver Type?}
+    
+    L3 -->|Field / Param Type Match| Res3[Type Method (0.80 - 0.85)]
+    L3 -->|Unresolved| L4{L4: Scored Disambiguation}
+    
+    L4 -->|Margin >= 2| Res4[Scored Winner (0.40 - 0.70)]
+    L4 -->|Margin < 2| NoEdge[Ambiguous: No Edge]
+```
+
+### Empirical Verification & Accuracy Benchmarks
+
+Resolver behavior is verified by integration test suites in `tests/resolve_accuracy.rs`. Every fixture is an executable program instrumented to verify runtime execution traces (`cargo run`), paired with database assertions on cache tables (`refs.precise_status`, `refs.local_only`):
+
+| Fixture | Target Scenario | Heuristic (Recall / Prec.) | Precise (Recall / Prec.) | Resolution Behavior |
+| :--- | :--- | :---: | :---: | :--- |
+| `resolve_app` | Cross-file method & bare module path | **100%** / **100%** | *N/A* | Resolved via L2 imports and L3 receiver fields. |
+| `local_shadow_app` | Local closure shadowing same-named function | **100%** / **100%** | *N/A* | L1 marks closure call `local_only`, avoiding false cross-file edge. |
+| `rust_precise_app` | Inferred constructor return (`let h = Real::new()`) | 80% / 80% | **100%** / **100%** | Heuristics resolve to imported decoy; `--precise` infers return type. |
+| `python_precise_app` | Dynamic method polymorphism | 75% / 75% | **100%** / **100%** | Heuristic misses unannotated instance; Pyright resolves runtime class. |
+| `generic_type_app` | Standard library `Vec<T>::push` vs custom `push` | 100% / 67% | **100%** / **100%** | Heuristics match single workspace `push`; `--precise` marks `Vec` call external. |
+
+### Known Limitations
+
+- **Standard Library Method Collisions (Heuristic Mode):** Heuristic mode indexes only files within the workspace. When calling common methods (`push`, `len`, `get`) on standard library types (`Vec`, `HashMap`, `Option`), L3 cannot deduce external receiver types and delegates to L4. If only one method with that name exists in the workspace, L4 scores it as an uncontested candidate. Use `--precise` to suppress external library calls.
+- **Generic Type AST Normalization:** `impl<T> Buffer<T>` is indexed with its generic parameters. When called from a site typed as `Buffer<String>`, string-equality checks in L3 may fail to pair the receiver, deferring resolution to L4.
+- **Dynamic Language Metaprogramming:** Dynamic dispatch (`getattr`, monkey patching, runtime decorators, eval) cannot be resolved statically from AST alone.
+- **Build System Prerequisites for `--precise`:** Compiler-grade backends require valid project manifests (`Cargo.toml`, `tsconfig.json`, `pom.xml`, `build.gradle`). Without a project model, language servers degrade to syntax-only inspection.
 
 ---
 
 ## Compiler-Grade Accuracy (`--precise`)
 
-The heuristics above read the AST only, so they cannot follow generics, trait
-and interface dispatch, or overloads. `--precise` asks the real language server
-for each language where a name is defined, and stores that answer as the top
-resolution layer:
+When exact call resolution is critical, `--precise` queries the real language server for each language where a name is defined, and stores that answer as the top resolution layer (L0):
 
 ```bash
-# Resolve through the installed language servers instead of guessing
+# Resolve through installed language servers
 code-rcl sync --precise
 
-# Only one language, and give a slow server more time per answer
+# Only one language, with custom timeout
 code-rcl sync --precise --language rust --precise-timeout 30
 
-# Re-ask about every file (edits can change how *other* files resolve)
+# Re-ask about every file (edits can change how other files resolve)
 code-rcl sync --precise --precise-full
 
-# graph and serve take the same flag
+# Export graph with compiler precision
 code-rcl graph --precise
 ```
 
-Resolved edges come back at `confidence = 1.0`. Just as importantly, when the
-real definition turns out to live in the standard library or a dependency, the
-reference produces **no edge at all** — so `--precise` removes false edges as
-well as adding missing ones.
+### Supported Language Servers
 
-### Required Language Servers
+Nothing is bundled. Install the servers for your languages; a missing server is reported with its install command and that language simply retains its heuristic edges.
 
-Nothing is bundled. Install the servers for the languages you care about; a
-missing one is reported with its install command and that language simply keeps
-its heuristic edges.
-
-| Language | Server | Install | Override |
+| Language | Server | Install Command | Override Variable |
 | :--- | :--- | :--- | :--- |
 | **Rust** | `rust-analyzer` | `rustup component add rust-analyzer` | `CODE_RCL_LSP_RUST` |
 | **Python** | `pyright-langserver` | `npm install -g pyright` | `CODE_RCL_LSP_PYTHON` |
+| **TypeScript** | `typescript-language-server` | `npm install -g typescript-language-server typescript` | `CODE_RCL_LSP_TYPESCRIPT` |
+| **JavaScript** | `typescript-language-server` | `npm install -g typescript-language-server typescript` | `CODE_RCL_LSP_JAVASCRIPT` |
 | **Java** | `jdtls` (Eclipse JDT LS) | [eclipse.jdt.ls releases](https://github.com/eclipse-jdtls/eclipse.jdt.ls) (needs JDK 17+) | `CODE_RCL_LSP_JAVA` |
 | **Kotlin** | `kotlin-language-server` | [kotlin-language-server releases](https://github.com/fwcd/kotlin-language-server/releases) | `CODE_RCL_LSP_KOTLIN` |
-
-Each `CODE_RCL_LSP_*` variable takes the full path to the executable, for
-servers installed outside `PATH`.
-
-### What Affects Accuracy
-
-- **Rust, Java and Kotlin need a real project model** — `Cargo.toml`,
-  `pom.xml` or `build.gradle(.kts)`. Without one the server can only do
-  syntax-level analysis, and code-rcl warns before wasting time on it. Pyright
-  works fine on a plain folder of `.py` files.
-- **The first run is slow**: the server indexes the project, then answers one
-  request per reference. Later runs only re-ask about files that changed.
-- **A language server is not optional for its language** — `--precise` improves
-  the graph, it never empties it, so any language whose server is missing keeps
-  exactly the edges it had before.
 
 #### `sync --precise` Options
 

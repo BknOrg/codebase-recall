@@ -191,10 +191,9 @@ pub fn run_precise_pass(
                 stats.warnings.extend(warnings);
                 stats.languages.push(outcome);
             }
-            Err(e) => stats.errors.push(format!(
-                "{} ({}): {e:#}",
-                backend.lang_group, launcher.name
-            )),
+            Err(e) => stats
+                .errors
+                .push(format!("{} ({}): {e:#}", backend.lang_group, launcher.name)),
         }
     }
 
@@ -209,6 +208,8 @@ fn language_selected(lang_group: &str, filter: &[String]) -> bool {
                 "py" => lang_group == "python",
                 "kt" => lang_group == "kotlin",
                 "rs" => lang_group == "rust",
+                "ts" => lang_group == "typescript",
+                "js" => lang_group == "javascript",
                 other => other == lang_group,
             }
         })

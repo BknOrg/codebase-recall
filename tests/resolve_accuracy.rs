@@ -199,6 +199,37 @@ fn resolve_app_accuracy() {
     check_accuracy("resolve_app", false);
 }
 
+#[test]
+fn local_shadow_app_accuracy() {
+    check_accuracy("local_shadow_app", false);
+}
+
+#[test]
+fn local_shadow_app_marks_local_only() {
+    let work = workdir("local_shadow_app", "__local_only_check");
+    // panggil `code-rcl sync` dulu supaya cache terisi tanpa perlu graph
+    let status = Command::new(BIN)
+        .arg("sync")
+        .arg("--project")
+        .arg(&work)
+        .status()
+        .expect("run code-rcl sync");
+    assert!(status.success());
+
+    let db_path = work.join(".code-rcl").join("cache.db");
+    let conn = rusqlite::Connection::open(db_path).unwrap();
+    let local_only: i64 = conn
+        .query_row("SELECT local_only FROM refs WHERE name = 'tick'", [], |r| {
+            r.get(0)
+        })
+        .expect("ref 'tick' harus ada di cache");
+
+    assert_eq!(
+        local_only, 1,
+        "resolver harus menandai `tick` sebagai local_only karena di-shadow closure lokal"
+    );
+}
+
 /// The heuristics are expected to miss here — this pins down what they do get
 /// right, so the precise run below has a baseline to improve on.
 #[test]
@@ -225,4 +256,75 @@ fn python_precise_app_accuracy() {
     if precise_opted_in("pyright-langserver") {
         check_accuracy("python_precise_app", true);
     }
+}
+
+#[test]
+fn generic_type_app_heuristic_baseline() {
+    check_accuracy("generic_type_app", false);
+}
+
+#[test]
+#[ignore = "needs rust-analyzer installed; opt in with CODE_RCL_TEST_PRECISE=1"]
+fn generic_type_app_accuracy() {
+    if precise_opted_in("rust-analyzer") {
+        check_accuracy("generic_type_app", true);
+    }
+}
+
+#[test]
+#[ignore = "needs rust-analyzer installed; opt in with CODE_RCL_TEST_PRECISE=1"]
+fn generic_type_app_precise_marks_std_vec_as_external() {
+    if !precise_opted_in("rust-analyzer") {
+        return;
+    }
+    let work = workdir("generic_type_app", "__precise_db_check");
+    let status = Command::new(BIN)
+        .arg("sync")
+        .arg("--project")
+        .arg(&work)
+        .arg("--precise")
+        .status()
+        .expect("run code-rcl sync --precise");
+    assert!(status.success());
+
+    let db_path = work.join(".code-rcl").join("cache.db");
+    let conn = rusqlite::Connection::open(db_path).unwrap();
+
+    // Vec::push in collect_std_vec must be marked as external by rust-analyzer
+    let (vec_push_status, vec_push_sym): (Option<String>, Option<i64>) = conn
+        .query_row(
+            "SELECT precise_status, precise_symbol_id FROM refs WHERE name = 'push' AND receiver = 'v'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .expect("ref 'push' with receiver 'v' must exist in cache");
+
+    assert_eq!(
+        vec_push_status.as_deref(),
+        Some("external"),
+        "Vec::push must be resolved as external"
+    );
+    assert_eq!(
+        vec_push_sym, None,
+        "Vec::push must not link to any internal symbol"
+    );
+
+    // CustomBuffer::push in collect_custom_buffer must be marked as hit linking to CustomBuffer::push
+    let (buf_push_status, buf_push_sym): (Option<String>, Option<i64>) = conn
+        .query_row(
+            "SELECT precise_status, precise_symbol_id FROM refs WHERE name = 'push' AND receiver = 'buf'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .expect("ref 'push' with receiver 'buf' must exist in cache");
+
+    assert_eq!(
+        buf_push_status.as_deref(),
+        Some("hit"),
+        "CustomBuffer::push must be resolved as hit"
+    );
+    assert!(
+        buf_push_sym.is_some(),
+        "CustomBuffer::push must link to an internal symbol"
+    );
 }

@@ -50,29 +50,18 @@
     if (state.kinds.has("imports"))
       for (const e of importEdges) add(repFile(e.source), repFile(e.target), "imports");
 
-    for (const kind of ["calls", "references"]) {
-      if (!state.kinds.has(kind)) continue;
-      for (const a of callAgg[kind]) {
-        if (!inFileRegime) {
-          add(dirOf(a.srcFile), dirOf(a.tgtFile), kind);
-          continue;
-        }
-        const aExp = expanded.has(a.srcFile);
-        const bExp = expanded.has(a.tgtFile);
-        if (!aExp && !bExp) continue; // calls stay hidden until a file is opened
-        const L = aExp && a.srcSyms.size ? [...a.srcSyms] : [a.srcFile];
-        const R = bExp && a.tgtSyms.size ? [...a.tgtSyms] : [a.tgtFile];
-        for (const l of L)
-          for (const r of R) {
-            if (isSymId(l) && isSymId(r)) {
-              // never symbol↔symbol: route each end through the other file
-              add(l, a.tgtFile, kind);
-              add(a.srcFile, r, kind);
-            } else {
-              add(l, r, kind);
-            }
-          }
+    for (const e of crossEdges) {
+      if (!state.kinds.has(e.kind)) continue;
+      if (!inFileRegime) {
+        add(dirOf(e.srcFile), dirOf(e.tgtFile), e.kind);
+        continue;
       }
+      const aExp = expanded.has(e.srcFile);
+      const bExp = expanded.has(e.tgtFile);
+      if (!aExp && !bExp) continue; // calls stay hidden until a file is opened
+      const s = aExp && isSymId(e.source) && nodeById.has(e.source) ? e.source : e.srcFile;
+      const t = bExp && isSymId(e.target) && nodeById.has(e.target) ? e.target : e.tgtFile;
+      add(s, t, e.kind);
     }
 
     // containment tethers

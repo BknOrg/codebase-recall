@@ -13,5 +13,5 @@ pub fn render(graph: &CodeGraph) -> String {
         graph.nodes.len(),
         graph.edges.len()
     );
-    assets::graph_page(&data, &stat, Delivery::Inline)
+    assets::graph_page(&data, &stat, Delivery::Separated)
 }

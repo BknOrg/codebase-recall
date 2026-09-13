@@ -1,0 +1,17 @@
+{
+  "_comment": "Tuples are [from_path, from_name, to_path, to_name]. `must_*` hold in both modes; `precise_*` are what only a real compiler frontend can get right. Heuristics confuse standard generic `Vec<T>` calls (new/push) with custom methods of the same name, which rust-analyzer eliminates as external.",
+  "must_have": [
+    ["src/main.rs", "main", "src/collector.rs", "collect_std_vec"],
+    ["src/main.rs", "main", "src/collector.rs", "collect_custom_buffer"],
+    ["src/collector.rs", "collect_custom_buffer", "src/custom_buffer.rs", "new"],
+    ["src/collector.rs", "collect_custom_buffer", "src/custom_buffer.rs", "push"]
+  ],
+  "must_not_have": [
+    ["src/main.rs", "main", "src/custom_buffer.rs", "new"],
+    ["src/main.rs", "main", "src/custom_buffer.rs", "push"]
+  ],
+  "precise_must_not_have": [
+    ["src/collector.rs", "collect_std_vec", "src/custom_buffer.rs", "new"],
+    ["src/collector.rs", "collect_std_vec", "src/custom_buffer.rs", "push"]
+  ]
+}

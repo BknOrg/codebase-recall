@@ -98,6 +98,33 @@ pub const BACKENDS: &[Backend] = &[
                       cross-file calls will come back unresolved",
         index_timeout_secs: 600,
     },
+    Backend {
+        lang_group: "typescript",
+        language_id: "typescript",
+        candidates: &[
+            ("typescript-language-server", &["--stdio"]),
+            ("vtsls", &["--stdio"]),
+        ],
+        env_override: "CODE_RCL_LSP_TYPESCRIPT",
+        install_hint: "install it with `npm install -g typescript-language-server typescript`",
+        project_markers: &["tsconfig.json", "package.json"],
+        marker_hint: "without a tsconfig.json or package.json, path aliases (paths/baseUrl) \
+                      and cross-file definitions may not resolve properly",
+        index_timeout_secs: 300,
+    },
+    Backend {
+        lang_group: "javascript",
+        language_id: "javascript",
+        candidates: &[
+            ("typescript-language-server", &["--stdio"]),
+            ("vtsls", &["--stdio"]),
+        ],
+        env_override: "CODE_RCL_LSP_JAVASCRIPT",
+        install_hint: "install it with `npm install -g typescript-language-server typescript`",
+        project_markers: &["jsconfig.json", "package.json"],
+        marker_hint: "without a jsconfig.json or package.json, module resolutions may be incomplete",
+        index_timeout_secs: 300,
+    },
 ];
 
 /// Comma-separated language groups `--precise` can serve, for help text.
@@ -275,7 +302,6 @@ mod tests {
                 b.lang_group
             );
         }
-        assert!(BACKENDS.iter().all(|b| b.lang_group != "javascript"));
     }
 
     #[test]

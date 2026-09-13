@@ -1,0 +1,11 @@
+{
+  "_comment": "Setiap edge di sini diverifikasi via eksekusi nyata (cargo run, instrumentasi eprintln!) sebelum ditulis, BUKAN disalin dari output code-rcl. Lihat PROVENANCE.md untuk log eksekusi lengkap dan cara reproduksinya sendiri.",
+  "must_have": [
+    ["main.rs", "start", "worker_a.rs", "run"],
+    ["main.rs", "start", "worker_b.rs", "run"],
+    ["main.rs", "start", "scheduler.rs", "run"]
+  ],
+  "must_not_have": [
+    ["main.rs", "start", "scheduler.rs", "tick"]
+  ]
+}

@@ -1,7 +1,10 @@
 // data: parse the graph blob, build id indexes (parent/child, file-of,
 // dir-of), and pre-aggregate call edges to file pairs.
 
-  const DATA = JSON.parse(document.getElementById("graph-data").textContent);
+  const DATA = window.__GRAPH_DATA__ || (function() {
+    const el = document.getElementById("graph-data");
+    return el ? JSON.parse(el.textContent) : { nodes: [], edges: [] };
+  })();
   const nodeById = new Map(DATA.nodes.map((n) => [n.id, n]));
 
   const TYPE_KINDS = new Set(["struct", "enum", "trait", "interface", "type", "class", "component"]);
@@ -36,14 +39,13 @@
     return c || null;
   }
 
-  // import edges stay file->file; call/reference edges get aggregated to the
-  // (srcFile, tgtFile) pair, remembering which symbols contributed each end.
+  // import edges stay file->file; call/reference edges get filtered (intra-file
+  // calls skipped to prevent clutter), with cross-file edges preserved.
   const importEdges = [];
-  const callAgg = { calls: [], references: [] };
+  const crossEdges = [];
   const symUses = new Map(); // symId -> Set(fileId it calls into)
   const symUsedBy = new Map(); // symId -> Set(fileId that calls it)
   {
-    const m = new Map();
     const bump = (map, k, v) => {
       let s = map.get(k);
       if (!s) map.set(k, (s = new Set()));
@@ -58,22 +60,18 @@
       const sf = fileOf(e.source);
       const tf = fileOf(e.target);
       if (!sf || !tf || sf === tf) continue; // intra-file calls add nothing at this altitude
-      const key = sf + "\x1f" + tf + "\x1f" + e.kind;
-      let a = m.get(key);
-      if (!a)
-        m.set(
-          key,
-          (a = { srcFile: sf, tgtFile: tf, kind: e.kind, srcSyms: new Set(), tgtSyms: new Set(), count: 0 })
-        );
-      a.count++;
+      crossEdges.push({
+        source: e.source,
+        target: e.target,
+        kind: e.kind,
+        srcFile: sf,
+        tgtFile: tf,
+      });
       if (isSymId(e.source) && nodeById.has(e.source)) {
-        a.srcSyms.add(e.source);
         bump(symUses, e.source, tf);
       }
       if (isSymId(e.target) && nodeById.has(e.target)) {
-        a.tgtSyms.add(e.target);
         bump(symUsedBy, e.target, sf);
       }
     }
-    for (const a of m.values()) callAgg[a.kind].push(a);
   }

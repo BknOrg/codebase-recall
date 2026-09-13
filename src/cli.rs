@@ -81,7 +81,7 @@ pub struct SyncArgs {
 #[derive(Parser, Debug, Clone)]
 pub struct PreciseArgs {
     /// Resolve references through the real language server for each language
-    /// (rust-analyzer, pyright, jdtls, kotlin-language-server) instead of
+    /// (rust-analyzer, pyright, jdtls, kotlin-language-server, typescript-language-server) instead of
     /// guessing from the AST. Needs those servers installed; any that are
     /// missing are reported and their language keeps its heuristic edges.
     #[arg(long)]
@@ -93,7 +93,12 @@ pub struct PreciseArgs {
     pub precise_full: bool,
 
     /// Seconds to wait for a single language-server answer
-    #[arg(long, default_value_t = 15, value_name = "SECONDS", requires = "precise")]
+    #[arg(
+        long,
+        default_value_t = 15,
+        value_name = "SECONDS",
+        requires = "precise"
+    )]
     pub precise_timeout: u64,
 }
 

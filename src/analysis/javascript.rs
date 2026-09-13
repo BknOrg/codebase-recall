@@ -54,8 +54,7 @@ impl<'a> Walker<'a> {
 
     fn walk(&mut self, node: Node) {
         match node.kind() {
-            "function_declaration" | "generator_function_declaration"
-            | "function_signature" => {
+            "function_declaration" | "generator_function_declaration" | "function_signature" => {
                 self.enter_symbol(node, node, "function", false);
             }
             "class_declaration" | "abstract_class_declaration" | "class" => {
@@ -82,11 +81,11 @@ impl<'a> Walker<'a> {
             }
             "new_expression" => {
                 if let Some(c) = node.child_by_field_name("constructor") {
-                    let (name, receiver) = self.callee_name(c);
+                    let (name, receiver, name_node) = self.callee_name(c);
                     if !name.is_empty() {
                         let rk = js_receiver_kind(receiver.as_deref());
                         let ac = self.arg_count(node);
-                        self.push_ref(name, "call", receiver, rk, ac, node);
+                        self.push_ref(name, "call", receiver, rk, ac, name_node, node);
                     }
                 }
                 self.walk_children(node);
@@ -122,8 +121,12 @@ impl<'a> Walker<'a> {
                 self.sc.bind(&name, "symbol", Some(i), None, None);
             }
             self.stack.push(i);
-            self.sc
-                .push(scope_kind, Some(i), node.start_byte() as i64, node.end_byte() as i64);
+            self.sc.push(
+                scope_kind,
+                Some(i),
+                node.start_byte() as i64,
+                node.end_byte() as i64,
+            );
 
             match real_kind.as_str() {
                 "class" | "interface" => self.bind_class_fields(node),
@@ -267,9 +270,9 @@ impl<'a> Walker<'a> {
     }
 
     fn parent_is_class(&self) -> bool {
-        self.stack.last().is_some_and(|&i| {
-            matches!(self.out.symbols[i].kind.as_str(), "class" | "interface")
-        })
+        self.stack
+            .last()
+            .is_some_and(|&i| matches!(self.out.symbols[i].kind.as_str(), "class" | "interface"))
     }
 
     fn is_exported(&self, node: Node) -> bool {
@@ -426,7 +429,8 @@ impl<'a> Walker<'a> {
         match (&imported_name, local) {
             // `import * as ns from "..."` -> namespace binding
             (None, Some(ns)) => {
-                self.sc.bind(ns, "namespace", None, Some(import_index), None);
+                self.sc
+                    .bind(ns, "namespace", None, Some(import_index), None);
             }
             // `import { a as b }` / `import def` -> named binding under its local name
             (Some(n), l) => {
@@ -461,11 +465,11 @@ impl<'a> Walker<'a> {
                 }
             }
         }
-        let (name, receiver) = self.callee_name(func);
+        let (name, receiver, name_node) = self.callee_name(func);
         if !name.is_empty() {
             let rk = js_receiver_kind(receiver.as_deref());
             let ac = self.arg_count(node);
-            self.push_ref(name, "call", receiver, rk, ac, node);
+            self.push_ref(name, "call", receiver, rk, ac, name_node, node);
         }
     }
 
@@ -475,20 +479,18 @@ impl<'a> Walker<'a> {
         Some(args.named_children(&mut c).count() as i64)
     }
 
-    fn callee_name(&self, func: Node) -> (String, Option<String>) {
+    fn callee_name<'b>(&self, func: Node<'b>) -> (String, Option<String>, Option<Node<'b>>) {
         match func.kind() {
-            "identifier" => (self.text(func).to_string(), None),
+            "identifier" => (self.text(func).to_string(), None, Some(func)),
             "member_expression" => {
-                let prop = func
-                    .child_by_field_name("property")
-                    .map(|n| self.text(n))
-                    .unwrap_or_default();
+                let prop = func.child_by_field_name("property");
+                let prop_name = prop.map(|n| self.text(n)).unwrap_or_default();
                 let obj = func
                     .child_by_field_name("object")
                     .map(|n| self.text(n).to_string());
-                (prop.to_string(), obj)
+                (prop_name.to_string(), obj, prop)
             }
-            _ => (String::new(), None),
+            _ => (String::new(), None, None),
         }
     }
 
@@ -500,6 +502,7 @@ impl<'a> Walker<'a> {
         receiver: Option<String>,
         receiver_kind: &str,
         arg_count: Option<i64>,
+        name_node: Option<Node>,
         node: Node,
     ) {
         self.out.refs.push(NewRef {
@@ -508,6 +511,7 @@ impl<'a> Walker<'a> {
             receiver,
             start_line: self.line(node),
             start_byte: node.start_byte() as i64,
+            name_start_byte: name_node.map(|n| n.start_byte() as i64),
             arg_count,
             receiver_kind: receiver_kind.to_string(),
             ..Default::default()
@@ -525,7 +529,12 @@ fn js_receiver_kind(receiver: Option<&str>) -> &'static str {
 
 /// `import("mod").Foo<T>` -> `Foo`; `a.b.C` -> `C`; drops generics/whitespace.
 fn simple_type_name(raw: &str) -> String {
-    let head = raw.trim().split(['<', ' ', '|', '&']).next().unwrap_or(raw).trim();
+    let head = raw
+        .trim()
+        .split(['<', ' ', '|', '&'])
+        .next()
+        .unwrap_or(raw)
+        .trim();
     head.rsplit('.').next().unwrap_or(head).to_string()
 }
 
@@ -535,7 +544,8 @@ fn first_child_of_kind<'t>(node: Node<'t>, kind: &str) -> Option<Node<'t>> {
 }
 
 fn unquote(s: &str) -> String {
-    s.trim_matches(|c| c == '"' || c == '\'' || c == '`').to_string()
+    s.trim_matches(|c| c == '"' || c == '\'' || c == '`')
+        .to_string()
 }
 
 #[cfg(test)]
@@ -574,8 +584,14 @@ export const run = () => {
 
         let spec = |s: &str| p.imports.iter().find(|i| i.raw_specifier == s);
         assert!(spec("./cache").unwrap().is_relative);
-        assert_eq!(spec("./cache").unwrap().imported_name.as_deref(), Some("CacheDb"));
-        assert_eq!(spec("../util/helper").unwrap().imported_name.as_deref(), Some("default"));
+        assert_eq!(
+            spec("./cache").unwrap().imported_name.as_deref(),
+            Some("CacheDb")
+        );
+        assert_eq!(
+            spec("../util/helper").unwrap().imported_name.as_deref(),
+            Some("default")
+        );
         assert!(!spec("node:fs").unwrap().is_relative);
 
         let calls: Vec<&str> = p.refs.iter().map(|r| r.name.as_str()).collect();
