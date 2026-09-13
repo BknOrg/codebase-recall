@@ -48,7 +48,8 @@ pub enum Delivery {
 
 const BODY: &str = r#"<div id="app">
   <header>
-    <h1>codebase recall graph</h1>
+    <button id="toggleLeftPane" type="button" class="btn-toggle-left" title="Toggle files/code panel">☰</button>
+    <h1>code-rcl graph</h1>
     <span class="stat">__STAT__</span>
     <label><input type="checkbox" data-kind="imports" checked> imports</label>
     <label><input type="checkbox" data-kind="calls" checked> calls</label>
@@ -64,11 +65,27 @@ const BODY: &str = r#"<div id="app">
       <button id="focusClear" type="button">clear focus</button>
     </span>
   </header>
-  <div id="stage">
-    <canvas id="scene"></canvas>
-    <aside id="sidePanel" hidden></aside>
-    <div class="legend" id="legend"></div>
-    <div id="status"></div>
+  <div id="workbench">
+    <aside id="leftPane" class="collapsed">
+      <div class="pane-tabs">
+        <button type="button" class="pane-tab active" data-tab="tree">Files</button>
+        <button type="button" class="pane-tab" data-tab="code">Code</button>
+      </div>
+      <div id="treeView" class="pane-tab-content"></div>
+      <div id="codeView" class="pane-tab-content" hidden>
+        <div class="code-bar">
+          <span id="codePath">no file selected</span>
+          <span id="codeLine"></span>
+        </div>
+        <div id="codeContent" class="code-lines"></div>
+      </div>
+    </aside>
+    <div id="stage">
+      <canvas id="scene"></canvas>
+      <aside id="sidePanel" hidden></aside>
+      <div class="legend" id="legend"></div>
+      <div id="status"></div>
+    </div>
   </div>
 </div>"#;
 

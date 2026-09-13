@@ -89,6 +89,7 @@ fn serve_starts_answers_and_quits() {
     let (status, body) = http_get(port, "/");
     assert!(status.contains("200"), "GET / status: {status}");
     assert!(body.contains("code-rcl graph"), "GET / body missing header");
+    assert!(body.contains("toggleLeftPane"), "GET / body missing toggleLeftPane");
     assert!(
         body.contains(r#"id="graph-data""#),
         "GET / body missing data blob"
@@ -103,6 +104,18 @@ fn serve_starts_answers_and_quits() {
 
     let (status, _) = http_get(port, "/assets/graph-view.js");
     assert!(status.contains("200"), "graph-view.js status: {status}");
+
+    // Test /source endpoint
+    let (status, src) = http_get(port, "/source?path=main.rs");
+    assert!(status.contains("200"), "GET /source?path=main.rs status: {status}");
+    assert!(src.contains("fn main"), "GET /source?path=main.rs missing expected code: {src}");
+
+    // Test /source path traversal rejection
+    let (status, _) = http_get(port, "/source?path=../Cargo.toml");
+    assert!(
+        status.contains("400") || status.contains("403") || status.contains("404"),
+        "Path traversal was not rejected! Status: {status}"
+    );
 
     // /quit asks the server to stop; it should exit on its own shortly after.
     let _ = http_get(port, "/quit");

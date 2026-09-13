@@ -163,6 +163,13 @@ fn worker_loop(
                     "application/json; charset=utf-8",
                 ));
             }
+            (true, "/source") => {
+                let (status, body) = run_source(project, &url);
+                let _ = req.respond(with_type(
+                    text(status, &body),
+                    "application/json; charset=utf-8",
+                ));
+            }
             (_, "/quit") => {
                 let _ = req.respond(text(204, ""));
                 shutdown.store(true, Ordering::SeqCst);
@@ -278,6 +285,39 @@ fn run_dump(project: &Path, url: &str) -> String {
         Err(e) => format!(
             r#"{{"ok":false,"error":"{}"}}"#,
             json_escape(&e.to_string())
+        ),
+    }
+}
+
+fn run_source(project: &Path, url: &str) -> (u16, String) {
+    let Some(rel) = query_param(url, "path") else {
+        return (400, r#"{"ok":false,"error":"missing path param"}"#.into());
+    };
+    let rel_clean = rel.replace('\\', "/");
+    let rel_path = Path::new(&rel_clean);
+    if rel_path.is_absolute() {
+        return (400, r#"{"ok":false,"error":"absolute paths not allowed"}"#.into());
+    }
+    let target = project.join(rel_path);
+    let (canon_proj, canon_target) = match (project.canonicalize(), target.canonicalize()) {
+        (Ok(cp), Ok(ct)) => (cp, ct),
+        _ => return (404, r#"{"ok":false,"error":"file not found"}"#.into()),
+    };
+    if !canon_target.starts_with(&canon_proj) {
+        return (403, r#"{"ok":false,"error":"access denied"}"#.into());
+    }
+    match std::fs::read_to_string(&canon_target) {
+        Ok(content) => (
+            200,
+            format!(
+                r#"{{"ok":true,"path":"{}","content":"{}"}}"#,
+                json_escape(&rel_clean),
+                json_escape(&content)
+            ),
+        ),
+        Err(e) => (
+            500,
+            format!(r#"{{"ok":false,"error":"{}"}}"#, json_escape(&e.to_string())),
         ),
     }
 }

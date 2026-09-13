@@ -14,6 +14,10 @@
     isolate: false,
     dumpDepth: 2,
     dumpName: "codebase-context.md",
+    leftTab: "tree",
+    activeFile: null,
+    activeLine: null,
+    activeRange: null,
   };
   let inFileRegime = true;
   let hovered = null;

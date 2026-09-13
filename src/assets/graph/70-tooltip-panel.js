@@ -15,8 +15,8 @@
   }
   // ids to keep bright, or null = everything bright
   function highlightSet() {
-    if (hovered) return neighbours1(hovered);
-    if (selected && nodeIsRendered(selected)) return neighbours1(selected);
+    const target = hovered || (selected && nodeIsRendered(selected) ? selected : null);
+    if (target) return neighbours1(target);
     if (state.query && !state.isolate) {
       const s = new Set();
       for (const n of nodes) if (hit(n, state.query)) s.add(n.id);
@@ -159,4 +159,17 @@
     centerOn(id);
     updatePanel();
     scheduleDraw();
+
+    const leftPaneEl = document.getElementById("leftPane");
+    const isLeftPaneOpen = leftPaneEl && !leftPaneEl.classList.contains("collapsed");
+    if (selected && isLeftPaneOpen && typeof openInCodeViewer === "function") {
+      const node = nodeById.get(id);
+      if (node) {
+        const p = node.path || (node.kind === "file" ? node.id.replace("file:", "") : null);
+        if (p) {
+          const start = node.lines ? node.lines[0] : 1;
+          openInCodeViewer(p, start, node.lines || [start, start], "def");
+        }
+      }
+    }
   });

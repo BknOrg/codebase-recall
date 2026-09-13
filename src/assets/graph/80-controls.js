@@ -132,3 +132,201 @@
       ctl.hidden = true;
     }
   }
+
+  // --- hops control ------------------------------------------------
+  const hopsRange = $("hopsRange");
+  const hopsVal = $("hopsVal");
+  if (hopsRange && hopsVal) {
+    hopsRange.addEventListener("input", () => {
+      const v = parseInt(hopsRange.value, 10);
+      state.hops = v;
+      hopsVal.textContent = v >= 4 ? "max" : String(v);
+      scheduleDraw();
+    });
+  }
+
+  // --- left panel toggle & tabs ------------------------------------
+  const toggleLeftBtn = $("toggleLeftPane");
+  const leftPane = $("leftPane");
+  if (toggleLeftBtn && leftPane) {
+    toggleLeftBtn.addEventListener("click", () => {
+      leftPane.classList.toggle("collapsed");
+      resize();
+    });
+  }
+
+  const tabBtns = document.querySelectorAll(".pane-tab");
+  const treeView = $("treeView");
+  const codeView = $("codeView");
+  function switchTab(tab) {
+    tabBtns.forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+    state.leftTab = tab;
+    if (tab === "tree") {
+      if (treeView) treeView.hidden = false;
+      if (codeView) codeView.hidden = true;
+    } else {
+      if (treeView) treeView.hidden = true;
+      if (codeView) codeView.hidden = false;
+    }
+  }
+  tabBtns.forEach((btn) => {
+    btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+  });
+
+  // --- code viewer & source fetching -------------------------------
+  const fileCache = new Map();
+
+  function openInCodeViewer(filePath, targetLine, range, highlightKind) {
+    const codePathEl = $("codePath");
+    const codeLineEl = $("codeLine");
+    const codeContentEl = $("codeContent");
+    if (!codePathEl || !codeContentEl) return;
+
+    switchTab("code");
+    codePathEl.textContent = filePath;
+    codeLineEl.textContent = targetLine ? "L" + targetLine : "";
+
+    state.activeFile = filePath;
+    state.activeLine = targetLine;
+    state.activeRange = range;
+
+    const renderLines = (content) => {
+      const lines = content.split("\n");
+      let html = "";
+      for (let i = 0; i < lines.length; i++) {
+        const lineNum = i + 1;
+        let hlCls = "";
+        if (range && lineNum >= range[0] && lineNum <= range[1]) {
+          hlCls = highlightKind === "call" ? " highlight-call" : " highlight-def";
+        } else if (lineNum === targetLine) {
+          hlCls = highlightKind === "call" ? " highlight-call" : " highlight-def";
+        }
+        html += `<div class="code-row${hlCls}" id="cline-${lineNum}" data-line="${lineNum}"><span class="code-num">${lineNum}</span><span class="code-text">${esc(lines[i])}</span></div>`;
+      }
+      codeContentEl.innerHTML = html;
+
+      if (targetLine) {
+        requestAnimationFrame(() => {
+          const row = document.getElementById("cline-" + targetLine);
+          if (row) {
+            row.scrollIntoView({ block: "center", behavior: "smooth" });
+          }
+        });
+      }
+    };
+
+    if (fileCache.has(filePath)) {
+      renderLines(fileCache.get(filePath));
+      return;
+    }
+
+    if (location.protocol.startsWith("http")) {
+      codeContentEl.innerHTML = `<div style="padding: 10px; color: var(--muted); font-size: 11px;">loading ${esc(filePath)}…</div>`;
+      fetch("/source?path=" + encodeURIComponent(filePath))
+        .then((r) => r.json())
+        .then((d) => {
+          if (d && d.ok && d.content != null) {
+            fileCache.set(filePath, d.content);
+            renderLines(d.content);
+          } else {
+            codeContentEl.innerHTML = `<div style="padding: 10px; color: var(--accent); font-size: 11px;">error: ${esc((d && d.error) || "cannot load source")}</div>`;
+          }
+        })
+        .catch((err) => {
+          codeContentEl.innerHTML = `<div style="padding: 10px; color: var(--accent); font-size: 11px;">fetch error: ${esc(err.message)}</div>`;
+        });
+    } else {
+      codeContentEl.innerHTML = `<div style="padding: 10px; color: var(--muted); font-size: 11px;">source view requires <code>code-rcl serve</code></div>`;
+    }
+  }
+
+  // --- expandable hierarchical file tree ---------------------------
+  function buildFileTree() {
+    if (!treeView) return;
+    const fileNodes = DATA.nodes.filter((n) => n.kind === "file" && (n.path || n.label));
+
+    // Build directory hierarchy
+    const root = { name: "", children: new Map(), files: [] };
+    for (const n of fileNodes) {
+      const fullPath = (n.path || n.label).replace(/\\/g, "/");
+      const parts = fullPath.split("/");
+      const fileName = parts.pop();
+      let curr = root;
+      for (const part of parts) {
+        if (!curr.children.has(part)) {
+          curr.children.set(part, { name: part, children: new Map(), files: [] });
+        }
+        curr = curr.children.get(part);
+      }
+      curr.files.push({ node: n, fileName, fullPath });
+    }
+
+    function renderDir(dirNode) {
+      let html = "";
+      const sortedDirs = [...dirNode.children.keys()].sort();
+      for (const dirName of sortedDirs) {
+        const sub = dirNode.children.get(dirName);
+        html += `<div class="tree-node tree-folder">` +
+          `<div class="tree-row folder-row">` +
+          `<span class="tree-caret">▾</span>` +
+          `<span class="tree-name">${esc(dirName)}</span>` +
+          `</div>` +
+          `<div class="tree-children">` +
+          renderDir(sub) +
+          `</div>` +
+          `</div>`;
+      }
+      dirNode.files.sort((a, b) => a.fileName.localeCompare(b.fileName));
+      for (const f of dirNode.files) {
+        html += `<div class="tree-node tree-file">` +
+          `<div class="tree-row file-row" data-id="${esc(f.node.id)}" data-path="${esc(f.fullPath)}">` +
+          `<span class="tree-caret"></span>` +
+          `<span class="tree-name" title="${esc(f.fullPath)}">${esc(f.fileName)}</span>` +
+          `</div>` +
+          `</div>`;
+      }
+      return html;
+    }
+
+    treeView.innerHTML = renderDir(root);
+
+    treeView.addEventListener("click", (ev) => {
+      // Toggle folder expansion
+      const folderRow = ev.target.closest(".folder-row");
+      if (folderRow) {
+        const folderNode = folderRow.closest(".tree-folder");
+        const children = folderNode ? folderNode.querySelector(".tree-children") : null;
+        const caret = folderRow.querySelector(".tree-caret");
+        if (children && caret) {
+          const isCollapsed = children.classList.toggle("collapsed");
+          caret.textContent = isCollapsed ? "▸" : "▾";
+        }
+        return;
+      }
+
+      // File selection
+      const fileRow = ev.target.closest(".file-row");
+      if (!fileRow) return;
+
+      document.querySelectorAll(".file-row").forEach((r) => r.classList.remove("active"));
+      fileRow.classList.add("active");
+
+      const id = fileRow.dataset.id;
+      const path = fileRow.dataset.path;
+
+      // Focus on file node and its relations in the graph
+      if (id && nodeById.has(id)) {
+        expanded.add(id);
+        selected = id;
+        rebuild(0.4);
+        centerOn(id);
+        updatePanel();
+        scheduleDraw();
+      }
+
+      // If code viewer tab is active, open it
+      openInCodeViewer(path, 1, [1, 1], "def");
+    });
+  }
+
+  buildFileTree();

@@ -119,6 +119,238 @@ header #focusLabel {
   white-space: nowrap;
 }
 
+.hops-ctl {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0 4px;
+}
+
+.hops-ctl input[type=range] {
+  width: 50px;
+  height: 12px;
+  cursor: pointer;
+  accent-color: var(--file);
+}
+
+.hops-ctl #hopsVal {
+  font-weight: 600;
+  color: var(--fg);
+  min-width: 12px;
+  text-align: center;
+}
+
+.btn-toggle-left {
+  padding: 2px 7px;
+  font-size: 13px;
+  line-height: 1;
+  font-family: inherit;
+}
+
+#workbench {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  position: relative;
+  min-height: 0;
+}
+
+#leftPane {
+  width: 320px;
+  min-width: 240px;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+  z-index: 10;
+}
+
+#leftPane.collapsed {
+  display: none !important;
+}
+
+.pane-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.pane-tab {
+  flex: 1;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  text-align: center;
+}
+
+.pane-tab:hover {
+  color: var(--fg);
+}
+
+.pane-tab.active {
+  color: var(--fg);
+  border-bottom-color: var(--file);
+  background: var(--bg);
+}
+
+.pane-tab-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#treeView {
+  padding: 4px 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.tree-node {
+  margin: 1px 0;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+.tree-row:hover {
+  background: var(--border);
+}
+
+.tree-row.active {
+  background: var(--border);
+  font-weight: 600;
+  color: var(--file);
+}
+
+.tree-caret {
+  display: inline-block;
+  width: 12px;
+  font-size: 9px;
+  color: var(--muted);
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-folder > .tree-row .tree-name {
+  font-weight: 600;
+}
+
+.tree-children {
+  padding-left: 10px;
+}
+
+.tree-children.collapsed {
+  display: none;
+}
+
+#codeView {
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.code-bar {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  gap: 6px;
+}
+
+#codePath {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+}
+
+#codeLine {
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.code-lines {
+  flex: 1;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  padding: 4px 0;
+  tab-size: 4;
+}
+
+.code-row {
+  display: flex;
+  min-width: 100%;
+}
+
+.code-row:hover {
+  background: rgba(140, 140, 140, 0.08);
+}
+
+.code-num {
+  width: 38px;
+  min-width: 38px;
+  text-align: right;
+  padding-right: 8px;
+  color: var(--muted);
+  user-select: none;
+  border-right: 1px solid var(--border);
+}
+
+.code-text {
+  padding-left: 8px;
+  white-space: pre;
+  flex: 1;
+}
+
+.code-row.highlight-def {
+  background: rgba(37, 99, 235, 0.16);
+  border-left: 3px solid var(--file);
+}
+
+.code-row.highlight-call {
+  background: rgba(239, 68, 68, 0.18);
+  border-left: 3px solid var(--accent);
+}
+
 #stage {
   flex: 1;
   overflow: hidden;

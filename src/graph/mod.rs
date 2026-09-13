@@ -47,6 +47,8 @@ pub struct Edge {
     pub confidence: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub external: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line: Option<i64>,
 }
 
 /// Stable node id for a file.

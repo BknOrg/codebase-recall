@@ -43,6 +43,36 @@
     return Math.hypot(found.x - wx, found.y - wy) <= rr ? found : null;
   }
 
+  function distToSegment(px, py, x1, y1, x2, y2) {
+    const l2 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+    if (l2 === 0) return Math.hypot(px - x1, py - y1);
+    let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (x1 + t * (x2 - x1)), py - (y1 + t * (y2 - y1)));
+  }
+
+  function edgeAt(clientX, clientY) {
+    if (!links.length) return null;
+    const r = canvas.getBoundingClientRect();
+    const wx = (clientX - r.left - transform.x) / transform.k;
+    const wy = (clientY - r.top - transform.y) / transform.k;
+    const thresh = 6 / transform.k;
+    let closest = null;
+    let minDist = thresh;
+    for (const l of links) {
+      if (l.kind === "contains") continue;
+      const s = l.source;
+      const t = l.target;
+      if (!s || !t || s.x == null || t.x == null) continue;
+      const d = distToSegment(wx, wy, s.x, s.y, t.x, t.y);
+      if (d < minDist) {
+        minDist = d;
+        closest = l;
+      }
+    }
+    return closest;
+  }
+
   // --- pointer: hover + drag + click ------------------------------
   d3.select(canvas)
     .on("pointermove", (ev) => {
@@ -80,7 +110,11 @@
         const sy = ev.clientY;
         const up = (e) => {
           canvas.removeEventListener("pointerup", up);
-          if (Math.abs(e.clientX - sx) + Math.abs(e.clientY - sy) <= 3) onEmptyClick();
+          if (Math.abs(e.clientX - sx) + Math.abs(e.clientY - sy) <= 3) {
+            const edge = edgeAt(e.clientX, e.clientY);
+            if (edge) onEdgeClick(edge, e);
+            else onEmptyClick();
+          }
         };
         canvas.addEventListener("pointerup", up);
         return;
@@ -143,6 +177,22 @@
     }
   }
 
+  function onEdgeClick(edge, ev) {
+    const leftPaneEl = document.getElementById("leftPane");
+    const isLeftPaneOpen = leftPaneEl && !leftPaneEl.classList.contains("collapsed");
+    if (!isLeftPaneOpen) return;
+
+    const sid = edge.source.id || edge.source;
+    const sNode = nodeById.get(sid);
+    const srcFile = sNode
+      ? (sNode.path || (sNode.kind === "file" ? sid.replace("file:", "") : null))
+      : (typeof sid === "string" && sid.startsWith("file:") ? sid.replace("file:", "") : null);
+    const line = edge.line || (sNode && sNode.lines ? sNode.lines[0] : 1);
+    if (srcFile && typeof openInCodeViewer === "function") {
+      openInCodeViewer(srcFile, line, [line, line], "call");
+    }
+  }
+
   function onNodeClick(n, ev) {
     if (ev && (ev.altKey || ev.metaKey)) {
       focusId = focusId === n.id ? null : n.id;
@@ -170,6 +220,16 @@
     selected = selected === n.id ? null : n.id;
     updatePanel();
     scheduleDraw();
+
+    const leftPaneEl = document.getElementById("leftPane");
+    const isLeftPaneOpen = leftPaneEl && !leftPaneEl.classList.contains("collapsed");
+    if (selected && isLeftPaneOpen && typeof openInCodeViewer === "function") {
+      const p = n.path || (n.kind === "file" ? n.id.replace("file:", "") : null);
+      if (p) {
+        const start = n.lines ? n.lines[0] : 1;
+        openInCodeViewer(p, start, n.lines || [start, start], "def");
+      }
+    }
   }
 
   // --- fit / center -----------------------------------------------

@@ -132,7 +132,7 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
                 Some((p, _)) => p.clone(),
                 None => file_node.clone(),
             };
-            edges.add(parent, child.clone(), "contains", 1.0, None);
+            edges.add(parent, child.clone(), "contains", 1.0, None, s.start_line);
         }
     }
 
@@ -163,6 +163,7 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
                     "imports",
                     1.0,
                     None,
+                    im.start_line,
                 );
             }
         } else if opts.include_external
@@ -190,6 +191,7 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
                 "imports",
                 1.0,
                 Some(im.raw_specifier.clone()),
+                im.start_line,
             );
         }
     }
@@ -331,7 +333,7 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
         if tgt == src {
             continue;
         }
-        edges.add(src, tgt, edge_kind, confidence, None);
+        edges.add(src, tgt, edge_kind, confidence, None, rf.start_line);
     }
 
     // ---- finalize ------------------------------------------------------
@@ -375,7 +377,7 @@ pub(super) fn parent_dir(path: &str) -> Option<String> {
 
 #[derive(Default)]
 struct EdgeSet {
-    map: HashMap<(String, String, String), (f32, Option<String>)>,
+    map: HashMap<(String, String, String), (f32, Option<String>, Option<i64>)>,
 }
 
 impl EdgeSet {
@@ -386,26 +388,31 @@ impl EdgeSet {
         kind: &str,
         conf: f32,
         external: Option<String>,
+        line: Option<i64>,
     ) {
         let key = (source, target, kind.to_string());
-        let entry = self.map.entry(key).or_insert((0.0, None));
+        let entry = self.map.entry(key).or_insert((0.0, None, None));
         if conf >= entry.0 {
             entry.0 = conf;
         }
         if entry.1.is_none() {
             entry.1 = external;
         }
+        if entry.2.is_none() {
+            entry.2 = line;
+        }
     }
 
     fn into_vec(self) -> Vec<Edge> {
         self.map
             .into_iter()
-            .map(|((source, target, kind), (confidence, external))| Edge {
+            .map(|((source, target, kind), (confidence, external, line))| Edge {
                 source,
                 target,
                 kind,
                 confidence,
                 external,
+                line,
             })
             .collect()
     }

@@ -43,6 +43,7 @@ pub(super) fn collapse_to_files(
                 kind: e.kind,
                 confidence: e.confidence,
                 external: e.external,
+                line: e.line,
             });
         }
     }
@@ -212,6 +213,7 @@ pub(super) fn rollup_directories(nodes: &mut Vec<Node>, edges: &mut Vec<Edge>) {
                 kind: "contains".into(),
                 confidence: 1.0,
                 external: None,
+                line: None,
             });
         }
     }
