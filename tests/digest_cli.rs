@@ -79,6 +79,39 @@ fn digest_json_format_is_valid() {
 }
 
 #[test]
+fn digest_project_flag_works_like_positional_path() {
+    // Every other project-targeting subcommand (sync/graph/serve/impact)
+    // takes `--project`; digest historically only took a positional path.
+    // `--project` must now be accepted too, and produce the same digest as
+    // the equivalent positional invocation.
+    let work = workdir("rust_app", "digest_project_flag");
+
+    let via_flag = Command::new(BIN)
+        .args(["digest", "--project"])
+        .arg(&work)
+        .output()
+        .expect("failed to run code-rcl digest --project");
+    assert!(
+        via_flag.status.success(),
+        "digest --project should be accepted, not rejected as an unexpected argument: {}",
+        String::from_utf8_lossy(&via_flag.stderr)
+    );
+
+    let via_positional = Command::new(BIN)
+        .arg("digest")
+        .arg(&work)
+        .arg("--no-sync") // cache already populated by the --project run above
+        .output()
+        .expect("failed to run code-rcl digest <path>");
+    assert!(via_positional.status.success());
+
+    let flag_out = String::from_utf8_lossy(&via_flag.stdout);
+    let positional_out = String::from_utf8_lossy(&via_positional.stdout);
+    assert_eq!(flag_out, positional_out, "--project and positional path should agree");
+    assert!(flag_out.contains("pub fn greet"));
+}
+
+#[test]
 fn digest_output_file_flag_works() {
     let work = workdir("rust_app", "digest_file");
     let out_file = work.join("my-arch.md");

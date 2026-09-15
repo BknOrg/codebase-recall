@@ -104,8 +104,27 @@ fn resolve_target(path: &Path) -> (PathBuf, String) {
     }
 }
 
+/// Effective `(project_root, sub_prefix)` for a `digest` invocation.
+///
+/// When `--project` is given it wins outright — PATH is then just a sub-path
+/// filter *within* that root, not something to auto-detect a root from.
+/// Without `--project`, behaves exactly as before via [`resolve_target`].
+fn resolve_root(args: &DigestArgs) -> (PathBuf, String) {
+    match &args.project {
+        Some(root) => {
+            let sub = if args.path == Path::new(".") {
+                String::new()
+            } else {
+                args.path.to_string_lossy().replace('\\', "/")
+            };
+            (root.clone(), sub)
+        }
+        None => resolve_target(&args.path),
+    }
+}
+
 pub fn run(args: DigestArgs) -> Result<()> {
-    let (project_root, sub_prefix) = resolve_target(&args.path);
+    let (project_root, sub_prefix) = resolve_root(&args);
 
     let mut db = CacheDb::open(&project_root)
         .context("failed to open graph cache DB; run `code-rcl init` first")?;

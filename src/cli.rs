@@ -263,6 +263,13 @@ pub struct DigestArgs {
     #[arg(default_value = ".")]
     pub path: PathBuf,
 
+    /// Explicit project root — overrides PATH's auto-detection (walking up
+    /// for .code-rcl/Cargo.toml/package.json/pyproject.toml). PATH, if also
+    /// given, is then read as a sub-path filter within this root instead of
+    /// a location to search from.
+    #[arg(long)]
+    pub project: Option<PathBuf>,
+
     /// Output file path for the generated markdown digest
     #[arg(short = 'o', long = "output")]
     pub output: Option<PathBuf>,

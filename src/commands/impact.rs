@@ -78,6 +78,7 @@ pub fn run(args: ImpactArgs) -> Result<()> {
 
     let node_by_id: HashMap<&str, &Node> = graph.nodes.iter().map(|n| (n.id.as_str(), n)).collect();
 
+    let mut reports = Vec::with_capacity(targets.len());
     for target in targets {
         let mut ancestors = HashSet::new();
         let mut total_affected = HashSet::new();
@@ -118,10 +119,16 @@ pub fn run(args: ImpactArgs) -> Result<()> {
         };
 
         if args.json {
-            println!("{}", serde_json::to_string_pretty(&report)?);
+            reports.push(report);
         } else {
             print_ascii_report(&report);
         }
+    }
+
+    // Always a JSON array, even for a single match — a script parsing this
+    // output shouldn't have to special-case "one match" vs "several".
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&reports)?);
     }
 
     Ok(())

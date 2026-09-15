@@ -186,21 +186,21 @@ pub fn collect_files(
                     && let Ok(raw_content) = std::fs::read_to_string(path)
                 {
                     let content = if is_ipynb {
-                            crate::analysis::python::ipynb::cleaning_ipynb(&raw_content)
-                                .unwrap_or(raw_content)
-                        } else {
-                            raw_content
-                        };
-                        if (content.len() as u64) <= max_bytes {
-                            file_entries.push(FileEntry {
-                                relative_path: rel_path,
-                                content,
-                            });
-                        }
+                        crate::analysis::python::ipynb::cleaning_ipynb(&raw_content)
+                            .unwrap_or(raw_content)
+                    } else {
+                        raw_content
+                    };
+                    if (content.len() as u64) <= max_bytes {
+                        file_entries.push(FileEntry {
+                            relative_path: rel_path,
+                            content,
+                        });
                     }
                 }
             }
         }
+    }
 
     Ok((tree_paths, file_entries))
 }

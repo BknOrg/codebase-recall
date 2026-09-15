@@ -92,8 +92,13 @@ fn impact_analysis_tree_and_json() {
         .expect("failed to run code-rcl impact --json");
     assert!(out_json.status.success());
     let stdout_json = String::from_utf8_lossy(&out_json.stdout);
-    let val: serde_json::Value =
+    let parsed: serde_json::Value =
         serde_json::from_str(&stdout_json).expect("valid JSON expected from impact --json");
+    // Always an array, even for a single match — a script parsing this
+    // output shouldn't have to special-case "one match" vs "several".
+    let reports = parsed.as_array().expect("impact --json must be a JSON array");
+    assert_eq!(reports.len(), 1, "expected exactly one match for 'decorate'");
+    let val = &reports[0];
     assert_eq!(val["target_symbol"], "decorate");
     assert_eq!(val["direct_callers_count"], 1);
     assert_eq!(val["total_affected_count"], 2);
