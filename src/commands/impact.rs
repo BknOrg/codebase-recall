@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write as _;
 
 use crate::cli::{GraphQuery, ImpactArgs};
 use crate::commands::graph::build_graph;
@@ -32,6 +33,19 @@ pub struct ImpactItem {
 }
 
 pub fn run(args: ImpactArgs) -> Result<()> {
+    let reports = generate_reports(&args)?;
+    if args.json {
+        println!("{}", render_json(&reports)?);
+    } else {
+        print!("{}", render_ascii(&reports));
+    }
+    Ok(())
+}
+
+/// Build graph + traverse callers for every node matching `args.symbol`.
+/// Pure computation, no printing — reused by the CLI (`run`, above) and by
+/// `code-rcl serve`'s `/impact` endpoint.
+pub fn generate_reports(args: &ImpactArgs) -> Result<Vec<ImpactReport>> {
     let query = GraphQuery {
         project: args.project.clone(),
         scope: "both".to_string(),
@@ -118,20 +132,26 @@ pub fn run(args: ImpactArgs) -> Result<()> {
             callers,
         };
 
-        if args.json {
-            reports.push(report);
-        } else {
-            print_ascii_report(&report);
-        }
+        reports.push(report);
     }
 
-    // Always a JSON array, even for a single match — a script parsing this
-    // output shouldn't have to special-case "one match" vs "several".
-    if args.json {
-        println!("{}", serde_json::to_string_pretty(&reports)?);
-    }
+    Ok(reports)
+}
 
-    Ok(())
+/// Ascii-tree rendering of `reports` — same text CLI `impact` printed before
+/// this was split out, just built into a `String` instead of `println!`ed.
+pub fn render_ascii(reports: &[ImpactReport]) -> String {
+    let mut out = String::new();
+    for report in reports {
+        write_ascii_report(&mut out, report);
+    }
+    out
+}
+
+/// Always a JSON array, even for a single match — a script parsing this
+/// output shouldn't have to special-case "one match" vs "several".
+pub fn render_json(reports: &[ImpactReport]) -> Result<String> {
+    Ok(serde_json::to_string_pretty(reports)?)
 }
 
 fn traverse_impact(
@@ -198,18 +218,20 @@ fn calculate_max_depth(items: &[ImpactItem], max_d: &mut u32) {
     }
 }
 
-fn print_ascii_report(report: &ImpactReport) {
+fn write_ascii_report(out: &mut String, report: &ImpactReport) {
     let loc = report
         .target_path
         .as_deref()
         .map(|p| format!(" ({p})"))
         .unwrap_or_default();
 
-    println!(
+    let _ = writeln!(
+        out,
         "Impact Analysis for: {} [{}]",
         report.target_symbol, report.target_kind
     );
-    println!(
+    let _ = writeln!(
+        out,
         "Direct callers: {} | Total affected: {} symbols across {} files | Max depth: {}\n",
         report.direct_callers_count,
         report.total_affected_count,
@@ -217,19 +239,19 @@ fn print_ascii_report(report: &ImpactReport) {
         report.max_depth_reached
     );
 
-    println!("{}{loc}", report.target_symbol);
+    let _ = writeln!(out, "{}{loc}", report.target_symbol);
     if report.callers.is_empty() {
-        println!("└── (no incoming callers or references found)");
+        let _ = writeln!(out, "└── (no incoming callers or references found)");
     } else {
         for (i, caller) in report.callers.iter().enumerate() {
             let is_last = i + 1 == report.callers.len();
-            print_tree(caller, "", is_last);
+            write_tree(out, caller, "", is_last);
         }
     }
-    println!();
+    let _ = writeln!(out);
 }
 
-fn print_tree(item: &ImpactItem, prefix: &str, is_last: bool) {
+fn write_tree(out: &mut String, item: &ImpactItem, prefix: &str, is_last: bool) {
     let branch = if is_last { "└── " } else { "├── " };
     let loc = match (&item.path, item.line) {
         (Some(p), Some(l)) => format!(" ({p}:{l})"),
@@ -237,7 +259,8 @@ fn print_tree(item: &ImpactItem, prefix: &str, is_last: bool) {
         _ => String::new(),
     };
 
-    println!(
+    let _ = writeln!(
+        out,
         "{prefix}{branch}{} [{}] - {}{loc}",
         item.label, item.edge_kind, item.kind
     );
@@ -245,6 +268,6 @@ fn print_tree(item: &ImpactItem, prefix: &str, is_last: bool) {
     let child_prefix = format!("{prefix}{}", if is_last { "    " } else { "│   " });
     for (i, child) in item.callers.iter().enumerate() {
         let last = i + 1 == item.callers.len();
-        print_tree(child, &child_prefix, last);
+        write_tree(out, child, &child_prefix, last);
     }
 }

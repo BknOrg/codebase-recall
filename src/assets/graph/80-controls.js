@@ -7,7 +7,7 @@
   // Grey out an edge-kind toggle when the graph carries no such edge (e.g.
   // `references` unless the graph was built with `--kinds references`).
   const edgeKinds = new Set(DATA.edges.map((e) => e.kind));
-  for (const cb of document.querySelectorAll("header input[data-kind]")) {
+  for (const cb of document.querySelectorAll("#filtersView input[data-kind]")) {
     const kind = cb.dataset.kind;
     if (!edgeKinds.has(kind)) {
       cb.disabled = true;
@@ -133,19 +133,7 @@
     }
   }
 
-  // --- hops control ------------------------------------------------
-  const hopsRange = $("hopsRange");
-  const hopsVal = $("hopsVal");
-  if (hopsRange && hopsVal) {
-    hopsRange.addEventListener("input", () => {
-      const v = parseInt(hopsRange.value, 10);
-      state.hops = v;
-      hopsVal.textContent = v >= 4 ? "max" : String(v);
-      scheduleDraw();
-    });
-  }
-
-  // --- left panel toggle & tabs ------------------------------------
+  // --- left panel toggle & icon-rail panels -------------------------
   const toggleLeftBtn = $("toggleLeftPane");
   const leftPane = $("leftPane");
   if (toggleLeftBtn && leftPane) {
@@ -155,23 +143,27 @@
     });
   }
 
-  const tabBtns = document.querySelectorAll(".pane-tab");
+  const railBtns = document.querySelectorAll(".rail-btn");
   const treeView = $("treeView");
   const codeView = $("codeView");
-  function switchTab(tab) {
-    tabBtns.forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
-    state.leftTab = tab;
-    if (tab === "tree") {
-      if (treeView) treeView.hidden = false;
-      if (codeView) codeView.hidden = true;
-    } else {
-      if (treeView) treeView.hidden = true;
-      if (codeView) codeView.hidden = false;
+  const filtersView = $("filtersView");
+  const panels = { tree: treeView, code: codeView, filters: filtersView };
+  function switchTab(panel) {
+    railBtns.forEach((b) => b.classList.toggle("active", b.dataset.panel === panel));
+    state.leftTab = panel;
+    for (const [key, el] of Object.entries(panels)) {
+      if (el) el.hidden = key !== panel;
     }
   }
-  tabBtns.forEach((btn) => {
-    btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+  railBtns.forEach((btn) => {
+    btn.addEventListener("click", () => switchTab(btn.dataset.panel));
   });
+
+  // --- project name (shown in the sidebar header / floating pill) --
+  const rootPath = (DATA.root || "").replace(/[\\/]+$/, "");
+  const projectName = rootPath.split(/[\\/]/).filter(Boolean).pop() || "codebase";
+  const projectNameEl = $("projectName");
+  if (projectNameEl) projectNameEl.textContent = projectName;
 
   // --- code viewer & source fetching -------------------------------
   const fileCache = new Map();

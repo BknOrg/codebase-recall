@@ -29,6 +29,7 @@ const GRAPH_VIEW_PARTS: &[&str] = &[
     include_str!("graph/80-controls.js"),
     include_str!("graph/85-legend.js"),
     include_str!("graph/90-main.js"),
+    include_str!("graph/95-contextmenu.js"),
 ];
 
 pub static GRAPH_VIEW_JS: LazyLock<String> = LazyLock::new(|| {
@@ -47,37 +48,44 @@ pub enum Delivery {
 }
 
 const BODY: &str = r#"<div id="app">
-  <header>
-    <button id="toggleLeftPane" type="button" class="btn-toggle-left" title="Toggle files/code panel">☰</button>
-    <h1>code-rcl graph</h1>
-    <span class="stat">__STAT__</span>
-    <label><input type="checkbox" data-kind="imports" checked> imports</label>
-    <label><input type="checkbox" data-kind="calls" checked> calls</label>
-    <label><input type="checkbox" data-kind="references"> references</label>
-    <label><input type="checkbox" id="expandAll"> expand all</label>
-    <input type="search" id="search" placeholder="filter &amp; isolate nodes&hellip;">
-    <button id="fitBtn" type="button">fit</button>
-    <span id="focusCtl" hidden>
-      <span id="focusLabel"></span>
-      <button id="focusShallower" type="button" title="shallower">&minus;</button>
-      <span id="focusDepth">2</span>
-      <button id="focusDeeper" type="button" title="deeper">+</button>
-      <button id="focusClear" type="button">clear focus</button>
-    </span>
-  </header>
   <div id="workbench">
     <aside id="leftPane" class="collapsed">
-      <div class="pane-tabs">
-        <button type="button" class="pane-tab active" data-tab="tree">Files</button>
-        <button type="button" class="pane-tab" data-tab="code">Code</button>
+      <div class="sidebar-header">
+        <button id="toggleLeftPane" type="button" class="btn-toggle-left" title="Toggle sidebar">☰</button>
+        <span class="project-name" id="projectName"></span>
       </div>
-      <div id="treeView" class="pane-tab-content"></div>
-      <div id="codeView" class="pane-tab-content" hidden>
-        <div class="code-bar">
-          <span id="codePath">no file selected</span>
-          <span id="codeLine"></span>
+      <div class="sidebar-body">
+        <div class="icon-rail">
+          <button type="button" class="rail-btn active" data-panel="tree" title="Files">📁</button>
+          <button type="button" class="rail-btn" data-panel="code" title="Code">📄</button>
+          <button type="button" class="rail-btn" data-panel="filters" title="Filters">🎚️</button>
         </div>
-        <div id="codeContent" class="code-lines"></div>
+        <div class="sidebar-panel-content">
+          <div id="treeView" class="sidebar-panel"></div>
+          <div id="codeView" class="sidebar-panel" hidden>
+            <div class="code-bar">
+              <span id="codePath">no file selected</span>
+              <span id="codeLine"></span>
+            </div>
+            <div id="codeContent" class="code-lines"></div>
+          </div>
+          <div id="filtersView" class="sidebar-panel" hidden>
+            <span class="stat">__STAT__</span>
+            <label><input type="checkbox" data-kind="imports" checked> imports</label>
+            <label><input type="checkbox" data-kind="calls" checked> calls</label>
+            <label><input type="checkbox" data-kind="references"> references</label>
+            <label><input type="checkbox" id="expandAll"> expand all</label>
+            <input type="search" id="search" placeholder="filter &amp; isolate nodes&hellip;">
+            <button id="fitBtn" type="button">fit</button>
+            <span id="focusCtl" hidden>
+              <span id="focusLabel"></span>
+              <button id="focusShallower" type="button" title="shallower">&minus;</button>
+              <span id="focusDepth">2</span>
+              <button id="focusDeeper" type="button" title="deeper">+</button>
+              <button id="focusClear" type="button">clear focus</button>
+            </span>
+          </div>
+        </div>
       </div>
     </aside>
     <div id="stage">

@@ -163,6 +163,20 @@ fn worker_loop(
                     "application/json; charset=utf-8",
                 ));
             }
+            (_, "/impact") => {
+                let body = run_impact(project, &url);
+                let _ = req.respond(with_type(
+                    text(
+                        if body.contains("\"ok\":true") {
+                            200
+                        } else {
+                            500
+                        },
+                        &body,
+                    ),
+                    "application/json; charset=utf-8",
+                ));
+            }
             (true, "/source") => {
                 let (status, body) = run_source(project, &url);
                 let _ = req.respond(with_type(
@@ -255,9 +269,49 @@ impl Drop for Decrement<'_> {
 }
 
 // --- /dump: relation-aware context bundle for the viewer's "dump -r" button ---
+// --- /impact: caller/importer report for the viewer's right-click menu -----
 
-/// Runs `dump -r` for `?target=…&depth=…` and returns a small JSON reply.
-/// NOTE: unlike the rest of `serve`, this writes `codebase-context.md` to disk.
+/// Sanitize a query-string filename to a bare basename — no directory
+/// components, no `.`/`..`, no drive letters. Shared by `/dump` and `/impact`.
+fn sanitize_name(raw: Option<String>, default: &str) -> String {
+    raw.map(|s| s.trim().to_string())
+        .and_then(|s| {
+            let base = s.rsplit(['/', '\\']).next().unwrap_or("").to_string();
+            (!base.is_empty() && base != "." && base != ".." && !base.contains(':')).then_some(base)
+        })
+        .unwrap_or_else(|| default.to_string())
+}
+
+/// Resolve an optional `dir` query param (a project-relative directory, as
+/// sent by the viewer's right-click menu for "write next to this file") to
+/// an absolute path guaranteed to stay inside `project`. Falls back to
+/// `project` itself when `dir` is absent/empty — this keeps the side panel's
+/// existing "dump -r" button (which never sends `dir`) writing to the
+/// project root exactly as before. Same containment check as `run_source`.
+fn resolve_output_dir(project: &Path, dir_param: Option<String>) -> Result<PathBuf, String> {
+    let Some(dir) = dir_param.filter(|d| !d.trim().is_empty()) else {
+        return Ok(project.to_path_buf());
+    };
+    let dir_clean = dir.replace('\\', "/");
+    let dir_path = Path::new(&dir_clean);
+    if dir_path.is_absolute()
+        || dir_clean.starts_with('/')
+        || dir_clean.split('/').any(|segment| segment == "..")
+        || dir_clean.contains(':')
+    {
+        return Err("access denied".to_string());
+    }
+    let target = project.join(dir_path);
+    if let (Ok(cp), Ok(ct)) = (project.canonicalize(), target.canonicalize()) {
+        if !ct.starts_with(&cp) {
+            return Err("access denied".to_string());
+        }
+    }
+    Ok(target)
+}
+
+/// Runs `dump -r` for `?target=…&depth=…&dir=…` and returns a small JSON
+/// reply. NOTE: unlike the rest of `serve`, this writes a file to disk.
 fn run_dump(project: &Path, url: &str) -> String {
     let Some(target) = query_param(url, "target").filter(|t| !t.is_empty()) else {
         return r#"{"ok":false,"error":"missing target"}"#.to_string();
@@ -266,20 +320,73 @@ fn run_dump(project: &Path, url: &str) -> String {
         .and_then(|d| d.parse::<u32>().ok())
         .unwrap_or(2)
         .clamp(1, 5);
-    // Output name: basename only, no traversal / drive-relative paths.
-    let name = query_param(url, "name")
-        .map(|s| s.trim().to_string())
-        .and_then(|s| {
-            let base = s.rsplit(['/', '\\']).next().unwrap_or("").to_string();
-            (!base.is_empty() && base != "." && base != ".." && !base.contains(':')).then_some(base)
-        })
-        .unwrap_or_else(|| "codebase-context.md".to_string());
-    let output = project.join(&name);
+    let name = sanitize_name(query_param(url, "name"), "codebase-context.md");
+    let dir = match resolve_output_dir(project, query_param(url, "dir")) {
+        Ok(d) => d,
+        Err(e) => return format!(r#"{{"ok":false,"error":"{}"}}"#, json_escape(&e)),
+    };
+    let output = dir.join(&name);
 
     match crate::commands::dump::relation_bundle(project, &target, depth, 50, false, &output) {
         Ok((path, n)) => format!(
             r#"{{"ok":true,"path":"{}","files":{}}}"#,
             json_escape(&path.display().to_string()),
+            n
+        ),
+        Err(e) => format!(
+            r#"{{"ok":false,"error":"{}"}}"#,
+            json_escape(&e.to_string())
+        ),
+    }
+}
+
+/// Runs `impact` for `?target=…&depth=…&kinds=…&format=ascii|json&dir=…` and
+/// writes the rendered report to disk, returning a small JSON reply.
+fn run_impact(project: &Path, url: &str) -> String {
+    let Some(target) = query_param(url, "target").filter(|t| !t.is_empty()) else {
+        return r#"{"ok":false,"error":"missing target"}"#.to_string();
+    };
+    let depth = query_param(url, "depth")
+        .and_then(|d| d.parse::<u32>().ok())
+        .unwrap_or(3)
+        .clamp(1, 8);
+    let kinds: Vec<String> = query_param(url, "kinds")
+        .filter(|k| !k.trim().is_empty())
+        .map(|k| k.split(',').map(|s| s.trim().to_string()).collect())
+        .unwrap_or_else(|| vec!["calls".to_string(), "imports".to_string()]);
+    let as_json = query_param(url, "format").as_deref() == Some("json");
+    let default_name = if as_json { "impact.json" } else { "impact.md" };
+    let name = sanitize_name(query_param(url, "name"), default_name);
+    let dir = match resolve_output_dir(project, query_param(url, "dir")) {
+        Ok(d) => d,
+        Err(e) => return format!(r#"{{"ok":false,"error":"{}"}}"#, json_escape(&e)),
+    };
+    let output = dir.join(&name);
+
+    let args = crate::cli::ImpactArgs {
+        symbol: target,
+        project: project.to_path_buf(),
+        depth,
+        kinds,
+        json: as_json,
+        no_sync: false,
+        precise: Default::default(),
+    };
+
+    let result = crate::commands::impact::generate_reports(&args).and_then(|reports| {
+        let body = if as_json {
+            crate::commands::impact::render_json(&reports)?
+        } else {
+            crate::commands::impact::render_ascii(&reports)
+        };
+        std::fs::write(&output, body)?;
+        Ok(reports.len())
+    });
+
+    match result {
+        Ok(n) => format!(
+            r#"{{"ok":true,"path":"{}","targets":{}}}"#,
+            json_escape(&output.display().to_string()),
             n
         ),
         Err(e) => format!(

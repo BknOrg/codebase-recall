@@ -51,102 +51,15 @@ body {
   height: 100%;
 }
 
-header {
-  display: flex;
-  gap: 14px;
-  align-items: center;
-  flex-wrap: wrap;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--panel);
-}
-
-header h1 {
-  font-size: 13px;
-  margin: 0;
-  font-weight: 600;
-}
-
-header .stat {
-  color: var(--muted);
-}
-
-header label {
-  display: inline-flex;
-  gap: 4px;
-  align-items: center;
-  cursor: pointer;
-}
-
-header input[type=search] {
-  padding: 3px 7px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: var(--bg);
-  color: var(--fg);
-}
-
-header button {
-  padding: 3px 10px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: var(--bg);
-  color: var(--fg);
-  cursor: pointer;
-}
-
-header button:hover {
-  border-color: var(--edge-strong);
-}
-
-header #focusCtl {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-  color: var(--muted);
-}
-
-header #focusCtl button {
-  padding: 1px 8px;
-}
-
-header #focusLabel {
-  color: var(--fg);
-  font-weight: 600;
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.hops-ctl {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--muted);
-  margin: 0 4px;
-}
-
-.hops-ctl input[type=range] {
-  width: 50px;
-  height: 12px;
-  cursor: pointer;
-  accent-color: var(--file);
-}
-
-.hops-ctl #hopsVal {
-  font-weight: 600;
-  color: var(--fg);
-  min-width: 12px;
-  text-align: center;
-}
-
 .btn-toggle-left {
   padding: 2px 7px;
   font-size: 13px;
   line-height: 1;
   font-family: inherit;
+  border: none;
+  background: none;
+  color: var(--fg);
+  cursor: pointer;
 }
 
 #workbench {
@@ -166,50 +79,160 @@ header #focusLabel {
   flex-direction: column;
   background: var(--panel);
   border-right: 1px solid var(--border);
-  overflow: hidden;
   z-index: 10;
 }
 
 #leftPane.collapsed {
-  display: none !important;
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: auto;
+  min-width: 0;
+  max-width: calc(100% - 24px);
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
 }
 
-.pane-tabs {
+#leftPane.collapsed .sidebar-body {
+  display: none;
+}
+
+.sidebar-header {
   display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border);
+}
+
+#leftPane.collapsed .sidebar-header {
+  border-bottom: none;
+  padding: 6px 14px 6px 10px;
+}
+
+.project-name {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+
+.sidebar-body {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.icon-rail {
+  display: flex;
+  flex-direction: column;
+  width: 40px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
   background: var(--panel);
 }
 
-.pane-tab {
-  flex: 1;
-  padding: 6px 8px;
+.rail-btn {
+  padding: 10px 0;
+  font-size: 16px;
+  line-height: 1;
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
-  font-size: 11px;
-  font-weight: 600;
+  border-left: 2px solid transparent;
   color: var(--muted);
   cursor: pointer;
-  text-align: center;
 }
 
-.pane-tab:hover {
+.rail-btn:hover {
   color: var(--fg);
 }
 
-.pane-tab.active {
+.rail-btn.active {
   color: var(--fg);
-  border-bottom-color: var(--file);
+  border-left-color: var(--file);
   background: var(--bg);
 }
 
-.pane-tab-content {
+.sidebar-panel-content {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+.sidebar-panel {
+  flex: 1;
+  min-height: 0;
+}
+
+#filtersView {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+
+#filtersView .stat {
+  color: var(--muted);
+}
+
+#filtersView label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  cursor: pointer;
+}
+
+#filtersView input[type=search] {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+#filtersView button {
+  align-self: flex-start;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+#filtersView button:hover {
+  border-color: var(--edge-strong);
+}
+
+#filtersView #focusCtl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  color: var(--muted);
+}
+
+#filtersView #focusCtl button {
+  padding: 1px 8px;
+}
+
+#filtersView #focusLabel {
+  color: var(--fg);
+  font-weight: 600;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 #treeView {
@@ -586,4 +609,54 @@ header #focusLabel {
   color: var(--muted);
   font-size: 10px;
   margin-top: 2px;
+}
+
+/* Right-click menu on a node/edge: dump -r / impact, at the cursor */
+.ctx-menu {
+  position: absolute;
+  z-index: 110;
+  min-width: 180px;
+  max-width: 260px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  font-size: 12px;
+}
+
+.ctx-menu-title {
+  padding: 3px 6px 6px;
+  font-weight: 600;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.ctx-menu-label {
+  padding: 6px 6px 2px;
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.ctx-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  padding: 5px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.ctx-menu button:hover {
+  background: var(--border);
 }

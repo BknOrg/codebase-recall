@@ -193,6 +193,19 @@
     }
   }
 
+  // Open `n`'s file in the code viewer when the sidebar is open — shared by
+  // the file-node and symbol-node click branches below so both keep the
+  // viewer in sync with whatever was last clicked in the graph.
+  function maybeOpenInCodeViewer(n) {
+    const leftPaneEl = document.getElementById("leftPane");
+    const isLeftPaneOpen = leftPaneEl && !leftPaneEl.classList.contains("collapsed");
+    if (!isLeftPaneOpen || typeof openInCodeViewer !== "function") return;
+    const p = n.path || (n.kind === "file" ? n.id.replace("file:", "") : null);
+    if (!p) return;
+    const start = n.lines ? n.lines[0] : 1;
+    openInCodeViewer(p, start, n.lines || [start, start], "def");
+  }
+
   function onNodeClick(n, ev) {
     if (ev && (ev.altKey || ev.metaKey)) {
       focusId = focusId === n.id ? null : n.id;
@@ -215,21 +228,14 @@
       selected = n.id;
       rebuild(0.5);
       if (nodes.length < 8 && nodes.length < before) fit(true);
+      maybeOpenInCodeViewer(n);
       return;
     }
     selected = selected === n.id ? null : n.id;
     updatePanel();
     scheduleDraw();
 
-    const leftPaneEl = document.getElementById("leftPane");
-    const isLeftPaneOpen = leftPaneEl && !leftPaneEl.classList.contains("collapsed");
-    if (selected && isLeftPaneOpen && typeof openInCodeViewer === "function") {
-      const p = n.path || (n.kind === "file" ? n.id.replace("file:", "") : null);
-      if (p) {
-        const start = n.lines ? n.lines[0] : 1;
-        openInCodeViewer(p, start, n.lines || [start, start], "def");
-      }
-    }
+    if (selected) maybeOpenInCodeViewer(n);
   }
 
   // --- fit / center -----------------------------------------------
