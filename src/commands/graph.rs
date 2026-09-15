@@ -60,8 +60,18 @@ pub fn build_graph(query: &GraphQuery) -> Result<CodeGraph> {
         None => None,
     };
 
+    // Absolute path so the viewer can show the actual project folder name
+    // (e.g. "code-reviewer") instead of "." when invoked without an explicit
+    // path — this field is display-only (see resolve::compile_glob's unused
+    // `_root` param), so canonicalizing it has no effect on graph resolution.
+    let root_display = project
+        .canonicalize()
+        .unwrap_or_else(|_| project.clone())
+        .display()
+        .to_string();
+
     let opts = GraphOptions {
-        root: project.display().to_string(),
+        root: root_display,
         scope,
         kinds,
         min_confidence: query.min_confidence,

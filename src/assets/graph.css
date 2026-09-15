@@ -56,10 +56,19 @@ body {
   font-size: 13px;
   line-height: 1;
   font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   background: none;
   color: var(--fg);
   cursor: pointer;
+}
+
+.btn-toggle-left svg {
+  width: 16px;
+  height: 16px;
+  display: block;
 }
 
 #workbench {
@@ -72,25 +81,29 @@ body {
 }
 
 #leftPane {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  bottom: 12px;
   width: 320px;
   min-width: 240px;
   max-width: 480px;
   display: flex;
   flex-direction: column;
   background: var(--panel);
-  border-right: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
   z-index: 10;
 }
 
 #leftPane.collapsed {
-  position: absolute;
-  top: 12px;
-  left: 12px;
+  bottom: auto;
   width: auto;
   min-width: 0;
   max-width: calc(100% - 24px);
   flex: none;
-  border: 1px solid var(--border);
   border-radius: 999px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
 }
@@ -140,13 +153,20 @@ body {
 
 .rail-btn {
   padding: 10px 0;
-  font-size: 16px;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
   border-left: 2px solid transparent;
   color: var(--muted);
   cursor: pointer;
+}
+
+.rail-btn svg {
+  width: 18px;
+  height: 18px;
+  display: block;
 }
 
 .rail-btn:hover {
@@ -173,6 +193,34 @@ body {
   min-height: 0;
 }
 
+/* Auto-hide scrollbar: invisible at rest, thin on hover — no JS needed. */
+.sidebar-panel-content,
+.code-lines {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.sidebar-panel-content:hover,
+.code-lines:hover {
+  scrollbar-color: var(--muted) transparent;
+}
+
+.sidebar-panel-content::-webkit-scrollbar,
+.code-lines::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar-panel-content::-webkit-scrollbar-thumb,
+.code-lines::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 8px;
+}
+
+.sidebar-panel-content:hover::-webkit-scrollbar-thumb,
+.code-lines:hover::-webkit-scrollbar-thumb {
+  background: var(--muted);
+}
+
 #filtersView {
   display: flex;
   flex-direction: column;
@@ -190,14 +238,6 @@ body {
   gap: 6px;
   align-items: center;
   cursor: pointer;
-}
-
-#filtersView input[type=search] {
-  padding: 4px 8px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: var(--bg);
-  color: var(--fg);
 }
 
 #filtersView button {
@@ -236,7 +276,33 @@ body {
 }
 
 #treeView {
-  padding: 4px 6px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.tree-search-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--panel);
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.tree-search-bar input[type=search] {
+  width: 100%;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+.tree-list {
+  padding: 6px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
   line-height: 1.4;
@@ -249,9 +315,10 @@ body {
 .tree-row {
   display: flex;
   align-items: center;
-  gap: 3px;
-  padding: 2px 4px;
-  border-radius: 3px;
+  gap: 5px;
+  min-height: 22px;
+  padding: 2px 6px;
+  border-radius: 6px;
   cursor: pointer;
   user-select: none;
   color: var(--fg);
@@ -266,15 +333,31 @@ body {
   background: var(--border);
   font-weight: 600;
   color: var(--file);
+  box-shadow: inset 2px 0 0 var(--file);
 }
 
 .tree-caret {
   display: inline-block;
-  width: 12px;
+  width: 10px;
   font-size: 9px;
   color: var(--muted);
   text-align: center;
   flex-shrink: 0;
+}
+
+.tree-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--dir);
+}
+
+.tree-file .tree-icon {
+  color: var(--muted);
+}
+
+.tree-row.active .tree-icon {
+  color: var(--file);
 }
 
 .tree-name {
@@ -288,7 +371,9 @@ body {
 }
 
 .tree-children {
-  padding-left: 10px;
+  margin-left: 9px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
 }
 
 .tree-children.collapsed {
@@ -337,6 +422,18 @@ body {
   line-height: 1.45;
   padding: 4px 0;
   tab-size: 4;
+}
+
+.code-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+  font-family: inherit;
 }
 
 .code-row {

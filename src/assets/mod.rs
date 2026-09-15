@@ -13,6 +13,13 @@ pub const GRAPH_CSS: &str = include_str!("graph.css");
 /// Heartbeat client used only by `code-ctx serve`.
 pub const LIVE_JS: &str = include_str!("live.js");
 
+/// Icon-rail SVGs (`currentColor`-filled, so they theme through the button's
+/// own CSS `color` — see graph.css `.rail-btn`/`.rail-btn.active`).
+const ICON_FOLDER: &str = include_str!("icons/folder.svg");
+const ICON_CODE: &str = include_str!("icons/code.svg");
+const ICON_FILTER: &str = include_str!("icons/filter.svg");
+const ICON_SIDEBAR: &str = include_str!("icons/sidebar-icon.svg");
+
 /// The graph view script, kept as small single-responsibility source files under
 /// `graph/` and stitched together — in this order — inside one IIFE at first use.
 /// Delivered as a single `<script>` (inline mode) or one `/assets/graph-view.js`
@@ -51,23 +58,30 @@ const BODY: &str = r#"<div id="app">
   <div id="workbench">
     <aside id="leftPane" class="collapsed">
       <div class="sidebar-header">
-        <button id="toggleLeftPane" type="button" class="btn-toggle-left" title="Toggle sidebar">☰</button>
+        <button id="toggleLeftPane" type="button" class="btn-toggle-left" title="Toggle sidebar">__ICON_SIDEBAR__</button>
         <span class="project-name" id="projectName"></span>
       </div>
       <div class="sidebar-body">
         <div class="icon-rail">
-          <button type="button" class="rail-btn active" data-panel="tree" title="Files">📁</button>
-          <button type="button" class="rail-btn" data-panel="code" title="Code">📄</button>
-          <button type="button" class="rail-btn" data-panel="filters" title="Filters">🎚️</button>
+          <button type="button" class="rail-btn active" data-panel="tree" title="Files">__ICON_FOLDER__</button>
+          <button type="button" class="rail-btn" data-panel="code" title="Code">__ICON_CODE__</button>
+          <button type="button" class="rail-btn" data-panel="filters" title="Filters">__ICON_FILTER__</button>
         </div>
         <div class="sidebar-panel-content">
-          <div id="treeView" class="sidebar-panel"></div>
+          <div id="treeView" class="sidebar-panel">
+            <div class="tree-search-bar">
+              <input type="search" id="search" placeholder="filter &amp; isolate nodes&hellip;">
+            </div>
+            <div id="treeList" class="tree-list"></div>
+          </div>
           <div id="codeView" class="sidebar-panel" hidden>
-            <div class="code-bar">
-              <span id="codePath">no file selected</span>
+            <div class="code-bar" id="codeBar" hidden>
+              <span id="codePath"></span>
               <span id="codeLine"></span>
             </div>
-            <div id="codeContent" class="code-lines"></div>
+            <div id="codeContent" class="code-lines">
+              <div class="code-empty">No file selected — pick a file from the tree or click a node in the graph</div>
+            </div>
           </div>
           <div id="filtersView" class="sidebar-panel" hidden>
             <span class="stat">__STAT__</span>
@@ -75,7 +89,6 @@ const BODY: &str = r#"<div id="app">
             <label><input type="checkbox" data-kind="calls" checked> calls</label>
             <label><input type="checkbox" data-kind="references"> references</label>
             <label><input type="checkbox" id="expandAll"> expand all</label>
-            <input type="search" id="search" placeholder="filter &amp; isolate nodes&hellip;">
             <button id="fitBtn" type="button">fit</button>
             <span id="focusCtl" hidden>
               <span id="focusLabel"></span>
@@ -103,7 +116,12 @@ pub fn graph_page(data_json: &str, stat: &str, delivery: Delivery) -> String {
     // `<` only ever occurs inside JSON string values, so this keeps the blob
     // valid JSON while making it impossible to break out of the <script> tag.
     let safe = data_json.replace('<', "\\u003c");
-    let body = BODY.replace("__STAT__", stat);
+    let body = BODY
+        .replace("__STAT__", stat)
+        .replace("__ICON_FOLDER__", ICON_FOLDER)
+        .replace("__ICON_CODE__", ICON_CODE)
+        .replace("__ICON_FILTER__", ICON_FILTER)
+        .replace("__ICON_SIDEBAR__", ICON_SIDEBAR);
 
     let (head, tail) = match delivery {
         Delivery::Inline => (

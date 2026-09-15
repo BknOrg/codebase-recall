@@ -169,12 +169,14 @@
   const fileCache = new Map();
 
   function openInCodeViewer(filePath, targetLine, range, highlightKind) {
+    const codeBarEl = $("codeBar");
     const codePathEl = $("codePath");
     const codeLineEl = $("codeLine");
     const codeContentEl = $("codeContent");
     if (!codePathEl || !codeContentEl) return;
 
     switchTab("code");
+    if (codeBarEl) codeBarEl.hidden = false;
     codePathEl.textContent = filePath;
     codeLineEl.textContent = targetLine ? "L" + targetLine : "";
 
@@ -233,8 +235,17 @@
   }
 
   // --- expandable hierarchical file tree ---------------------------
+  // Same path data as src/assets/icons/folder.svg & code.svg (rail buttons) —
+  // duplicated inline here since these are small, static, rarely-changing
+  // icons and not worth a Rust->JS asset-sharing path for just two glyphs.
+  const ICON_FOLDER_SVG =
+    '<svg class="tree-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M4 4C3.73478 4 3.48043 4.10536 3.29289 4.29289C3.10536 4.48043 3 4.73478 3 5V19C3 19.2652 3.10536 19.5196 3.29289 19.7071C3.48043 19.8946 3.73478 20 4 20H20C20.2652 20 20.5196 19.8946 20.7071 19.7071C20.8946 19.5196 21 19.2652 21 19V8C21 7.73478 20.8946 7.48043 20.7071 7.29289C20.5196 7.10536 20.2652 7 20 7H11.5352C10.8665 7 10.242 6.6658 9.87108 6.1094L8.46482 4H4ZM1.87868 2.87868C2.44129 2.31607 3.20435 2 4 2H8.46482C9.13352 2 9.75799 2.3342 10.1289 2.8906L11.5352 5H20C20.7957 5 21.5587 5.31607 22.1213 5.87868C22.6839 6.44129 23 7.20435 23 8V19C23 19.7957 22.6839 20.5587 22.1213 21.1213C21.5587 21.6839 20.7957 22 20 22H4C3.20435 22 2.44129 21.6839 1.87868 21.1213C1.31607 20.5587 1 19.7957 1 19V5C1 4.20435 1.31607 3.44129 1.87868 2.87868Z" fill="currentColor"/></svg>';
+  const ICON_FILE_SVG =
+    '<svg class="tree-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7 8L3 11.6923L7 16M17 8L21 11.6923L17 16M14 4L10 20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
   function buildFileTree() {
-    if (!treeView) return;
+    const treeList = $("treeList");
+    if (!treeList) return;
     const fileNodes = DATA.nodes.filter((n) => n.kind === "file" && (n.path || n.label));
 
     // Build directory hierarchy
@@ -261,6 +272,7 @@
         html += `<div class="tree-node tree-folder">` +
           `<div class="tree-row folder-row">` +
           `<span class="tree-caret">▾</span>` +
+          ICON_FOLDER_SVG +
           `<span class="tree-name">${esc(dirName)}</span>` +
           `</div>` +
           `<div class="tree-children">` +
@@ -273,6 +285,7 @@
         html += `<div class="tree-node tree-file">` +
           `<div class="tree-row file-row" data-id="${esc(f.node.id)}" data-path="${esc(f.fullPath)}">` +
           `<span class="tree-caret"></span>` +
+          ICON_FILE_SVG +
           `<span class="tree-name" title="${esc(f.fullPath)}">${esc(f.fileName)}</span>` +
           `</div>` +
           `</div>`;
@@ -280,9 +293,9 @@
       return html;
     }
 
-    treeView.innerHTML = renderDir(root);
+    treeList.innerHTML = renderDir(root);
 
-    treeView.addEventListener("click", (ev) => {
+    treeList.addEventListener("click", (ev) => {
       // Toggle folder expansion
       const folderRow = ev.target.closest(".folder-row");
       if (folderRow) {
