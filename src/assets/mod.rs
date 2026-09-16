@@ -20,6 +20,36 @@ const ICON_CODE: &str = include_str!("icons/code.svg");
 const ICON_FILTER: &str = include_str!("icons/filter.svg");
 const ICON_SIDEBAR: &str = include_str!("icons/sidebar-icon.svg");
 
+/// Application logo SVG used as tab favicon and brand asset.
+pub const APP_LOGO: &str = include_str!("icons/app-logo.svg");
+
+static FAVICON_DATA_URI: LazyLock<String> = LazyLock::new(|| {
+    format!("data:image/svg+xml;base64,{}", to_base64(APP_LOGO.as_bytes()))
+});
+
+fn to_base64(bytes: &[u8]) -> String {
+    const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = if chunk.len() > 1 { chunk[1] } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] } else { 0 };
+        out.push(B64[(b0 >> 2) as usize] as char);
+        out.push(B64[(((b0 & 3) << 4) | (b1 >> 4)) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(B64[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(B64[(b2 & 0x3f) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
+
 /// The graph view script, kept as small single-responsibility source files under
 /// `graph/` and stitched together — in this order — inside one IIFE at first use.
 /// Delivered as a single `<script>` (inline mode) or one `/assets/graph-view.js`
@@ -151,6 +181,7 @@ pub fn graph_page(data_json: &str, stat: &str, delivery: Delivery) -> String {
         ),
     };
 
+    let favicon = &*FAVICON_DATA_URI;
     format!(
         "<!doctype html>\n\
 <html lang=\"en\">\n\
@@ -158,6 +189,7 @@ pub fn graph_page(data_json: &str, stat: &str, delivery: Delivery) -> String {
 <meta charset=\"utf-8\">\n\
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
 <title>codebase recall graph</title>\n\
+<link rel=\"icon\" type=\"image/svg+xml\" href=\"{favicon}\">\n\
 {head}\n\
 </head>\n\
 <body>\n\

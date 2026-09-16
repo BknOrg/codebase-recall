@@ -9,6 +9,12 @@
 
 ---
 
+## Demo
+
+![code-rcl interactive graph demo](docs/media/demo.gif)
+
+---
+
 ## Key Features
 
 ### 📦 Codebase Context Dumper (`dump`)
@@ -350,28 +356,46 @@ References are resolved through a 5-tier pipeline ordered by confidence:
 1. **L0 — Compiler Backend (`--precise`):** Queries language servers (`rust-analyzer`, `pyright`, `typescript-language-server`, `jdtls`, etc.) via JSON-RPC (`confidence = 1.0`). References resolving to external packages or standard libraries produce no edge, preventing false cross-file links.
 2. **L1 — Lexical Scope:** Resolves same-file definitions during the AST walk (`confidence = 0.95`). Identifiers bound to local variables, parameters, or closures are tagged `local_only = true` and quarantined from cross-file matching.
 3. **L2 — Explicit Imports & Namespaces:** Resolves qualified paths (`module::func()`) and explicit symbol imports (`use crate::worker::Retry`) (`confidence = 0.90`).
-4. **L3 — Receiver Type Deduction:** Resolves calls on `self`, `this`, `Type::method`, and struct field access chains (`self.worker.run()`) against the project's indexed type definitions (`confidence = 0.80 - 0.85`).
+4. **L3 — Receiver Type Deduction:** Resolves calls on `self`, `this`, `Type::method`, and struct field access chains (`self.worker.run()`) against the project's indexed type definitions (`confidence = 0.80 - 0.90`).
 5. **L4 — Scored Disambiguation:** Fallback when the receiver type is unannotated or absent from local definitions. Candidates sharing the callee name are scored by import reachability (+3), export visibility (+2), parameter arity match (+1 to +2), and directory proximity (+1). To prevent false positives, an edge is emitted only if the score margin between the top candidate and runner-up is at least 2 (`margin >= 2`). Exact ties emit no edge.
 
 ```mermaid
-graph TD
-    Ref[Call Site Reference] --> L0{L0: Language Server?}
-    L0 -->|Hit| Res0[Target Symbol (1.00)]
-    L0 -->|External / Nonode| Drop[Drop Edge]
-    L0 -->|Disabled / Unresolved| L1{L1: Lexical Scope?}
+flowchart TD
+    Ref(["Call Site Reference"]) --> L0{"L0: Language Server?<br/><i>(precise_status)</i>"}
     
-    L1 -->|local_only| LocalDrop[Local Binding (No Edge)]
-    L1 -->|Same-File Symbol| Res1[Local Symbol (0.95)]
-    L1 -->|Unresolved| L2{L2: Explicit Import?}
+    %% L0 Tier
+    L0 -->|"hit"| Res0["Emit Edge: Target Symbol<br/><b>confidence: 1.00</b>"]
+    L0 -->|"external / nonode"| Drop0["Drop Edge: External / Stdlib<br/><i>(suppress heuristic false edges)</i>"]
+    L0 -->|"unresolved / disabled"| L1{"L1: Lexical Scope?<br/><i>(sync-time AST analysis)</i>"}
     
-    L2 -->|Named Import / Module Prefix| Res2[Import Target (0.90)]
-    L2 -->|Unresolved| L3{L3: Receiver Type?}
+    %% L1 Tier
+    L1 -->|"local_only = true"| Drop1["Drop Edge: Local Scope Binding<br/><i>(variable, param, closure quarantined)</i>"]
+    L1 -->|"resolved_symbol_id"| Res1["Emit Edge: Local Symbol<br/><b>confidence: 0.95</b>"]
+    L1 -->|"unresolved"| L2{"L2: Explicit Import?<br/><i>(binding)</i>"}
     
-    L3 -->|Field / Param Type Match| Res3[Type Method (0.80 - 0.85)]
-    L3 -->|Unresolved| L4{L4: Scored Disambiguation}
+    %% L2 Tier
+    L2 -->|"Target::Symbol (named import)"| Res2A["Emit Edge: Import Target<br/><b>confidence: 0.90</b>"]
+    L2 -->|"Target::Module (module::func / ns.func)"| Res2B["Emit Edge: Module Symbol<br/><b>confidence: 0.90</b>"]
+    L2 -->|"unresolved"| L3{"L3: Receiver Type?<br/><i>(self, Type::method, self.field)</i>"}
     
-    L4 -->|Margin >= 2| Res4[Scored Winner (0.40 - 0.70)]
-    L4 -->|Margin < 2| NoEdge[Ambiguous: No Edge]
+    %% L3 Tier
+    L3 -->|"method found in type_methods"| Res3["Emit Edge: Type Method<br/><b>confidence: 0.80 - 0.90</b>"]
+    L3 -->|"unresolved"| L4{"L4: Compatible Candidates?<br/><i>(defs_by_name)</i>"}
+    
+    %% L4 Tier
+    L4 -->|"no candidates"| Drop4A["Drop Edge: Unknown Symbol"]
+    L4 -->|"scored candidates"| L4Margin{"Score Margin?<br/><i>(best - runner_up)</i>"}
+    L4Margin -->|"margin >= 2 or single candidate"| Res4["Emit Edge: Scored Winner<br/><b>confidence: 0.40 - 0.70</b>"]
+    L4Margin -->|"margin < 2 (ambiguous / tie)"| Drop4B["Drop Edge: Ambiguous Tie"]
+
+    %% Styling
+    classDef success fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#01579b;
+    classDef drop fill:#efebe9,stroke:#8d6e63,stroke-width:1.5px,stroke-dasharray: 4 3,color:#4e342e;
+    classDef decision fill:#fffde7,stroke:#fbc02d,stroke-width:2px,color:#f57f17;
+
+    class Res0,Res1,Res2A,Res2B,Res3,Res4 success;
+    class Drop0,Drop1,Drop4A,Drop4B drop;
+    class L0,L1,L2,L3,L4,L4Margin decision;
 ```
 
 ### Empirical Verification & Accuracy Benchmarks

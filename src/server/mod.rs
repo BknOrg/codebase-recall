@@ -214,6 +214,12 @@ fn worker_loop(
                     "text/css; charset=utf-8",
                 ));
             }
+            (true, "/favicon.ico") | (true, "/favicon.svg") => {
+                let _ = req.respond(with_type(
+                    text(200, assets::APP_LOGO),
+                    "image/svg+xml; charset=utf-8",
+                ));
+            }
             _ => {
                 let _ = req.respond(text(404, "not found"));
             }
