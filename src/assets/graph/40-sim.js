@@ -20,13 +20,33 @@
     .stop();
 
   let collideOn = false;
-  function updateCollide(n) {
-    if (n <= 1500 && !collideOn) {
-      sim.force("collide", d3.forceCollide().radius((d) => nodeRadius(d) + 6));
+  let lastRegime = null;
+  function updateSimulationForces() {
+    if (!inFileRegime) {
+      // Directory regime: spread directory nodes out with high repulsion and generous spacing
+      linkForce
+        .distance((l) => (l.kind === "contains" ? 150 : 200))
+        .strength((l) => (l.kind === "contains" ? 0.3 : 0.15));
+      sim.force("charge", d3.forceManyBody().strength(-1000).distanceMax(1400));
+      sim.force("x", d3.forceX(0).strength(0.025));
+      sim.force("y", d3.forceY(0).strength(0.025));
+      sim.force("collide", d3.forceCollide().radius(58).iterations(3));
       collideOn = true;
-    } else if (n > 1500 && collideOn) {
-      sim.force("collide", null);
-      collideOn = false;
+    } else {
+      // File regime: denser graph
+      linkForce
+        .distance((l) => (l.kind === "contains" ? 30 : l.kind === "imports" ? 90 : 60))
+        .strength((l) => (l.kind === "contains" ? 0.55 : 0.12));
+      sim.force("charge", d3.forceManyBody().strength(-260).distanceMax(700).theta(1.1));
+      sim.force("x", d3.forceX(0).strength(0.05));
+      sim.force("y", d3.forceY(0).strength(0.05));
+      if (nodes.length <= 1500) {
+        sim.force("collide", d3.forceCollide().radius((d) => nodeRadius(d) + 6));
+        collideOn = true;
+      } else {
+        sim.force("collide", null);
+        collideOn = false;
+      }
     }
   }
 
@@ -83,14 +103,56 @@
       vlinks = vlinks.filter((l) => vset.has(l.source) && vset.has(l.target));
     }
 
+  function centroidOfDescendants(dirId) {
+    let sumX = 0, sumY = 0, count = 0;
+    const stack = [...(childrenOf.get(dirId) || [])];
+    const visited = new Set(stack);
+    while (stack.length) {
+      const cid = stack.pop();
+      const s = simNodes.get(cid);
+      if (s && s.x != null) {
+        sumX += s.x;
+        sumY += s.y;
+        count++;
+      }
+      const kids = childrenOf.get(cid);
+      if (kids) {
+        for (const k of kids) {
+          if (!visited.has(k)) {
+            visited.add(k);
+            stack.push(k);
+          }
+        }
+      }
+    }
+    return count > 0 ? { x: sumX / count, y: sumY / count } : null;
+  }
+
     const simList = vnodes.map(asSimNode);
     let fresh = 0;
     for (const n of simList) {
       if (n.x == null) {
         fresh++;
-        const anchor = simNodes.get(parentOf.get(n.id)) || simNodes.get(fileOf(n.id));
-        n.x = (anchor ? anchor.x : 0) + (Math.random() - 0.5) * 60;
-        n.y = (anchor ? anchor.y : 0) + (Math.random() - 0.5) * 60;
+        let cx = 0, cy = 0, hasPos = false;
+        if (n.kind === "dir") {
+          const c = centroidOfDescendants(n.id);
+          if (c) {
+            cx = c.x;
+            cy = c.y;
+            hasPos = true;
+          }
+        }
+        if (!hasPos) {
+          const anchor = simNodes.get(parentOf.get(n.id)) || simNodes.get(fileOf(n.id));
+          if (anchor && anchor.x != null) {
+            cx = anchor.x;
+            cy = anchor.y;
+            hasPos = true;
+          }
+        }
+        const spread = n.kind === "dir" ? 120 : 40;
+        n.x = (hasPos ? cx : 0) + (Math.random() - 0.5) * spread;
+        n.y = (hasPos ? cy : 0) + (Math.random() - 0.5) * spread;
       }
     }
 
@@ -108,17 +170,20 @@
     nodes = simList;
     links = vlinks;
 
-    updateCollide(nodes.length);
+    const regimeChanged = lastRegime !== inFileRegime;
+    lastRegime = inFileRegime;
+    updateSimulationForces();
+
     sim.nodes(nodes);
     linkForce.links(links);
     quad = null;
 
-    // Warm up headlessly when the layout is mostly new (first load, regime
-    // switch, or a big expand) so it doesn't visibly explode into place.
-    if (!warmedUp || fresh > 0.3 * Math.max(simList.length, 1)) {
+    // Warm up headlessly when the layout is mostly new or regime switched,
+    // so directory nodes spread out nicely and don't overlap.
+    if (!warmedUp || fresh > 0.3 * Math.max(simList.length, 1) || regimeChanged) {
       warmedUp = true;
       sim.alpha(1);
-      const ticks = Math.min(200, 60 + Math.round(nodes.length / 40));
+      const ticks = !inFileRegime ? 90 : Math.min(200, 60 + Math.round(nodes.length / 40));
       for (let i = 0; i < ticks; i++) sim.tick();
       if (!autoFitted || pendingRegimeFit) fitRegimeAware();
       pendingRegimeFit = false;
