@@ -1,5 +1,6 @@
 //! AST-based extraction of symbols, imports, and references from source files.
 
+mod go;
 mod java;
 mod javascript;
 mod kotlin;
@@ -39,5 +40,6 @@ pub fn parse_file(language: Language, source: &str) -> ParsedFile {
         Language::Java => java::parse(source),
         Language::Kotlin => kotlin::parse(source),
         Language::Vue | Language::Svelte => sfc::parse(source, language),
+        Language::Go => go::parse(source),
     }
 }

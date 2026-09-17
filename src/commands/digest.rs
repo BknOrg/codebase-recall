@@ -124,7 +124,31 @@ fn resolve_root(args: &DigestArgs) -> (PathBuf, String) {
 }
 
 pub fn run(args: DigestArgs) -> Result<()> {
-    let (project_root, sub_prefix) = resolve_root(&args);
+    let report = generate_digest(&args)?;
+
+    if args.json {
+        let json_text = serde_json::to_string_pretty(&report)?;
+        if let Some(out_path) = &args.output {
+            fs::write(out_path, &json_text)?;
+            eprintln!("wrote {}", out_path.display());
+        } else {
+            println!("{json_text}");
+        }
+    } else {
+        let md = format_markdown_digest(&report);
+        if let Some(out_path) = &args.output {
+            fs::write(out_path, &md)?;
+            eprintln!("wrote {}", out_path.display());
+        } else {
+            println!("{md}");
+        }
+    }
+
+    Ok(())
+}
+
+pub fn generate_digest(args: &DigestArgs) -> Result<DigestReport> {
+    let (project_root, sub_prefix) = resolve_root(args);
 
     let mut db = CacheDb::open(&project_root)
         .context("failed to open graph cache DB; run `code-rcl init` first")?;
@@ -338,7 +362,7 @@ pub fn run(args: DigestArgs) -> Result<()> {
         .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
         .unwrap_or_else(|| "codebase".to_string());
 
-    let report = DigestReport {
+    Ok(DigestReport {
         project: project_name,
         total_files: filtered_files.len(),
         total_symbols,
@@ -346,27 +370,7 @@ pub fn run(args: DigestArgs) -> Result<()> {
         languages,
         hubs,
         modules,
-    };
-
-    if args.json {
-        let json_text = serde_json::to_string_pretty(&report)?;
-        if let Some(out_path) = &args.output {
-            fs::write(out_path, &json_text)?;
-            eprintln!("wrote {}", out_path.display());
-        } else {
-            println!("{json_text}");
-        }
-    } else {
-        let md = format_markdown_digest(&report);
-        if let Some(out_path) = &args.output {
-            fs::write(out_path, &md)?;
-            eprintln!("wrote {}", out_path.display());
-        } else {
-            println!("{md}");
-        }
-    }
-
-    Ok(())
+    })
 }
 
 fn extract_signature(lines: &[String], start_line: Option<i64>, end_line: Option<i64>) -> String {
@@ -417,7 +421,7 @@ fn extract_signature(lines: &[String], start_line: Option<i64>, end_line: Option
     sig.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn format_markdown_digest(report: &DigestReport) -> String {
+pub fn format_markdown_digest(report: &DigestReport) -> String {
     let mut md = String::new();
 
     md.push_str(&format!("# Architecture Digest: {}\n\n", report.project));

@@ -59,11 +59,11 @@ pub fn precise_options(args: &PreciseArgs, language_filter: &[String]) -> Precis
     }
 }
 
-/// Print what the precise pass did. Warnings and errors go to stderr so they
-/// stay visible when stdout is piped somewhere.
+/// Print what the precise pass did. All output goes to stderr so stdout
+/// remains clean when piped or formatting as JSON.
 pub fn report_precise(stats: &PreciseStats) {
     for outcome in &stats.languages {
-        println!(
+        eprintln!(
             "precise[{}]: {} resolved {}/{} refs in {} file(s) \
              ({} external, {} untracked, {} unresolved)",
             outcome.language,
@@ -77,7 +77,7 @@ pub fn report_precise(stats: &PreciseStats) {
         );
     }
     if stats.languages.is_empty() && stats.warnings.is_empty() && stats.errors.is_empty() {
-        println!("precise: everything was already up to date (use --precise-full to redo it)");
+        eprintln!("precise: everything was already up to date (use --precise-full to redo it)");
     }
     for warning in &stats.warnings {
         eprintln!("warning: {warning}");

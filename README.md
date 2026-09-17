@@ -5,7 +5,7 @@
 `codebase-recall` (`code-rcl`) is a command-line tool built with Rust 🦀 designed for two primary developer workflows:
 
 1. **Context Bundling for LLMs:** Scan your directory structure and bundle your codebase—or a focused, dependency-aware slice of it—into a clean, well-structured Markdown document ready for LLMs (ChatGPT, Claude, Gemini, DeepSeek).
-2. **Code Relation Graph & Architecture Visualization:** Parse ASTs across multiple languages (Rust, JS/TS, Python, Java, Kotlin, Vue, Svelte) to discover definitions, imports, and cross-file calls. Visualize interactions in real-time in an interactive browser UI or export to self-contained HTML, Graphviz DOT, or JSON.
+2. **Code Relation Graph & Architecture Visualization:** Parse ASTs across multiple languages (Rust, Go, JS/TS, Python, Java, Kotlin, Vue, Svelte) to discover definitions, imports, and cross-file calls. Visualize interactions in real-time in an interactive browser UI or export to self-contained HTML, Graphviz DOT, or JSON.
 
 ---
 
@@ -30,7 +30,7 @@
 
 ### 🕸️ Code Relation Graph (`graph` & `serve`)
 
-- **Multi-Language AST Parsing:** Powered by tree-sitter for **Rust**, **JavaScript/JSX**, **TypeScript/TSX**, **Python**, **Java**, **Kotlin**, and Single-File Components (**Vue**, **Svelte**).
+- **Multi-Language AST Parsing:** Powered by tree-sitter for **Rust**, **Go**, **JavaScript/JSX**, **TypeScript/TSX**, **Python**, **Java**, **Kotlin**, and Single-File Components (**Vue**, **Svelte**).
 - **Multi-Tier Resolution:** Tracks symbols (functions, structs, classes, enums, methods), imports, and call references across files with confidence scoring.
 - **Incremental SQLite Caching:** Stores file hashes (Blake3) and AST entities in `.code-rcl/cache.db`. Re-runs only parse files modified since the last sync.
 - **Interactive Browser Viewer (`serve`):**
@@ -39,7 +39,7 @@
   - Interactive search filtering, node isolation, cluster expansion/collapsing, and press-and-hold node spotlighting.
   - Interactive BFS depth adjuster directly inside the web UI.
   - **Zero Background Footprint:** Uses a lightweight EventSource heartbeat; the local server automatically terminates when you close your browser tab.
-- **Export Formats (`graph`):** Standalone zero-dependency HTML, Graphviz `.dot`, and structured JSON (`version: 1`).
+- **Export Formats (`graph`):** Standalone zero-dependency HTML, Graphviz `.dot`, and structured JSON (`version: 2`).
 
 ---
 
@@ -93,6 +93,8 @@ The compiled binary is available as `code-rcl`.
 | `code-rcl sync` | Incrementally parse changed source files into the graph cache. |
 | `code-rcl graph` | Auto-sync, then export the relation graph to file(s) (`html`, `json`, `dot`). |
 | `code-rcl serve` | Auto-sync, then host an interactive relation graph in the browser; exits when the tab closes. |
+| `code-rcl mcp` | Run Model Context Protocol (MCP) server over stdio for AI agent integration. |
+| `code-rcl setup` | Self-install AI agent skill and auto-configure MCP servers (Gemini/Antigravity, Claude Code). |
 
 > **Interactive Help:** You can view parameter options and real usage examples for any command with `code-rcl <cmd> help` (e.g. `code-rcl dump help`, `code-rcl digest help`).
 
@@ -342,6 +344,7 @@ decorate (util.rs)
 | **Python** | `.py`, `.pyi` | Tree-sitter | Functions, classes, methods, `import` / `from ... import`, calls |
 | **Java** | `.java` | Tree-sitter | Classes, interfaces, enums, records, methods, `import` (incl. `static` / `.*`), calls |
 | **Kotlin** | `.kt`, `.kts` | Tree-sitter | Classes, objects, top-level & member functions (incl. `@Composable`), properties, `import` (incl. `as` / `.*`), calls |
+| **Go** | `.go` | Tree-sitter | Functions, methods (with receiver types), structs, interfaces, type aliases, `import`, calls |
 | **Vue** | `.vue` | SFC Extractor + TS/JS | `<script>` & `<script setup>` symbols, imports, components |
 | **Svelte** | `.svelte` | SFC Extractor + TS/JS | `<script>` symbols, imports, reactive calls |
 
@@ -449,6 +452,7 @@ Nothing is bundled. Install the servers for your languages; a missing server is 
 | **JavaScript** | `typescript-language-server` | `npm install -g typescript-language-server typescript` | `CODE_RCL_LSP_JAVASCRIPT` |
 | **Java** | `jdtls` (Eclipse JDT LS) | [eclipse.jdt.ls releases](https://github.com/eclipse-jdtls/eclipse.jdt.ls) (needs JDK 17+) | `CODE_RCL_LSP_JAVA` |
 | **Kotlin** | `kotlin-language-server` | [kotlin-language-server releases](https://github.com/fwcd/kotlin-language-server/releases) | `CODE_RCL_LSP_KOTLIN` |
+| **Go** | `gopls` | `go install golang.org/x/tools/gopls@latest` | `CODE_RCL_LSP_GO` |
 
 #### `sync --precise` Options
 
@@ -460,13 +464,13 @@ Nothing is bundled. Install the servers for your languages; a missing server is 
 
 ---
 
-## JSON Schema (`--format json`, `version: 1`)
+## JSON Schema (`--format json`, `version: 2`)
 
 When exporting with `code-rcl graph --format json`, the output conforms to this structure:
 
 ```jsonc
 {
-  "version": 1,
+  "version": 2,
   "root": "/path/to/project",
   "generated_at": 1730000000,
   "nodes": [
@@ -475,16 +479,20 @@ When exporting with `code-rcl graph --format json`, the output conforms to this 
       "kind": "file",
       "label": "src/main.rs",
       "path": "src/main.rs",
+      "dir": "src",
       "language": "rust",
-      "exported": true
+      "exported": true,
+      "degree": 3
     },
     {
       "id": "sym:src/main.rs#main@10",
       "kind": "function",
       "label": "main",
       "path": "src/main.rs",
+      "dir": "src",
       "language": "rust",
-      "exported": false
+      "exported": false,
+      "degree": 2
     }
   ],
   "edges": [
@@ -503,6 +511,63 @@ When exporting with `code-rcl graph --format json`, the output conforms to this 
   ]
 }
 ```
+
+---
+
+## Model Context Protocol (MCP) Server
+
+`code-rcl` includes a built-in MCP server that runs over standard I/O (`stdio`), allowing AI coding agents (Claude Desktop, Cursor, Gemini Antigravity, Cline, etc.) to perform AST-based architecture discovery and dependency traversal automatically:
+
+```bash
+# Launch MCP server over stdio for current directory
+code-rcl mcp
+
+# Launch with an explicit target project
+code-rcl mcp --project /path/to/project
+```
+
+### Instant Automated Setup (`code-rcl setup`)
+
+Instead of configuring JSON files manually, `code-rcl` can self-install its agent skill and register itself into your agent's MCP configuration automatically:
+
+```bash
+# Auto-configure current workspace (.agents/skills/code-rcl/SKILL.md and .mcp.json)
+code-rcl setup --workspace
+
+# Configure globally for all projects (~/.gemini/config and ~/.claude.json)
+code-rcl setup --global
+
+# Target specific agent environments
+code-rcl setup --target claude
+code-rcl setup --target gemini
+
+# Inspect the embedded skill directly in terminal without writing files
+code-rcl setup --print-skill
+```
+
+### Manual IDE & Agent Configuration
+
+Alternatively, you can manually add `code-rcl` to your agent's MCP configuration (`mcp_config.json` or `.mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "code-rcl": {
+      "command": "code-rcl",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### Exposed MCP Tools
+
+1. **`code_rcl_digest`**: Generates a high-level architecture skeleton and public API index with Core Architecture Hubs (strips function bodies to save 80–90% prompt tokens).
+2. **`code_rcl_search`**: Instant symbol & declaration lookup across the codebase from the SQLite cache (0–5ms, no grep overhead).
+3. **`code_rcl_impact`**: Analyzes reverse caller hierarchy and modification blast radius before editing symbols (supports optional `precise: true`).
+4. **`code_rcl_dump`**: Extracts a relation-aware neighborhood context bundle around a focal symbol or file.
+5. **`code_rcl_sync`**: Incremental AST sync with optional compiler-grade (`precise: true`) LSP pass for ground-truth verification.
+6. **`code_rcl_graph`**: Returns raw nodes and edges of the code graph in structured JSON.
 
 ---
 

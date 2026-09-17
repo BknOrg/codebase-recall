@@ -137,6 +137,58 @@ impl CacheDb {
         Ok(rows)
     }
 
+    /// Search symbols by name or signature with optional kind and exported filter.
+    pub fn search_symbols(
+        &self,
+        query: &str,
+        kind_filter: Option<&str>,
+        exported_only: bool,
+        limit: usize,
+    ) -> Result<Vec<(SymbolRow, String)>> {
+        let pattern = format!("%{query}%");
+        let mut sql = String::from(
+            "SELECT s.id, s.file_id, s.name, s.kind, s.parent_symbol_id, s.is_exported,
+                    s.start_line, s.end_line, s.start_byte, s.end_byte, s.signature,
+                    s.param_count, s.type_name, f.path
+             FROM symbols s
+             JOIN files f ON s.file_id = f.id
+             WHERE (s.name LIKE ?1 OR s.signature LIKE ?1)",
+        );
+
+        if let Some(k) = kind_filter {
+            sql.push_str(&format!(" AND s.kind = '{}'", k.replace('\'', "''")));
+        }
+        if exported_only {
+            sql.push_str(" AND s.is_exported = 1");
+        }
+        sql.push_str(" ORDER BY (s.name = ?2) DESC, LENGTH(s.name) ASC, s.name ASC LIMIT ?3");
+
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(params![pattern, query, limit as i64], |r| {
+                Ok((
+                    SymbolRow {
+                        id: r.get(0)?,
+                        file_id: r.get(1)?,
+                        name: r.get(2)?,
+                        kind: r.get(3)?,
+                        parent_symbol_id: r.get(4)?,
+                        is_exported: r.get::<_, i64>(5)? != 0,
+                        start_line: r.get(6)?,
+                        end_line: r.get(7)?,
+                        start_byte: r.get(8)?,
+                        end_byte: r.get(9)?,
+                        signature: r.get(10)?,
+                        param_count: r.get(11)?,
+                        type_name: r.get(12)?,
+                    },
+                    r.get::<_, String>(13)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
     pub fn all_imports(&self) -> Result<Vec<ImportRow>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, file_id, raw_specifier, imported_name, alias, is_relative, start_line

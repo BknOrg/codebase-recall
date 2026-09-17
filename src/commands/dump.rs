@@ -54,18 +54,14 @@ pub fn run(args: DumpArgs) -> Result<()> {
     Ok(())
 }
 
-/// Write a relation-aware ("dump -r") context bundle for `target` (a symbol name
-/// or a project-relative file path) and everything within `depth` graph hops, to
-/// `output`. Returns `(output_path, connected_file_count)`. Reused by the viewer's
-/// `/dump` endpoint in `code-rcl serve`.
-pub fn relation_bundle(
+/// Generate relation-aware markdown context directly in memory.
+pub fn generate_relation_bundle(
     project: &Path,
     target: &str,
     depth: u32,
     max_size_kb: u64,
     no_sync: bool,
-    output: &Path,
-) -> Result<(PathBuf, usize)> {
+) -> Result<(String, usize)> {
     let query = GraphQuery {
         project: project.to_path_buf(),
         scope: "both".to_string(),
@@ -102,6 +98,22 @@ pub fn relation_bundle(
         "> **Targeted dump**: focused on `{}` with depth {}. \n\n",
         target, depth
     );
-    fs::write(output, format!("{header}{body}"))?;
-    Ok((output.to_path_buf(), files.len()))
+    Ok((format!("{header}{body}"), files.len()))
+}
+
+/// Write a relation-aware ("dump -r") context bundle for `target` (a symbol name
+/// or a project-relative file path) and everything within `depth` graph hops, to
+/// `output`. Returns `(output_path, connected_file_count)`. Reused by the viewer's
+/// `/dump` endpoint in `code-rcl serve`.
+pub fn relation_bundle(
+    project: &Path,
+    target: &str,
+    depth: u32,
+    max_size_kb: u64,
+    no_sync: bool,
+    output: &Path,
+) -> Result<(PathBuf, usize)> {
+    let (content, n) = generate_relation_bundle(project, target, depth, max_size_kb, no_sync)?;
+    fs::write(output, content)?;
+    Ok((output.to_path_buf(), n))
 }

@@ -3,5 +3,7 @@ pub mod dump;
 pub mod graph;
 pub mod impact;
 pub mod init;
+pub mod mcp;
 pub mod serve;
+pub mod setup;
 pub mod sync;

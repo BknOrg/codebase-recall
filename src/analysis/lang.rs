@@ -13,6 +13,7 @@ pub enum Language {
     Kotlin,
     Vue,
     Svelte,
+    Go,
 }
 
 impl Language {
@@ -30,6 +31,7 @@ impl Language {
             "kt" | "kts" => Language::Kotlin,
             "vue" => Language::Vue,
             "svelte" => Language::Svelte,
+            "go" => Language::Go,
             _ => return None,
         })
     }
@@ -45,6 +47,7 @@ impl Language {
             Language::Kotlin => "kotlin",
             Language::Vue => "vue",
             Language::Svelte => "svelte",
+            Language::Go => "go",
         }
     }
 

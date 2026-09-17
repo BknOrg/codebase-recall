@@ -125,6 +125,18 @@ pub const BACKENDS: &[Backend] = &[
         marker_hint: "without a jsconfig.json or package.json, module resolutions may be incomplete",
         index_timeout_secs: 300,
     },
+    Backend {
+        lang_group: "go",
+        language_id: "go",
+        candidates: &[("gopls", &[])],
+        env_override: "CODE_RCL_LSP_GO",
+        install_hint: "install it with `go install golang.org/x/tools/gopls@latest` \
+                       and ensure `$(go env GOPATH)/bin` is on PATH, or point CODE_RCL_LSP_GO at it",
+        project_markers: &["go.mod", "go.work"],
+        marker_hint: "gopls resolves types through go.mod/go.work modules; without a \
+                      go.mod it falls back to single-file mode and package calls may come back unresolved",
+        index_timeout_secs: 300,
+    },
 ];
 
 /// Comma-separated language groups `--precise` can serve, for help text.

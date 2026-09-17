@@ -21,7 +21,13 @@ fn main() -> Result<()> {
         raw_args
             .into_iter()
             .enumerate()
-            .map(|(i, arg)| if i > 1 && arg == "help" { "--help".to_string() } else { arg })
+            .map(|(i, arg)| {
+                if i > 1 && arg == "help" {
+                    "--help".to_string()
+                } else {
+                    arg
+                }
+            })
             .collect()
     } else {
         raw_args
@@ -37,5 +43,7 @@ fn main() -> Result<()> {
         Command::Serve(args) => commands::serve::run(args),
         Command::Impact(args) => commands::impact::run(args),
         Command::Digest(args) => commands::digest::run(args),
+        Command::Mcp(args) => commands::mcp::run(args),
+        Command::Setup(args) => commands::setup::run(args),
     }
 }

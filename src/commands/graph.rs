@@ -93,7 +93,18 @@ pub fn run(args: GraphArgs) -> Result<()> {
     let graph = build_graph(&args.query)?;
 
     let targets = output_targets(&project, &args.output, &formats);
+    let has_stdout = targets.iter().any(|(_, p)| p.as_os_str() == "-");
+
     for (format, path) in targets {
+        if path.as_os_str() == "-" {
+            if format == Format::Html {
+                anyhow::bail!("cannot stream separated HTML bundle to stdout; specify an output file path");
+            }
+            let body = render::render(&graph, format)?;
+            println!("{body}");
+            continue;
+        }
+
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).ok();
         }
@@ -132,11 +143,19 @@ pub fn run(args: GraphArgs) -> Result<()> {
         }
     }
 
-    println!(
-        "graph: {} nodes, {} edges",
-        graph.nodes.len(),
-        graph.edges.len()
-    );
+    if has_stdout {
+        eprintln!(
+            "graph: {} nodes, {} edges",
+            graph.nodes.len(),
+            graph.edges.len()
+        );
+    } else {
+        println!(
+            "graph: {} nodes, {} edges",
+            graph.nodes.len(),
+            graph.edges.len()
+        );
+    }
     Ok(())
 }
 
@@ -171,6 +190,9 @@ fn output_targets(
                 )
             })
             .collect(),
+        Some(p) if p.as_os_str() == "-" => {
+            formats.iter().map(|f| (*f, PathBuf::from("-"))).collect()
+        }
         Some(p) if formats.len() == 1 => vec![(formats[0], p.clone())],
         Some(p) => {
             // Treat as a stem: strip a trailing known extension, then append each.

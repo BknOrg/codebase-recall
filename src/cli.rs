@@ -29,6 +29,10 @@ pub enum Command {
     Impact(ImpactArgs),
     /// Generate an architecture outline and public API digest of the codebase
     Digest(DigestArgs),
+    /// Run Model Context Protocol (MCP) server over stdio for AI agent integration
+    Mcp(McpArgs),
+    /// Self-install the AI agent skill and configure MCP servers (Antigravity/Gemini, Claude Code)
+    Setup(SetupArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -285,4 +289,50 @@ pub struct DigestArgs {
     /// Skip auto-syncing changed files before generating digest
     #[arg(long)]
     pub no_sync: bool,
+}
+
+#[derive(Parser, Debug, Clone)]
+#[command(
+    about = "Run Model Context Protocol (MCP) server over stdio for AI agent integration",
+    after_help = "Examples:\n  code-rcl mcp\n  code-rcl mcp --project /path/to/repo"
+)]
+pub struct McpArgs {
+    /// Default project directory to analyze [default: .]
+    #[arg(long, default_value = ".")]
+    pub project: PathBuf,
+}
+
+#[derive(Parser, Debug, Clone)]
+#[command(
+    about = "Self-install the AI agent skill and configure MCP servers (Antigravity/Gemini, Claude Code)",
+    after_help = "Examples:\n  code-rcl setup\n  code-rcl setup --workspace\n  code-rcl setup --global\n  code-rcl setup --target claude\n  code-rcl setup --print-skill"
+)]
+pub struct SetupArgs {
+    /// Install globally to user profile config (~/.gemini/config and ~/.claude.json)
+    #[arg(long)]
+    pub global: bool,
+
+    /// Install locally into the current workspace (.agents/ and .mcp.json)
+    #[arg(long)]
+    pub workspace: bool,
+
+    /// Target AI agent environment: gemini, claude, or all [default: all]
+    #[arg(long, default_value = "all")]
+    pub target: String,
+
+    /// Print the embedded SKILL.md to stdout and exit
+    #[arg(long)]
+    pub print_skill: bool,
+
+    /// Only install the skill file, do not modify MCP configs
+    #[arg(long)]
+    pub skill_only: bool,
+
+    /// Only configure MCP server, do not install skill file
+    #[arg(long)]
+    pub mcp_only: bool,
+
+    /// Custom target directory for the skill (overrides defaults)
+    #[arg(long)]
+    pub skill_dir: Option<PathBuf>,
 }

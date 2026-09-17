@@ -76,6 +76,9 @@ pub fn generate_reports(args: &ImpactArgs) -> Result<Vec<ImpactReport>> {
         .collect();
 
     if targets.is_empty() {
+        if args.json {
+            return Ok(Vec::new());
+        }
         anyhow::bail!(
             "No symbol or file matching '{}' found in graph. Run `code-rcl graph` to inspect available symbols.",
             args.symbol

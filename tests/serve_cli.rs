@@ -88,7 +88,10 @@ fn serve_starts_answers_and_quits() {
 
     let (status, body) = http_get(port, "/");
     assert!(status.contains("200"), "GET / status: {status}");
-    assert!(body.contains("code-rcl graph"), "GET / body missing header");
+    assert!(
+        body.contains("code-rcl graph") || body.contains("codebase recall graph"),
+        "GET / body missing header"
+    );
     assert!(body.contains("toggleLeftPane"), "GET / body missing toggleLeftPane");
     assert!(
         body.contains(r#"id="graph-data""#),

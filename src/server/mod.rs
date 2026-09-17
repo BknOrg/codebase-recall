@@ -320,7 +320,7 @@ fn resolve_output_dir(project: &Path, dir_param: Option<String>) -> Result<PathB
 /// reply. NOTE: unlike the rest of `serve`, this writes a file to disk.
 fn run_dump(project: &Path, url: &str) -> String {
     let Some(target) = query_param(url, "target").filter(|t| !t.is_empty()) else {
-        return r#"{"ok":false,"error":"missing target"}"#.to_string();
+        return serde_json::json!({"ok": false, "error": "missing target"}).to_string();
     };
     let depth = query_param(url, "depth")
         .and_then(|d| d.parse::<u32>().ok())
@@ -329,20 +329,22 @@ fn run_dump(project: &Path, url: &str) -> String {
     let name = sanitize_name(query_param(url, "name"), "codebase-context.md");
     let dir = match resolve_output_dir(project, query_param(url, "dir")) {
         Ok(d) => d,
-        Err(e) => return format!(r#"{{"ok":false,"error":"{}"}}"#, json_escape(&e)),
+        Err(e) => return serde_json::json!({"ok": false, "error": e}).to_string(),
     };
     let output = dir.join(&name);
 
     match crate::commands::dump::relation_bundle(project, &target, depth, 50, false, &output) {
-        Ok((path, n)) => format!(
-            r#"{{"ok":true,"path":"{}","files":{}}}"#,
-            json_escape(&path.display().to_string()),
-            n
-        ),
-        Err(e) => format!(
-            r#"{{"ok":false,"error":"{}"}}"#,
-            json_escape(&e.to_string())
-        ),
+        Ok((path, n)) => serde_json::json!({
+            "ok": true,
+            "path": path.display().to_string(),
+            "files": n,
+        })
+        .to_string(),
+        Err(e) => serde_json::json!({
+            "ok": false,
+            "error": e.to_string(),
+        })
+        .to_string(),
     }
 }
 
@@ -350,7 +352,7 @@ fn run_dump(project: &Path, url: &str) -> String {
 /// writes the rendered report to disk, returning a small JSON reply.
 fn run_impact(project: &Path, url: &str) -> String {
     let Some(target) = query_param(url, "target").filter(|t| !t.is_empty()) else {
-        return r#"{"ok":false,"error":"missing target"}"#.to_string();
+        return serde_json::json!({"ok": false, "error": "missing target"}).to_string();
     };
     let depth = query_param(url, "depth")
         .and_then(|d| d.parse::<u32>().ok())
@@ -365,7 +367,7 @@ fn run_impact(project: &Path, url: &str) -> String {
     let name = sanitize_name(query_param(url, "name"), default_name);
     let dir = match resolve_output_dir(project, query_param(url, "dir")) {
         Ok(d) => d,
-        Err(e) => return format!(r#"{{"ok":false,"error":"{}"}}"#, json_escape(&e)),
+        Err(e) => return serde_json::json!({"ok": false, "error": e}).to_string(),
     };
     let output = dir.join(&name);
 
@@ -390,21 +392,26 @@ fn run_impact(project: &Path, url: &str) -> String {
     });
 
     match result {
-        Ok(n) => format!(
-            r#"{{"ok":true,"path":"{}","targets":{}}}"#,
-            json_escape(&output.display().to_string()),
-            n
-        ),
-        Err(e) => format!(
-            r#"{{"ok":false,"error":"{}"}}"#,
-            json_escape(&e.to_string())
-        ),
+        Ok(n) => serde_json::json!({
+            "ok": true,
+            "path": output.display().to_string(),
+            "targets": n,
+        })
+        .to_string(),
+        Err(e) => serde_json::json!({
+            "ok": false,
+            "error": e.to_string(),
+        })
+        .to_string(),
     }
 }
 
 fn run_source(project: &Path, url: &str) -> (u16, String) {
     let Some(rel) = query_param(url, "path") else {
-        return (400, r#"{"ok":false,"error":"missing path param"}"#.into());
+        return (
+            400,
+            serde_json::json!({"ok": false, "error": "missing path param"}).to_string(),
+        );
     };
     let rel_clean = rel.replace('\\', "/");
     let rel_path = Path::new(&rel_clean);
@@ -413,29 +420,43 @@ fn run_source(project: &Path, url: &str) -> (u16, String) {
         || rel_clean.split('/').any(|segment| segment == "..")
         || rel_clean.contains(':')
     {
-        return (403, r#"{"ok":false,"error":"access denied"}"#.into());
+        return (
+            403,
+            serde_json::json!({"ok": false, "error": "access denied"}).to_string(),
+        );
     }
     let target = project.join(rel_path);
     if let (Ok(cp), Ok(ct)) = (project.canonicalize(), target.canonicalize()) {
         if !ct.starts_with(&cp) {
-            return (403, r#"{"ok":false,"error":"access denied"}"#.into());
+            return (
+                403,
+                serde_json::json!({"ok": false, "error": "access denied"}).to_string(),
+            );
         }
     }
     if !target.exists() || !target.is_file() {
-        return (404, r#"{"ok":false,"error":"file not found"}"#.into());
+        return (
+            404,
+            serde_json::json!({"ok": false, "error": "file not found"}).to_string(),
+        );
     }
     match std::fs::read_to_string(&target) {
         Ok(content) => (
             200,
-            format!(
-                r#"{{"ok":true,"path":"{}","content":"{}"}}"#,
-                json_escape(&rel_clean),
-                json_escape(&content)
-            ),
+            serde_json::json!({
+                "ok": true,
+                "path": rel_clean,
+                "content": content,
+            })
+            .to_string(),
         ),
         Err(e) => (
             500,
-            format!(r#"{{"ok":false,"error":"{}"}}"#, json_escape(&e.to_string())),
+            serde_json::json!({
+                "ok": false,
+                "error": e.to_string(),
+            })
+            .to_string(),
         ),
     }
 }
@@ -476,21 +497,6 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-fn json_escape(s: &str) -> String {
-    let mut o = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '"' => o.push_str("\\\""),
-            '\\' => o.push_str("\\\\"),
-            '\n' => o.push_str("\\n"),
-            '\r' => o.push_str("\\r"),
-            '\t' => o.push_str("\\t"),
-            c if (c as u32) < 0x20 => o.push_str(&format!("\\u{:04x}", c as u32)),
-            c => o.push(c),
-        }
-    }
-    o
-}
 
 // --- small response helpers ------------------------------------------------
 
