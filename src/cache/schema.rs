@@ -4,10 +4,10 @@
 //! [`MIGRATIONS`] moves the database from version `i` to version `i + 1`.
 
 /// Current schema version. Must equal `MIGRATIONS.len()`.
-pub const SCHEMA_VERSION: i64 = 3;
+pub const SCHEMA_VERSION: i64 = 4;
 
 /// Ordered migration scripts. `MIGRATIONS[0]` upgrades v0 -> v1, etc.
-pub const MIGRATIONS: &[&str] = &[V1, V2, V3];
+pub const MIGRATIONS: &[&str] = &[V1, V2, V3, V4];
 
 const V1: &str = r#"
 CREATE TABLE meta (
@@ -141,4 +141,18 @@ ALTER TABLE files ADD COLUMN precise_synced_at INTEGER;
 CREATE INDEX idx_refs_precise ON refs(file_id, precise_status);
 
 DELETE FROM files;
+"#;
+
+/// v4 — string literals / config keys indexed from call arguments and macros.
+const V4: &str = r#"
+CREATE TABLE string_literals (
+    id      INTEGER PRIMARY KEY,
+    file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    value   TEXT NOT NULL,
+    callee  TEXT,
+    line    INTEGER
+);
+
+CREATE INDEX idx_strings_val  ON string_literals(value);
+CREATE INDEX idx_strings_file ON string_literals(file_id);
 "#;

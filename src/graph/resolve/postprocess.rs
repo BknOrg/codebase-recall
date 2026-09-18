@@ -201,6 +201,7 @@ pub(super) fn rollup_directories(nodes: &mut Vec<Node>, edges: &mut Vec<Edge>) {
             exported: true,
             lines: None,
             degree: None,
+            community: None,
         });
     }
 

@@ -18,6 +18,7 @@
     activeFile: null,
     activeLine: null,
     activeRange: null,
+    colorMode: "kind", // "kind" | "community"
   };
   let inFileRegime = true;
   let hovered = null;

@@ -1,9 +1,14 @@
 pub mod digest;
 pub mod dump;
+pub mod explain;
 pub mod graph;
 pub mod impact;
 pub mod init;
 pub mod mcp;
+pub mod path;
+pub mod report;
+pub mod search;
 pub mod serve;
 pub mod setup;
+pub mod setup_integrations;
 pub mod sync;

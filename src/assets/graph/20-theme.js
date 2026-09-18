@@ -35,6 +35,20 @@ function kindColor(k) {
   if (TYPE_KINDS.has(k)) return COL.type;
   return COL.func;
 }
+// Subsystems (communities): a stable hue per community id, spread by the golden angle so
+// neighbouring ids stay visually distinct however many there are.
+const COMMUNITIES = DATA.communities || [];
+const communityInfo = new Map(COMMUNITIES.map((c) => [c.id, c]));
+function communityColor(id) {
+  const hue = Math.round((id * 137.508) % 360);
+  return `hsl(${hue}, 62%, ${mq.matches ? 62 : 44}%)`;
+}
+// What a node is filled with. In subsystem mode: its subsystem colour, or neutral grey when it
+// has none (matching the legend's "no subsystem" row); directory roll-ups keep their own colour.
+function nodeFill(d) {
+  if (state.colorMode !== "community" || d.kind === "dir") return kindColor(d.kind);
+  return d.community != null ? communityColor(d.community) : COL.ext;
+}
 function nodeRadius(d) {
   if (d.kind === "dir") return 16;
   if (d.kind === "file") return 6.5;

@@ -7,6 +7,7 @@ mod dump;
 mod graph;
 mod precise;
 mod server;
+mod service;
 
 use anyhow::Result;
 use clap::Parser;
@@ -42,6 +43,10 @@ fn main() -> Result<()> {
         Command::Graph(args) => commands::graph::run(args),
         Command::Serve(args) => commands::serve::run(args),
         Command::Impact(args) => commands::impact::run(args),
+        Command::Path(args) => commands::path::run(args),
+        Command::Explain(args) => commands::explain::run(args),
+        Command::Report(args) => commands::report::run(args),
+        Command::Search(args) => commands::search::run(args),
         Command::Digest(args) => commands::digest::run(args),
         Command::Mcp(args) => commands::mcp::run(args),
         Command::Setup(args) => commands::setup::run(args),

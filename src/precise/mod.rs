@@ -23,7 +23,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::IsTerminal;
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, ensure};
 use serde_json::Value;
@@ -254,9 +254,15 @@ impl Resolver<'_> {
             client.name(),
             files.len()
         );
-        if client.wait_until_ready(Duration::from_secs(backend.index_timeout_secs))
-            == Readiness::TimedOut
-        {
+        let indexing_started = Instant::now();
+        let readiness = client.wait_until_ready(Duration::from_secs(backend.index_timeout_secs));
+        eprintln!(
+            "precise[{}]: {} ready after {:.1}s",
+            backend.lang_group,
+            client.name(),
+            indexing_started.elapsed().as_secs_f32()
+        );
+        if readiness == Readiness::TimedOut {
             warnings.push(format!(
                 "{}: {} was still indexing after {}s, so some answers may be incomplete. \
                  Re-run `code-rcl sync --precise` once it has warmed up.",
@@ -318,18 +324,26 @@ impl Resolver<'_> {
             let uri = path_to_uri(&absolute);
             client.did_open(&uri, backend.language_id, positions.text())?;
 
-            let mut results = Vec::with_capacity(refs.len());
+            // Positions first, so every query for this file goes out together.
+            let mut queried_refs = Vec::with_capacity(refs.len());
+            let mut file_positions = Vec::with_capacity(refs.len());
             for reference in &refs {
                 // Only the four precise-capable analyzers record the name token.
                 let Some(offset) = reference.name_start_byte else {
                     continue;
                 };
-                let Some((line, character)) = positions.position(offset as usize) else {
+                let Some(position) = positions.position(offset as usize) else {
                     continue;
                 };
+                queried_refs.push(reference.id);
+                file_positions.push(position);
+            }
 
-                let answer = client.definition(&uri, line, character, self.opts.request_timeout)?;
-                let (status, symbol_id, confidence) = self.classify(&answer);
+            let answers =
+                client.definitions(&uri, &file_positions, self.opts.request_timeout)?;
+            let mut results = Vec::with_capacity(answers.len());
+            for (ref_id, answer) in queried_refs.into_iter().zip(&answers) {
+                let (status, symbol_id, confidence) = self.classify(answer);
                 match status {
                     PreciseStatus::Hit => outcome.hits += 1,
                     PreciseStatus::External => outcome.external += 1,
@@ -337,7 +351,7 @@ impl Resolver<'_> {
                     PreciseStatus::Unresolved => outcome.unresolved += 1,
                 }
                 outcome.queried += 1;
-                results.push((reference.id, status, symbol_id, confidence));
+                results.push((ref_id, status, symbol_id, confidence));
             }
 
             client.did_close(&uri)?;

@@ -25,6 +25,9 @@ use super::map::path_to_uri;
 /// How many lines of the server's stderr to keep for error messages.
 const STDERR_TAIL_LINES: usize = 40;
 
+/// How many definition requests are kept in flight at once.
+const DEFINITION_WINDOW: usize = 64;
+
 /// Why a readiness wait ended. Both outcomes are usable; the caller decides
 /// whether to warn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -213,22 +216,69 @@ impl LspClient {
         )
     }
 
-    /// `textDocument/definition` at a zero-based UTF-16 position.
-    pub fn definition(
+    /// `textDocument/definition` for many zero-based UTF-16 positions in one
+    /// document, with the requests in flight together rather than one round
+    /// trip each. Answers come back in the order of `positions`.
+    ///
+    /// `timeout` is how long the server may stay silent, not a budget for the
+    /// whole batch: every answer that arrives restarts the clock.
+    pub fn definitions(
         &mut self,
         uri: &str,
-        line: u32,
-        character: u32,
+        positions: &[(u32, u32)],
         timeout: Duration,
-    ) -> Result<Value> {
-        self.request(
-            "textDocument/definition",
-            json!({
-                "textDocument": { "uri": uri },
-                "position": { "line": line, "character": character },
-            }),
-            timeout,
-        )
+    ) -> Result<Vec<Value>> {
+        let mut answers: Vec<Option<Value>> = vec![None; positions.len()];
+        for (chunk_index, chunk) in positions.chunks(DEFINITION_WINDOW).enumerate() {
+            let base = chunk_index * DEFINITION_WINDOW;
+            let first_id = self.next_id;
+            for (offset, (line, character)) in chunk.iter().enumerate() {
+                let id = first_id + offset as i64;
+                self.send(json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "method": "textDocument/definition",
+                    "params": {
+                        "textDocument": { "uri": uri },
+                        "position": { "line": line, "character": character },
+                    },
+                }))?;
+            }
+            self.next_id += chunk.len() as i64;
+
+            let mut pending = chunk.len();
+            let mut deadline = Instant::now() + timeout;
+            while pending > 0 {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                let message = match self.inbox.recv_timeout(remaining) {
+                    Ok(m) => m,
+                    Err(RecvTimeoutError::Timeout) => bail!(
+                        "language server `{}` did not answer `textDocument/definition` within {}s.
+                           The project may be larger than the timeout allows — raise it with                          `--precise-timeout <seconds>`.{}",
+                        self.name,
+                        timeout.as_secs(),
+                        self.stderr_hint(),
+                    ),
+                    Err(RecvTimeoutError::Disconnected) => bail!(
+                        "language server `{}` exited while code-rcl was talking to it.{}",
+                        self.name,
+                        self.stderr_hint(),
+                    ),
+                };
+                if let Some((id, result)) = self.dispatch(&message)? {
+                    let slot = id - first_id;
+                    if slot >= 0 && (slot as usize) < chunk.len() {
+                        let cell = &mut answers[base + slot as usize];
+                        if cell.is_none() {
+                            *cell = Some(result);
+                            pending -= 1;
+                            deadline = Instant::now() + timeout;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(answers.into_iter().map(|a| a.unwrap_or(Value::Null)).collect())
     }
 
     /// Ask the server to stop, then make sure it actually did.
@@ -318,36 +368,48 @@ impl LspClient {
                 }
             };
 
-            let method = message.get("method").and_then(Value::as_str);
-            let id = message.get("id");
-
-            match (method, id) {
-                // A request from the server.
-                (Some(method), Some(id)) => {
-                    let reply = self.server_request_result(method, &message);
-                    self.send(json!({ "jsonrpc": "2.0", "id": id, "result": reply }))?;
+            if let Some((id, result)) = self.dispatch(&message)? {
+                if Some(id) == want {
+                    return Ok(Some(result));
                 }
-                // A notification.
-                (Some(method), None) => {
-                    self.handle_notification(method, message.get("params"));
-                }
-                // A response to one of ours.
-                (None, Some(id)) => {
-                    if id.as_i64() != want {
-                        continue; // a stale answer we no longer care about
-                    }
-                    if let Some(error) = message.get("error") {
-                        let text = error
-                            .get("message")
-                            .and_then(Value::as_str)
-                            .unwrap_or("unknown error");
-                        bail!("language server `{}` returned an error: {text}", self.name);
-                    }
-                    return Ok(Some(message.get("result").cloned().unwrap_or(Value::Null)));
-                }
-                (None, None) => {}
+                // a stale answer we no longer care about
             }
         }
+    }
+
+    /// Handle one inbound message. Server requests and notifications are dealt
+    /// with here; a response to one of ours comes back as `(id, result)`.
+    fn dispatch(&mut self, message: &Value) -> Result<Option<(i64, Value)>> {
+        let method = message.get("method").and_then(Value::as_str);
+        let id = message.get("id");
+
+        match (method, id) {
+            // A request from the server.
+            (Some(method), Some(id)) => {
+                let reply = self.server_request_result(method, message);
+                self.send(json!({ "jsonrpc": "2.0", "id": id, "result": reply }))?;
+            }
+            // A notification.
+            (Some(method), None) => {
+                self.handle_notification(method, message.get("params"));
+            }
+            // A response to one of ours.
+            (None, Some(id)) => {
+                let Some(id) = id.as_i64() else {
+                    return Ok(None);
+                };
+                if let Some(error) = message.get("error") {
+                    let text = error
+                        .get("message")
+                        .and_then(Value::as_str)
+                        .unwrap_or("unknown error");
+                    bail!("language server `{}` returned an error: {text}", self.name);
+                }
+                return Ok(Some((id, message.get("result").cloned().unwrap_or(Value::Null))));
+            }
+            (None, None) => {}
+        }
+        Ok(None)
     }
 
     /// What to answer a server-initiated request with.

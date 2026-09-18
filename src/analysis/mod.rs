@@ -12,7 +12,9 @@ mod sfc;
 
 pub use lang::Language;
 
-use crate::cache::models::{NewBinding, NewImport, NewRef, NewScope, NewSymbol};
+use crate::cache::models::{
+    NewBinding, NewImport, NewRef, NewScope, NewStringLiteral, NewSymbol,
+};
 
 /// Everything an analyzer extracts from a single file.
 #[derive(Debug, Default)]
@@ -25,6 +27,8 @@ pub struct ParsedFile {
     pub scopes: Vec<NewScope>,
     /// Names introduced in each scope (locals, params, fields, imports, ...).
     pub bindings: Vec<NewBinding>,
+    /// String literals extracted from call arguments or macros.
+    pub string_literals: Vec<NewStringLiteral>,
     /// False if the parser reported syntax errors or the language is unsupported.
     pub parse_ok: bool,
 }

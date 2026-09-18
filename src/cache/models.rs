@@ -202,3 +202,21 @@ pub struct NewBinding {
     pub import_index: Option<usize>,
     pub type_expr: Option<String>,
 }
+
+/// A string literal indexed from a call or macro argument.
+#[derive(Debug, Clone)]
+pub struct StringLiteralRow {
+    pub id: i64,
+    pub file_id: i64,
+    pub value: String,
+    pub callee: Option<String>,
+    pub line: Option<i64>,
+}
+
+/// String literal payload produced by an analyzer.
+#[derive(Debug, Clone, Default)]
+pub struct NewStringLiteral {
+    pub value: String,
+    pub callee: Option<String>,
+    pub line: Option<i64>,
+}

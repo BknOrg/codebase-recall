@@ -371,10 +371,14 @@ fn run_impact(project: &Path, url: &str) -> String {
     };
     let output = dir.join(&name);
 
+    let direction = query_param(url, "direction").unwrap_or_else(|| "both".to_string());
+
     let args = crate::cli::ImpactArgs {
-        symbol: target,
+        symbol: Some(target),
+        diff: false,
         project: project.to_path_buf(),
         depth,
+        direction,
         kinds,
         json: as_json,
         no_sync: false,

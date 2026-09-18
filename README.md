@@ -88,7 +88,10 @@ The compiled binary is available as `code-rcl`.
 | :--- | :--- |
 | `code-rcl dump` | Bundle the codebase (or a symbol's neighborhood) into a single Markdown file for LLM context. |
 | `code-rcl digest` | Generate an architecture outline and public API signature digest without function bodies. |
-| `code-rcl impact` | Analyze blast radius and downstream/upstream callers affected by modifying a symbol. |
+| `code-rcl impact` | Analyze blast radius and downstream/upstream callers affected by modifying a symbol, or by your uncommitted changes (`--diff`). |
+| `code-rcl path` | Find the shortest chain of calls/imports connecting one symbol to another. |
+| `code-rcl explain` | Summarize one symbol: signature, docs, members, direct callers/callees, risk flags. |
+| `code-rcl report` | Architecture report: core hubs, subsystems (communities), bridges, suggested questions. Kept fresh in `.code-rcl/REPORT.md` by `sync`. |
 | `code-rcl init` | Initialize `.code-rcl/` (SQLite cache DB + `config.toml`) and ensure it is in `.gitignore`. |
 | `code-rcl sync` | Incrementally parse changed source files into the graph cache. |
 | `code-rcl graph` | Auto-sync, then export the relation graph to file(s) (`html`, `json`, `dot`). |
@@ -306,29 +309,78 @@ code-rcl impact decorate --depth 3
 
 # 3. Output as structured JSON for CI/CD or PR review
 code-rcl impact decorate --json
+
+# 4. Blast radius of everything you changed since HEAD (no symbol name needed)
+code-rcl impact --diff
+
+# 5. How does one symbol reach another? / summarize one symbol
+code-rcl path main decorate
+code-rcl explain decorate
 ```
+
+Items are annotated with risk flags: `⚠ public` (exported API), `⚠ low-conf` (ambiguous resolution that may hide dynamic dispatch) and `⚠ cross-module (<subsystem>)` (the item lives in a different subsystem than the target; see [`report`](#usage--report-architecture-overview--subsystems)). Without detected subsystems it falls back to "different top-level directory".
 
 ### Example Terminal Output
 
 ```text
-Impact Analysis for: decorate [function]
-Direct callers: 1 | Total affected: 2 symbols across 2 files | Max depth: 2
+══════════════════════════════════════════════════════════════════
+  IMPACT ANALYSIS: decorate  [function]
+  util.rs
+──────────────────────────────────────────────────────────────────
+  Direct callers : 1      Direct callees : 0
+  Total affected : 2 symbols across 2 file(s)
+  Max depth      : 2
+  Risk flags     : 1 item(s) touch public API, low-confidence edges, or cross module boundaries
+══════════════════════════════════════════════════════════════════
 
-decorate (util.rs)
-└── greet [calls] - function (util.rs:2)
-    └── main [calls] - function (main.rs:4)
+▲ UPSTREAM CALLERS
+  └── ○ greet  [calls → function]  util.rs:2  (conf 0.95)  ⚠ public
+      │ decorate(name)
+      └── ◆ main  [calls → function]  main.rs:4  (conf 0.90)
+          │ let msg = util::greet("world");
+
+▼ DOWNSTREAM CALLEES
+  (no outgoing calls found)
 ```
 
 ### `impact` Options
 
 | Flag / Option | Short | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `<TARGET>` | - | *required* | Target symbol name or file path to analyze |
+| `<TARGET>` | - | *required* unless `--diff` | Target symbol name or file path to analyze |
+| `--diff` | - | `false` | Use symbols touched by uncommitted git changes (vs `HEAD`) as targets; excludes `<TARGET>` |
+| `--direction <DIR>` | - | `both` | `both`, `reverse` (callers only) or `forward` (callees only) |
 | `--project <PATH>` | - | `.` | Target project directory |
 | `--depth <N>` | - | `2` | Max reverse traversal depth (hop count) |
 | `--kinds <KINDS>` | - | `calls,imports` | Edge kinds to traverse in reverse, comma-separated |
 | `--json` | - | `false` | Output result as JSON instead of ASCII tree |
 | `--no-sync` | - | `false` | Skip auto-syncing changed files before analyzing |
+| `--precise` | - | `false` | Use compiler-grade LSP edges (see [`--precise`](#compiler-grade-accuracy---precise)) |
+
+---
+
+## Usage — `report` (Architecture Overview & Subsystems)
+
+```bash
+code-rcl report            # print the Markdown report
+code-rcl report --write    # write .code-rcl/REPORT.md
+code-rcl report -o overview --json
+```
+
+A one-page overview: summary, **core hubs**, **subsystems**, **bridges**, and **suggested questions** (ready-to-run `impact` / `path` / `explain` commands built from the project's own hubs).
+
+- **Subsystems** are groups of files that depend on each other far more than on the rest, detected without an LLM by Louvain modularity optimisation over file-level `imports` / `calls` / `references` links (symbols inherit their file's subsystem). The result is deterministic; each subsystem is named after the one or two directories holding most of its files and reports its key files and *cohesion* (share of its links that stay inside it).
+- **Bridges** are files with links into other subsystems, ranked by how many they touch.
+- **Always fresh:** `code-rcl sync` rewrites `.code-rcl/REPORT.md` when files were added, changed or removed (never when nothing changed; failures only warn). Skip with `sync --no-report`. With the git hook from `setup --git-hook`, the report follows every commit.
+- The same subsystems appear as `community` on graph nodes (`--format json`), in the `impact` / `explain` output, and as a **"color by subsystem"** toggle in the HTML viewer.
+
+| Flag | Default | Description |
+| :--- | :--- | :--- |
+| `--project <PATH>` | `.` | Target project directory |
+| `--write` | `false` | Write to `.code-rcl/REPORT.md` |
+| `-o, --output <PATH>` | - | Also write here (`.md`, or `.json` with `--json`, is added if missing) |
+| `--json` | `false` | Structured JSON instead of Markdown |
+| `--no-sync` | `false` | Skip auto-syncing changed files first |
 
 ---
 
@@ -473,6 +525,9 @@ When exporting with `code-rcl graph --format json`, the output conforms to this 
   "version": 2,
   "root": "/path/to/project",
   "generated_at": 1730000000,
+  "communities": [
+    { "id": 0, "label": "src/commands", "size": 12 }
+  ],
   "nodes": [
     {
       "id": "file:src/main.rs",
@@ -482,7 +537,8 @@ When exporting with `code-rcl graph --format json`, the output conforms to this 
       "dir": "src",
       "language": "rust",
       "exported": true,
-      "degree": 3
+      "degree": 3,
+      "community": 0
     },
     {
       "id": "sym:src/main.rs#main@10",
@@ -492,7 +548,8 @@ When exporting with `code-rcl graph --format json`, the output conforms to this 
       "dir": "src",
       "language": "rust",
       "exported": false,
-      "degree": 2
+      "degree": 2,
+      "community": 0
     }
   ],
   "edges": [
@@ -511,6 +568,8 @@ When exporting with `code-rcl graph --format json`, the output conforms to this 
   ]
 }
 ```
+
+`communities` and each node's `community` (an id into that list; symbols inherit their file's) are optional and omitted when no subsystems were detected.
 
 ---
 
@@ -564,10 +623,21 @@ Alternatively, you can manually add `code-rcl` to your agent's MCP configuration
 
 1. **`code_rcl_digest`**: Generates a high-level architecture skeleton and public API index with Core Architecture Hubs (strips function bodies to save 80–90% prompt tokens).
 2. **`code_rcl_search`**: Instant symbol & declaration lookup across the codebase from the SQLite cache (0–5ms, no grep overhead).
-3. **`code_rcl_impact`**: Analyzes reverse caller hierarchy and modification blast radius before editing symbols (supports optional `precise: true`).
-4. **`code_rcl_dump`**: Extracts a relation-aware neighborhood context bundle around a focal symbol or file.
-5. **`code_rcl_sync`**: Incremental AST sync with optional compiler-grade (`precise: true`) LSP pass for ground-truth verification.
-6. **`code_rcl_graph`**: Returns raw nodes and edges of the code graph in structured JSON.
+3. **`code_rcl_impact`**: Analyzes reverse caller hierarchy and modification blast radius before editing symbols, with risk flags (supports optional `precise: true`, and `diff: true` to analyze uncommitted changes without naming a symbol).
+4. **`code_rcl_path`**: Shortest call/import chain between two symbols.
+5. **`code_rcl_explain`**: One-call summary of a symbol (signature, docs, members, direct callers/callees).
+6. **`code_rcl_report`**: One-page architecture overview (hubs, subsystems, bridges, suggested questions). Read it first when orienting.
+7. **`code_rcl_dump`**: Extracts a relation-aware neighborhood context bundle around a focal symbol or file.
+8. **`code_rcl_sync`**: Incremental AST sync with optional compiler-grade (`precise: true`) LSP pass for ground-truth verification.
+9. **`code_rcl_graph`**: Returns raw nodes and edges of the code graph in structured JSON.
+
+### Making agents use these tools
+
+Registering the server only makes the tools available. To make agents reach for them first, `setup` can (opt-in, idempotent, removable with `--remove`) write a marked instruction block into `CLAUDE.md` / `AGENTS.md` / `GEMINI.md`, install a git post-commit hook that re-syncs the cache in the background, and add a Claude Code `SessionStart` hook:
+
+```bash
+code-rcl setup --workspace --instructions --git-hook --claude-hook
+```
 
 ---
 

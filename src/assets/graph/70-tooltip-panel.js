@@ -37,6 +37,8 @@
     if (d.lines && Array.isArray(d.lines)) meta.push(`L${d.lines[0]}-${d.lines[1]}`);
     if (d.degree != null) meta.push(`${d.degree} links`);
     if (d.exported) meta.push("exported");
+    if (d.community != null && communityInfo.has(d.community))
+      meta.push("subsystem: " + communityInfo.get(d.community).label);
     if (d.kind === "dir") meta.push("click to zoom in");
     else if (d.kind === "file" && childrenOf.has(d.id))
       meta.push(expanded.has(d.id) ? "click to collapse" : "click to expand");

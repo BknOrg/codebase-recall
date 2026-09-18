@@ -35,8 +35,8 @@ pub(super) struct ResolveCtx<'a> {
     pub defs_by_name: &'a HashMap<&'a str, Vec<&'a SymbolRow>>,
     /// (file id, locally-visible name) -> what it binds to.
     pub binding: &'a HashMap<(i64, String), Target>,
-    /// type simple name -> { method name -> symbol id }.
-    pub type_methods: &'a HashMap<String, HashMap<String, i64>>,
+    /// type simple name -> { method name -> symbol ids, one per same-named type }.
+    pub type_methods: &'a HashMap<String, HashMap<String, Vec<i64>>>,
     /// type simple name -> { field name -> field type simple name }.
     pub type_fields: &'a HashMap<String, HashMap<String, String>>,
     /// (enclosing symbol id, param/local name) -> declared type simple name.
@@ -103,10 +103,19 @@ pub(super) fn resolve_ref(
     }
 
     // ---- L3: receiver-type resolution ---------------------------------------
-    if let Some((ty, conf)) = infer_receiver_type(rf, ctx)
-        && let Some(&id) = ctx.type_methods.get(&ty).and_then(|m| m.get(&rf.name))
+    let inferred = infer_receiver_type(rf, ctx);
+    if let Some((ty, conf)) = &inferred
+        && let Some(id) = method_of_type(ctx, ty, rf, importer)
     {
-        return Some((id, conf));
+        return Some((id, *conf));
+    }
+
+    // Rust and Go have no class inheritance, so a call on a receiver of known
+    // type can only reach that type's own methods (or a trait's). Anything left
+    // is `SystemTime::now()` / `node.walk()` on a type that is not ours.
+    let nominal_typing = matches!(importer.language.as_str(), "rust" | "go");
+    if nominal_typing && rk == "path" && names_foreign_type(rf, ctx) {
+        return None;
     }
 
     // ---- L4: scored disambiguation ----------------------------------------
@@ -123,6 +132,10 @@ pub(super) fn resolve_ref(
             "none" => matches!(s.kind.as_str(), "function" | "method"),
             _ => true,
         })
+        .filter(|s| match (&inferred, nominal_typing) {
+            (Some((ty, _)), true) => belongs_to_receiver(ctx, s, ty),
+            _ => true,
+        })
         .copied()
         .collect();
     if cands.is_empty() {
@@ -130,6 +143,18 @@ pub(super) fn resolve_ref(
     }
 
     let reachable = ctx.imports_files.get(&rf.file_id);
+
+    // `set.insert(x)` / `Default::default()` on a receiver we could not type is
+    // almost always the standard library's method, not the one project function
+    // that happens to share the name — and no import ties this file to it.
+    if matches!(rk, "value" | "path")
+        && STD_METHOD_NAMES.contains(&rf.name.as_str())
+        && !cands
+            .iter()
+            .any(|c| reachable.is_some_and(|r| r.contains(&c.file_id)))
+    {
+        return None;
+    }
     let importer_dir = dir_of(&importer.path);
     let score = |c: &SymbolRow| -> i32 {
         let mut sc = 0;
@@ -164,12 +189,92 @@ pub(super) fn resolve_ref(
 
     // "precision" mode: a tie produces no edge.
     if margin >= 2 {
-        let conf = (0.4 + 0.03 * best.0 as f32).clamp(0.4, 0.7);
+        // The score says how well the winner fits; how alone it is says how far
+        // to trust it. A name only one definition carries is a much safer guess
+        // than the same score won against rivals, so it earns a higher ceiling.
+        let base = 0.4 + 0.03 * best.0 as f32;
+        let conf = if scored.len() == 1 {
+            (base + 0.15).clamp(0.55, 0.75)
+        } else if margin >= 4 {
+            (base + 0.05).clamp(0.4, 0.7)
+        } else {
+            base.clamp(0.4, 0.7)
+        };
         Some((best.1.id, conf))
     } else {
         None
     }
 }
+
+/// The method `rf.name` of type `ty` nearest the caller.
+///
+/// Type names are not unique across a project, so `ty` may name several
+/// unrelated types. The caller's own file wins (a `self.walk()` belongs to the
+/// type defined beside it), then its directory; failing both, the first
+/// definition is kept, which is what a single-candidate lookup always did.
+fn method_of_type(ctx: &ResolveCtx, ty: &str, rf: &RefRow, importer: &FileRow) -> Option<i64> {
+    let ids = ctx.type_methods.get(ty)?.get(&rf.name)?;
+    if let [only] = ids.as_slice() {
+        return Some(*only);
+    }
+    let file_of = |id: &i64| ctx.sym_by_id.get(id).and_then(|s| ctx.file_by_id.get(&s.file_id));
+    let importer_dir = dir_of(&importer.path);
+    ids.iter()
+        .find(|id| file_of(id).is_some_and(|f| f.id == importer.id))
+        .or_else(|| {
+            ids.iter()
+                .find(|id| file_of(id).is_some_and(|f| dir_of(&f.path) == importer_dir))
+        })
+        .or_else(|| ids.first())
+        .copied()
+}
+
+/// Whether candidate `c` could be the method a call on a receiver of type `ty`
+/// reaches: it is one of that type's methods, a trait's (default methods live on
+/// the trait, not the implementor), or has no recorded owner to contradict.
+fn belongs_to_receiver(ctx: &ResolveCtx, c: &SymbolRow, ty: &str) -> bool {
+    let Some(owner) = c.type_name.as_deref() else {
+        return true;
+    };
+    let (owner, ty) = (base_type(owner), base_type(ty));
+    owner == ty
+        || ctx.defs_by_name.get(owner).is_some_and(|defs| {
+            defs.iter()
+                .any(|d| matches!(d.kind.as_str(), "trait" | "interface"))
+        })
+}
+
+/// The bare type name inside a written type: `&mut Gauge<'a, T>` and
+/// `impl<T> Trait for Gauge<T>` both compare as `Gauge`.
+fn base_type(written: &str) -> &str {
+    let written = written.rsplit(" for ").next().unwrap_or(written);
+    let written = written.split('<').next().unwrap_or(written);
+    written
+        .trim_start_matches(['&', '*'])
+        .split_whitespace()
+        .rfind(|w| !matches!(*w, "mut" | "const" | "dyn" | "impl") && !w.starts_with('\''))
+        .unwrap_or("")
+}
+
+/// `Type::method()` where `Type` looks like a type name (`SystemTime`,
+/// `Default`) that no project file defines, so it cannot be ours.
+fn names_foreign_type(rf: &RefRow, ctx: &ResolveCtx) -> bool {
+    let Some(recv) = rf.receiver.as_deref() else {
+        return false;
+    };
+    let head = recv.rsplit("::").next().unwrap_or(recv);
+    head.chars().next().is_some_and(char::is_uppercase)
+        && head != "Self"
+        && !is_type_name(ctx, head)
+}
+
+/// Method names the standard library (and every collection type) already owns.
+/// A same-named project method is only credible when the file imports it.
+const STD_METHOD_NAMES: &[&str] = &[
+    "insert", "push", "pop", "get", "remove", "contains", "extend", "default", "new", "len",
+    "iter", "next", "clone", "into", "from", "map", "join", "trim", "split", "parse", "read",
+    "write", "open", "close", "add", "set", "clear", "first", "last", "find", "filter",
+];
 
 fn exported_in(ctx: &ResolveCtx, file_id: i64, name: &str) -> Option<i64> {
     let list = ctx.syms_by_file.get(&file_id)?;
@@ -266,4 +371,21 @@ fn languages_compatible(a: &str, b: &str) -> bool {
     // Java and Kotlin share the JVM and routinely call into each other.
     let is_jvm_family = |lang: &str| matches!(lang, "java" | "kotlin");
     is_jvm_family(a) && is_jvm_family(b)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::base_type;
+
+    #[test]
+    fn base_type_strips_references_generics_and_impl_headers() {
+        assert_eq!(base_type("Gauge"), "Gauge");
+        assert_eq!(base_type("&Gauge"), "Gauge");
+        assert_eq!(base_type("&mut Gauge"), "Gauge");
+        assert_eq!(base_type("&'a mut Gauge<'a, T>"), "Gauge");
+        assert_eq!(base_type("CustomBuffer<String>"), "CustomBuffer");
+        assert_eq!(base_type("Display for Gauge<T>"), "Gauge");
+        assert_eq!(base_type("*const Gauge"), "Gauge");
+        assert_eq!(base_type(""), "");
+    }
 }

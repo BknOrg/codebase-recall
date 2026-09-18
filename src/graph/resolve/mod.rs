@@ -12,7 +12,9 @@ use globset::GlobMatcher;
 
 use crate::cache::CacheDb;
 use crate::cache::models::{FileRow, ImportRow, SymbolRow};
-use crate::graph::{CodeGraph, Edge, Node, external_id, file_id, symbol_id};
+use crate::graph::{
+    CodeGraph, CommunityInfo, Edge, Node, community, external_id, file_id, symbol_id,
+};
 
 use imports::{external_root, resolve_import};
 use postprocess::{
@@ -89,6 +91,7 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
             exported: true,
             lines: None,
             degree: None,
+            community: None,
         });
     }
 
@@ -115,6 +118,7 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
                 exported: s.is_exported,
                 lines: Some([start, s.end_line.unwrap_or(start)]),
                 degree: None,
+                community: None,
             });
         }
     }
@@ -183,6 +187,7 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
                     exported: false,
                     lines: None,
                     degree: None,
+                    community: None,
                 });
             }
             edges.add(
@@ -242,8 +247,10 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
         }
     }
 
-    // type simple name -> { method name -> symbol id }
-    let mut type_methods: HashMap<String, HashMap<String, i64>> = HashMap::new();
+    // type simple name -> { method name -> symbol ids }. Several unrelated types
+    // can share a simple name (one `Walker` per analyzer), so every definition is
+    // kept, in symbol order, and the resolver picks the one nearest the caller.
+    let mut type_methods: HashMap<String, HashMap<String, Vec<i64>>> = HashMap::new();
     for s in &symbols {
         if s.kind == "method"
             && let Some(t) = &s.type_name
@@ -252,7 +259,8 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
                 .entry(t.clone())
                 .or_default()
                 .entry(s.name.clone())
-                .or_insert(s.id);
+                .or_default()
+                .push(s.id);
         }
     }
 
@@ -339,6 +347,10 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
     // ---- finalize ------------------------------------------------------
     let mut edges = edges.into_vec();
 
+    // Detect communities on the full edge set, before collapse/focus/node-cap
+    // shrink the graph, so filtering a view never changes which subsystem a file is in.
+    let communities = community::detect(&nodes, &edges);
+
     if opts.scope == Scope::File {
         collapse_to_files(&mut nodes, &mut edges, &sym_node);
     }
@@ -358,8 +370,16 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
     let degree = degree_map(&edges);
     for n in &mut nodes {
         n.degree = Some(degree.get(n.id.as_str()).copied().unwrap_or(0));
+        n.community = community::file_of(&n.id, n.path.as_deref())
+            .and_then(|f| communities.assignment.get(&f).copied());
     }
     rollup_directories(&mut nodes, &mut edges);
+
+    let community_infos: Vec<CommunityInfo> = communities
+        .list
+        .iter()
+        .map(|c| CommunityInfo { id: c.id, label: c.label.clone(), size: c.size })
+        .collect();
 
     Ok(CodeGraph {
         version: 2,
@@ -367,6 +387,7 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
         generated_at: now(),
         nodes,
         edges,
+        communities: community_infos,
     })
 }
 

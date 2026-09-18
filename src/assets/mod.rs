@@ -119,6 +119,7 @@ const BODY: &str = r#"<div id="app">
             <label><input type="checkbox" data-kind="calls" checked> calls</label>
             <label><input type="checkbox" data-kind="references"> references</label>
             <label><input type="checkbox" id="expandAll"> expand all</label>
+            <label><input type="checkbox" id="colorByCommunity"> color by subsystem</label>
             <button id="fitBtn" type="button">fit</button>
             <span id="focusCtl" hidden>
               <span id="focusLabel"></span>

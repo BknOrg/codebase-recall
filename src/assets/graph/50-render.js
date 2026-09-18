@@ -86,7 +86,7 @@ function draw() {
     const r = nodeRadius(d);
     const dim = hs && !hs.has(d.id) && d.id !== hovered;
     ctx.globalAlpha = dim ? 0.16 : 1;
-    ctx.fillStyle = kindColor(d.kind);
+    ctx.fillStyle = nodeFill(d);
 
     if (d.kind === "dir") {
       roundRect(d.x - r, d.y - r, r * 2, r * 2, 3 / k + 1);

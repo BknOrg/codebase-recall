@@ -1,0 +1,13 @@
+{
+  "_comment": "Calls on types that are not ours (std, external crates) must not be attached to a same-named project method. Tuples are [from_path, from_name, to_path, to_name].",
+  "must_have": [
+    ["main.rs", "probe", "gauge.rs", "reading"],
+    ["main.rs", "main", "main.rs", "stamp"],
+    ["main.rs", "main", "main.rs", "probe"]
+  ],
+  "must_not_have": [
+    ["main.rs", "probe", "meter.rs", "walk"],
+    ["main.rs", "stamp", "meter.rs", "now"],
+    ["main.rs", "stamp", "meter.rs", "default"]
+  ]
+}

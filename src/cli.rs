@@ -27,6 +27,14 @@ pub enum Command {
     Serve(ServeArgs),
     /// Analyze blast radius and downstream/upstream callers affected by modifying a symbol
     Impact(ImpactArgs),
+    /// Find the shortest chain of calls/imports connecting one symbol to another
+    Path(PathArgs),
+    /// Summarize one symbol: signature, docs, members, direct callers/callees, risk flags
+    Explain(ExplainArgs),
+    /// Architecture report: core hubs, subsystems (communities), bridges, suggested questions
+    Report(ReportArgs),
+    /// Search symbols, functions, types, and string literals in the SQLite cache
+    Search(SearchArgs),
     /// Generate an architecture outline and public API digest of the codebase
     Digest(DigestArgs),
     /// Run Model Context Protocol (MCP) server over stdio for AI agent integration
@@ -84,7 +92,7 @@ pub struct InitArgs {
 #[derive(Parser, Debug)]
 #[command(
     about = "Parse changed source files into the graph cache",
-    after_help = "Examples:\n  code-rcl sync\n  code-rcl sync --language rust,py\n  code-rcl sync --precise\n  code-rcl sync --precise --precise-full"
+    after_help = "Examples:\n  code-rcl sync\n  code-rcl sync --language rust,py\n  code-rcl sync --precise\n  code-rcl sync --precise --precise-full\n  code-rcl sync --no-report"
 )]
 pub struct SyncArgs {
     /// Project directory to sync
@@ -98,6 +106,10 @@ pub struct SyncArgs {
     /// Restrict to a subset of languages (e.g. rust,js,py)
     #[arg(long, value_delimiter = ',')]
     pub language: Vec<String>,
+
+    /// Do not refresh .code-rcl/REPORT.md after syncing
+    #[arg(long)]
+    pub no_report: bool,
 
     #[command(flatten)]
     pub precise: PreciseArgs,
@@ -227,21 +239,31 @@ pub struct ServeArgs {
 #[derive(Parser, Debug)]
 #[command(
     about = "Analyze blast radius and downstream/upstream callers affected by modifying a symbol",
-    after_help = "Examples:\n  code-rcl impact parse_config\n  code-rcl impact execute_query --depth 10\n  code-rcl impact validate_input --kinds calls\n  code-rcl impact delete_user --json"
+    after_help = "Examples:\n  code-rcl impact parse_config\n  code-rcl impact execute_query --depth 2\n  code-rcl impact validate_input --direction reverse\n  code-rcl impact delete_user --json\n  code-rcl impact --diff\n  code-rcl impact --diff --json"
 )]
 pub struct ImpactArgs {
-    /// Target symbol name or identifier to analyze blast radius for
-    pub symbol: String,
+    /// Target symbol name or identifier to analyze blast radius for.
+    /// Omit when using --diff.
+    pub symbol: Option<String>,
+
+    /// Detect symbols touched by uncommitted/staged git changes (vs HEAD)
+    /// and use them as impact-analysis targets instead of a typed symbol name
+    #[arg(long)]
+    pub diff: bool,
 
     /// Project directory to inspect
     #[arg(long, default_value = ".")]
     pub project: PathBuf,
 
-    /// Maximum upstream caller traversal depth
-    #[arg(long, default_value_t = 5)]
+    /// Traversal hop depth (applied to upstream callers and downstream callees)
+    #[arg(long, default_value_t = 2)]
     pub depth: u32,
 
-    /// Edge kinds to traverse in reverse, comma-separated (e.g. calls,imports)
+    /// Traversal direction: both, reverse (callers only), or forward (callees only)
+    #[arg(long, default_value = "both")]
+    pub direction: String,
+
+    /// Edge kinds to traverse, comma-separated (e.g. calls,imports)
     #[arg(long, value_delimiter = ',', default_value = "calls,imports")]
     pub kinds: Vec<String>,
 
@@ -259,8 +281,146 @@ pub struct ImpactArgs {
 
 #[derive(Parser, Debug)]
 #[command(
+    about = "Find the shortest chain of calls/imports connecting one symbol to another",
+    after_help = "Examples:\n  code-rcl path main decorate\n  code-rcl path decorate main --direction reverse\n  code-rcl path handle_request CacheDb --direction any\n  code-rcl path main decorate --json"
+)]
+pub struct PathArgs {
+    /// Symbol name or file path to start from
+    pub from: String,
+
+    /// Symbol name or file path to reach
+    pub to: String,
+
+    /// Project directory to inspect
+    #[arg(long, default_value = ".")]
+    pub project: PathBuf,
+
+    /// Edge kinds to follow, comma-separated (e.g. calls,imports)
+    #[arg(long, value_delimiter = ',', default_value = "calls,imports")]
+    pub kinds: Vec<String>,
+
+    /// Edge direction: forward (FROM calls TO), reverse (TO calls FROM), or any
+    #[arg(long, default_value = "forward")]
+    pub direction: String,
+
+    /// Give up on paths longer than this many hops
+    #[arg(long, default_value_t = 8)]
+    pub max_depth: u32,
+
+    /// Output result as JSON instead of ASCII
+    #[arg(long)]
+    pub json: bool,
+
+    /// Skip auto-syncing changed files before analyzing
+    #[arg(long)]
+    pub no_sync: bool,
+
+    #[command(flatten)]
+    pub precise: PreciseArgs,
+}
+
+#[derive(Parser, Debug)]
+#[command(
+    about = "Summarize one symbol: signature, docs, members, direct callers/callees, risk flags",
+    after_help = "Examples:\n  code-rcl explain decorate\n  code-rcl explain CacheDb --json\n  code-rcl explain src/graph/mod.rs"
+)]
+pub struct ExplainArgs {
+    /// Symbol name or file path to explain
+    pub symbol: String,
+
+    /// Project directory to inspect
+    #[arg(long, default_value = ".")]
+    pub project: PathBuf,
+
+    /// Output result as JSON instead of ASCII
+    #[arg(long)]
+    pub json: bool,
+
+    /// Skip auto-syncing changed files before analyzing
+    #[arg(long)]
+    pub no_sync: bool,
+
+    #[command(flatten)]
+    pub precise: PreciseArgs,
+}
+
+#[derive(Parser, Debug)]
+#[command(
+    about = "Architecture report: core hubs, subsystems (communities), bridges, suggested questions",
+    after_help = "Examples:\n  code-rcl report\n  code-rcl report --write\n  code-rcl report -o architecture\n  code-rcl report --json"
+)]
+pub struct ReportArgs {
+    /// Project directory to inspect
+    #[arg(long, default_value = ".")]
+    pub project: PathBuf,
+
+    /// Write the report to .code-rcl/REPORT.md (the file `sync` keeps fresh)
+    #[arg(long)]
+    pub write: bool,
+
+    /// Also write the report to this file (.md, or .json with --json, is added if missing)
+    #[arg(short = 'o', long = "output")]
+    pub output: Option<PathBuf>,
+
+    /// Output structured JSON instead of Markdown
+    #[arg(long)]
+    pub json: bool,
+
+    /// Skip auto-syncing changed files before analyzing
+    #[arg(long)]
+    pub no_sync: bool,
+}
+
+#[derive(Parser, Debug)]
+#[command(
+    about = "Search symbols, functions, types, and string literals in the SQLite cache",
+    after_help = "Examples:\n  code-rcl search CacheDb\n  code-rcl search build_graph --kind function\n  code-rcl search --strings get_bool\n  code-rcl search handle_request --json"
+)]
+pub struct SearchArgs {
+    /// Symbol name, substring, or string literal to search for
+    pub query: String,
+
+    /// Project directory to inspect [default: .]
+    #[arg(long, default_value = ".")]
+    pub project: PathBuf,
+
+    /// Filter by entity kind (function, method, struct, interface, trait, enum, type, etc.)
+    #[arg(long)]
+    pub kind: Option<String>,
+
+    /// Only return public / exported symbols
+    #[arg(long)]
+    pub exported: bool,
+
+    /// Also search string literals appearing as arguments in calls and macros
+    #[arg(long)]
+    pub strings: bool,
+
+    /// Maximum results to return
+    #[arg(long, default_value_t = 25)]
+    pub limit: usize,
+
+    /// Output results as JSON
+    #[arg(long)]
+    pub json: bool,
+
+    /// Disable fuzzy suggestion fallback when no exact matches are found
+    #[arg(long)]
+    pub no_fuzzy: bool,
+
+    /// Disable full-text grep fallback when no matches are found
+    #[arg(long)]
+    pub no_grep: bool,
+
+    /// Skip auto-syncing changed files before searching
+    #[arg(long)]
+    pub no_sync: bool,
+}
+
+#[derive(Parser, Debug)]
+#[command(
     about = "Generate an architecture outline and public API digest of the codebase",
-    after_help = "Examples:\n  code-rcl digest\n  code-rcl digest src/analysis\n  code-rcl digest -o architecture.md\n  code-rcl digest --all\n  code-rcl digest --json"
+    after_help = "Examples:\n  code-rcl digest\n  code-rcl digest src/analysis\n  code-rcl digest -o architecture.md\n  code-rcl digest --with-docs\n  code-rcl digest --all\n  code-rcl digest --json"
 )]
 pub struct DigestArgs {
     /// Target project directory or sub-path to outline [default: .]
@@ -282,6 +442,14 @@ pub struct DigestArgs {
     #[arg(long)]
     pub all: bool,
 
+    /// Retain up to N lines of doc comments per symbol (default: 0)
+    #[arg(long, default_value_t = 0)]
+    pub doc_lines: usize,
+
+    /// Include doc comments for symbols (shorthand for --doc-lines 3)
+    #[arg(long)]
+    pub with_docs: bool,
+
     /// Output result as structured JSON instead of Markdown
     #[arg(long)]
     pub json: bool,
@@ -289,6 +457,18 @@ pub struct DigestArgs {
     /// Skip auto-syncing changed files before generating digest
     #[arg(long)]
     pub no_sync: bool,
+}
+
+impl DigestArgs {
+    pub fn effective_doc_lines(&self) -> usize {
+        if self.doc_lines > 0 {
+            self.doc_lines
+        } else if self.with_docs {
+            3
+        } else {
+            0
+        }
+    }
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -305,7 +485,7 @@ pub struct McpArgs {
 #[derive(Parser, Debug, Clone)]
 #[command(
     about = "Self-install the AI agent skill and configure MCP servers (Antigravity/Gemini, Claude Code)",
-    after_help = "Examples:\n  code-rcl setup\n  code-rcl setup --workspace\n  code-rcl setup --global\n  code-rcl setup --target claude\n  code-rcl setup --print-skill"
+    after_help = "Examples:\n  code-rcl setup\n  code-rcl setup --workspace\n  code-rcl setup --global\n  code-rcl setup --target claude\n  code-rcl setup --print-skill\n  code-rcl setup --workspace --instructions --git-hook --claude-hook\n  code-rcl setup --workspace --remove"
 )]
 pub struct SetupArgs {
     /// Install globally to user profile config (~/.gemini/config and ~/.claude.json)
@@ -335,4 +515,27 @@ pub struct SetupArgs {
     /// Custom target directory for the skill (overrides defaults)
     #[arg(long)]
     pub skill_dir: Option<PathBuf>,
+
+    /// Also write a marked instruction block into CLAUDE.md / AGENTS.md / GEMINI.md
+    /// telling agents to prefer code-rcl over grep (--global: ~/.claude and ~/.gemini)
+    #[arg(long)]
+    pub instructions: bool,
+
+    /// Also install a git post-commit hook that re-syncs the cache in the background
+    #[arg(long)]
+    pub git_hook: bool,
+
+    /// Also add a Claude Code SessionStart hook (.claude/settings.json) that reminds
+    /// the agent to use code-rcl
+    #[arg(long)]
+    pub claude_hook: bool,
+
+    /// Remove what --instructions/--git-hook/--claude-hook installed (all three when
+    /// none is given); skips the normal skill/MCP install
+    #[arg(long)]
+    pub remove: bool,
+
+    /// Print the short reminder used by the Claude Code hook and exit
+    #[arg(long, hide = true)]
+    pub print_reminder: bool,
 }

@@ -16,6 +16,7 @@
             expanded: [...expanded],
             focusId,
             focusDepth,
+            colorMode: state.colorMode,
             pos,
             tf: [transform.x, transform.y, transform.k],
           })
@@ -32,6 +33,11 @@
         for (const id of st.expanded) if (nodeById.has(id)) expanded.add(id);
       if (st.focusId && nodeById.has(st.focusId)) focusId = st.focusId;
       if (st.focusDepth) focusDepth = st.focusDepth;
+      if (st.colorMode === "community" && COMMUNITIES.length) {
+        state.colorMode = "community";
+        const cb = document.getElementById("colorByCommunity");
+        if (cb) cb.checked = true;
+      }
       if (st.pos)
         for (const id in st.pos)
           if (nodeById.has(id)) {

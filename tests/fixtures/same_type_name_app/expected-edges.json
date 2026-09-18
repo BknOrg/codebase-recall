@@ -1,0 +1,15 @@
+{
+  "_comment": "Two unrelated types share the name Walker. A `self.method()` call must reach the method of its own file's type, never the same-named one elsewhere. Tuples are [from_path, from_name, to_path, to_name].",
+  "must_have": [
+    ["a.rs", "run", "a.rs", "walk"],
+    ["a.rs", "walk", "a.rs", "step"],
+    ["b.rs", "run", "b.rs", "walk"],
+    ["b.rs", "walk", "b.rs", "step"]
+  ],
+  "must_not_have": [
+    ["a.rs", "run", "b.rs", "walk"],
+    ["a.rs", "walk", "b.rs", "step"],
+    ["b.rs", "run", "a.rs", "walk"],
+    ["b.rs", "walk", "a.rs", "step"]
+  ]
+}

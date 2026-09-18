@@ -22,6 +22,7 @@ pub fn build_graph(query: &GraphQuery) -> Result<CodeGraph> {
             project: project.clone(),
             max_file_kb: 512,
             language: Vec::new(),
+            no_report: true,
             precise: query.precise.clone(),
         };
         let s = sync::sync_cache(&mut db, &sync_args)?;

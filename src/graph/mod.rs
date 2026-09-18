@@ -1,5 +1,7 @@
 //! In-memory relation graph built from the cache, plus renderers.
 
+pub mod community;
+pub mod query;
 pub mod render;
 pub mod resolve;
 
@@ -13,6 +15,18 @@ pub struct CodeGraph {
     pub generated_at: u64,
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
+    /// Subsystems detected over file-level import/call links; nodes refer to them by `community`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub communities: Vec<CommunityInfo>,
+}
+
+/// A detected subsystem, as shipped with the graph.
+#[derive(Debug, Clone, Serialize)]
+pub struct CommunityInfo {
+    pub id: u32,
+    pub label: String,
+    /// Number of files in the community.
+    pub size: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -36,6 +50,9 @@ pub struct Node {
     /// Used client-side to size hubs and to pick which symbols to drop first.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub degree: Option<u32>,
+    /// Id into `CodeGraph::communities`; symbols inherit their file's community.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub community: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]

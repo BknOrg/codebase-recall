@@ -328,3 +328,13 @@ fn generic_type_app_precise_marks_std_vec_as_external() {
         "CustomBuffer::push must link to an internal symbol"
     );
 }
+
+#[test]
+fn external_recv_app_accuracy() {
+    check_accuracy("external_recv_app", false);
+}
+
+#[test]
+fn same_type_name_app_accuracy() {
+    check_accuracy("same_type_name_app", false);
+}

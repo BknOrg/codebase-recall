@@ -42,6 +42,27 @@
     fitRegimeAware(true);
   });
 
+  // "Color by subsystem" recolours nodes by detected community; it is only offered when the
+  // graph carries communities (files with no cross-file links produce none).
+  const colorToggle = $("colorByCommunity");
+  if (colorToggle) {
+    if (COMMUNITIES.length === 0) {
+      colorToggle.disabled = true;
+      const label = colorToggle.closest("label");
+      if (label) {
+        label.title = "no subsystems detected: files have no cross-file imports or calls";
+        label.style.opacity = 0.5;
+      }
+    } else {
+      colorToggle.addEventListener("change", () => {
+        state.colorMode = colorToggle.checked ? "community" : "kind";
+        buildLegend();
+        scheduleDraw();
+        persist();
+      });
+    }
+  }
+
   // --- search doubles as isolate ---------------------------------
   // A non-empty query keeps only matching nodes + their 1-hop neighbours
   // (see rebuild); clearing it brings the whole graph back.

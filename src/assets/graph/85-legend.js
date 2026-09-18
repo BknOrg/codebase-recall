@@ -1,9 +1,10 @@
-// legend: a live colour key — rebuilt on every rebuild() from the node kinds
-// actually on the canvas, so e.g. the "directory" row shows only in the folder
+// legend: a live colour key — rebuilt on every rebuild() from the node kinds (or, in
+// "color by subsystem" mode, the subsystems) actually on the canvas, so e.g. the "directory" row shows only in the folder
 // roll-up view. The "type" row label follows the graph's languages.
 
   const legendEl = document.getElementById("legend");
   let legendSig = "";
+  const MAX_LEGEND_COMMUNITIES = 12;
 
   // Languages span the whole graph, so the type-row label stays stable while
   // you expand / collapse files.
@@ -19,21 +20,40 @@
     const hasType = [...TYPE_KINDS].some((k) => kinds.has(k));
 
     const rows = [];
-    if (kinds.has("dir")) rows.push(["--dir", "directory", true]);
-    if (kinds.has("file")) rows.push(["--file", "file", false]);
-    if (hasFunc) rows.push(["--func", "function / method", false]);
-    if (hasType) rows.push(["--type", typeLabel(ALL_LANGS), false]);
-    if (kinds.has("variable")) rows.push(["--var", "variable", false]);
-    if (kinds.has("external")) rows.push(["--ext", "external module", false]);
+    if (state.colorMode === "community" && COMMUNITIES.length) {
+      // One row per subsystem actually on the canvas, biggest first (COMMUNITIES is size-sorted).
+      const present = new Set();
+      let unassigned = false;
+      for (const d of nodes) {
+        if (d.kind === "dir" || d.kind === "external") continue;
+        if (d.community != null) present.add(d.community);
+        else unassigned = true;
+      }
+      for (const c of COMMUNITIES) {
+        if (!present.has(c.id)) continue;
+        if (rows.length >= MAX_LEGEND_COMMUNITIES) break;
+        rows.push([communityColor(c.id), `${c.label} (${c.size})`, false]);
+      }
+      const hidden = present.size - rows.length;
+      if (hidden > 0) rows.push(["transparent", `+${hidden} more subsystems`, false]);
+      if (unassigned) rows.push(["var(--ext)", "no subsystem", false]);
+    } else {
+      if (kinds.has("dir")) rows.push(["var(--dir)", "directory", true]);
+      if (kinds.has("file")) rows.push(["var(--file)", "file", false]);
+      if (hasFunc) rows.push(["var(--func)", "function / method", false]);
+      if (hasType) rows.push(["var(--type)", typeLabel(ALL_LANGS), false]);
+      if (kinds.has("variable")) rows.push(["var(--var)", "variable", false]);
+      if (kinds.has("external")) rows.push(["var(--ext)", "external module", false]);
+    }
 
-    const sig = rows.map((r) => r[0] + r[1]).join("|");
+    const sig = state.colorMode + "|" + rows.map((r) => r[0] + r[1]).join("|");
     if (sig === legendSig) return; // rebuild() is frequent — skip idle DOM writes
     legendSig = sig;
 
     legendEl.innerHTML = rows
       .map(
         ([v, label, sq]) =>
-          `<div><span class="dot${sq ? " sq" : ""}" style="background:var(${v})"></span>${label}</div>`
+          `<div><span class="dot${sq ? " sq" : ""}" style="background:${v}"></span>${label}</div>`
       )
       .join("");
     legendEl.hidden = rows.length === 0;

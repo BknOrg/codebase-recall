@@ -34,11 +34,31 @@ mod tests {
             generated_at: 0,
             nodes: Vec::new(),
             edges: Vec::new(),
+            communities: Vec::new(),
         };
         let html = render(&graph);
         assert!(!html.contains("href=\"./"), "must not link a sibling file:\n{html}");
         assert!(!html.contains("src=\"./"), "must not source a sibling file:\n{html}");
         assert!(html.contains("<style>"), "CSS must be inlined");
         assert!(html.contains("<script>"), "JS must be inlined");
+    }
+
+    /// The subsystem colouring needs both its control and the community list in the page.
+    #[test]
+    fn community_colouring_is_wired_in() {
+        use crate::graph::CommunityInfo;
+
+        let graph = CodeGraph {
+            version: 2,
+            root: ".".to_string(),
+            generated_at: 0,
+            nodes: Vec::new(),
+            edges: Vec::new(),
+            communities: vec![CommunityInfo { id: 0, label: "src/billing".into(), size: 3 }],
+        };
+        let html = render(&graph);
+        assert!(html.contains("id=\"colorByCommunity\""), "toggle missing");
+        assert!(html.contains("function communityColor"), "colour helper missing");
+        assert!(html.contains("src/billing"), "communities must be embedded in the page data");
     }
 }

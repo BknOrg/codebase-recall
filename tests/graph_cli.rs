@@ -263,3 +263,71 @@ fn vue_fixture_graph() {
     assert!(has_edge(&g, "file:App.vue", "file:HeaderBar.vue", "imports"));
 }
 
+
+#[test]
+fn communities_split_two_clusters_and_symbols_inherit() {
+    let g = graph_json("two_modules");
+
+    let communities = g["communities"].as_array().expect("communities list");
+    assert_eq!(communities.len(), 2, "communities: {communities:?}");
+    for c in communities {
+        assert_eq!(c["size"], 3);
+        assert!(!c["label"].as_str().unwrap().is_empty());
+    }
+
+    let community_of = |id: &str| -> Value {
+        g["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["id"] == id)
+            .unwrap_or_else(|| panic!("no node {id}"))["community"]
+            .clone()
+    };
+
+    let a = community_of("file:invoice.rs");
+    assert!(a.is_u64());
+    assert_eq!(a, community_of("file:ledger.rs"));
+    assert_eq!(a, community_of("file:tax.rs"));
+
+    let b = community_of("file:parcel.rs");
+    assert_ne!(a, b);
+    assert_eq!(b, community_of("file:route.rs"));
+    assert_eq!(b, community_of("file:label.rs"));
+
+    // A symbol inherits the community of its file.
+    assert_eq!(community_of("sym:tax.rs#apply@1"), a);
+    assert_eq!(community_of("sym:route.rs#plan@3"), b);
+}
+
+#[test]
+fn communities_are_omitted_when_no_files_are_linked() {
+    // Two files that never reference each other: nothing to cluster, so neither the
+    // top-level list nor any node's `community` field is emitted.
+    let work = Path::new(env!("CARGO_TARGET_TMPDIR")).join("unlinked__graph");
+    let _ = std::fs::remove_dir_all(&work);
+    std::fs::create_dir_all(&work).unwrap();
+    std::fs::write(work.join("one.rs"), "pub fn alpha() -> u32 {
+    1
+}
+").unwrap();
+    std::fs::write(work.join("two.rs"), "pub fn beta() -> u32 {
+    2
+}
+").unwrap();
+
+    let out = work.join("graph.json");
+    let status = Command::new(BIN)
+        .arg("graph")
+        .arg("--project")
+        .arg(&work)
+        .args(["--format", "json", "-o"])
+        .arg(&out)
+        .status()
+        .expect("run graph");
+    assert!(status.success());
+    let g: Value = serde_json::from_slice(&std::fs::read(&out).unwrap()).unwrap();
+
+    assert!(g.get("communities").is_none(), "unexpected communities: {}", g["communities"]);
+    assert!(g["nodes"].as_array().unwrap().iter().all(|n| n.get("community").is_none()));
+}

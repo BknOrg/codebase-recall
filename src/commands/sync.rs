@@ -14,15 +14,18 @@ pub fn run(args: SyncArgs) -> Result<()> {
     let project = args.project.clone();
     let mut db = CacheDb::open(&project)?;
     let stats = sync_cache(&mut db, &args)?;
+    let (total_symbols, total_imports) = db.totals()?;
 
     println!(
-        "sync: {} source files (+{} ~{} ={} -{}), {} symbols, {} imports",
+        "sync: {} source files (+{} ~{} ={} -{}), {} symbols ({} re-parsed), {} imports ({} re-parsed)",
         stats.scanned,
         stats.added,
         stats.changed,
         stats.unchanged,
         stats.removed,
+        total_symbols,
         stats.symbols,
+        total_imports,
         stats.imports,
     );
     if stats.unsupported > 0 {
@@ -40,6 +43,15 @@ pub fn run(args: SyncArgs) -> Result<()> {
         // remain are not what was asked for.
         if !precise.errors.is_empty() {
             bail!("`--precise` did not finish for every language (see the errors above)");
+        }
+    }
+
+    if !args.no_report {
+        // A stale or missing report must never fail a sync that itself succeeded.
+        match crate::commands::report::refresh_after_sync(&project, &stats, args.precise.precise) {
+            Ok(Some(path)) => println!("report: refreshed {}", path.display()),
+            Ok(None) => {}
+            Err(e) => eprintln!("warning: could not refresh the code report: {e:#}"),
         }
     }
     Ok(())
@@ -108,6 +120,7 @@ pub fn sync_cache(db: &mut CacheDb, args: &SyncArgs) -> Result<SyncStats> {
 
     // Current source files on disk.
     let mut on_disk: Vec<DiskFile> = Vec::new();
+    let mut out_of_scope: HashSet<String> = HashSet::new();
     for abs in walker::collect_source_files(project)? {
         let Some(language) = Language::from_path(&abs) else {
             continue;
@@ -122,6 +135,9 @@ pub fn sync_cache(db: &mut CacheDb, args: &SyncArgs) -> Result<SyncStats> {
             continue;
         }
         if !filter.is_empty() && !filter.iter().any(|t| language.matches_filter(t)) {
+            // Out of scope for this run, not gone: its cached rows must survive.
+            let rel = abs.strip_prefix(project).unwrap_or(&abs);
+            out_of_scope.insert(rel.to_string_lossy().replace('\\', "/"));
             continue;
         }
         let Ok(meta) = fs::metadata(&abs) else {
@@ -160,7 +176,7 @@ pub fn sync_cache(db: &mut CacheDb, args: &SyncArgs) -> Result<SyncStats> {
 
     // Drop files that no longer exist.
     for path in cached.keys() {
-        if !disk_paths.contains(path.as_str()) {
+        if !disk_paths.contains(path.as_str()) && !out_of_scope.contains(path.as_str()) {
             db.delete_file(path)?;
             stats.removed += 1;
         }
@@ -199,6 +215,7 @@ pub fn sync_cache(db: &mut CacheDb, args: &SyncArgs) -> Result<SyncStats> {
             &parsed.refs,
             &parsed.scopes,
             &parsed.bindings,
+            &parsed.string_literals,
         )
         .with_context(|| format!("caching analysis for {}", file.rel))?;
 
