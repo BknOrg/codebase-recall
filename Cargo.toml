@@ -1,6 +1,6 @@
 [package]
 name = "codebase-recall"
-version = "0.7.4"
+version = "0.7.5"
 edition = "2024"
 authors = ["Bkn Org"]
 description = "CLI based application for codebase dumper for LLMs and fast review/recall project"
