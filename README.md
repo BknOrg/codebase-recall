@@ -216,7 +216,7 @@ code-rcl graph --max-nodes 2000
 | `--format <LIST>` | `html` | Comma-separated output formats: `html`, `json`, `dot` |
 | `-o, --output <PATH>` | `.code-rcl/code-graph.<ext>` | Output file or path stem when requesting multiple formats |
 | `--scope <MODE>` | `both` | Graph scope: `file` (imports only), `symbol`, or `both` (layered) |
-| `--kinds <LIST>` | `imports,calls,contains` | Edge kinds to include (`imports`, `calls`, `contains`, `references`) |
+| `--kinds <LIST>` | `imports,calls,contains,implements` | Edge kinds to include (`imports`, `calls`, `contains`, `implements`, `references`) |
 | `--path <GLOB>` | `None` | Filter source files by glob pattern |
 | `--focus <NAME>` | `None` | Restrict graph to the neighborhood of a symbol or file |
 | `--depth <N>` | `2` | BFS traversal depth around `--focus` |
@@ -667,3 +667,33 @@ include_external = false
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
+---
+
+## Quick Start
+
+1. Install the binary (see [Installation](#installation)):
+
+   ```bash
+   cargo install codebase-recall
+   ```
+
+2. Initialize the cache in your project root:
+
+   ```bash
+   cd path/to/your/project
+   code-rcl init
+   ```
+
+3. Bundle the codebase for an LLM, or explore it visually:
+
+   ```bash
+   code-rcl dump . -o context.md   # Markdown context bundle
+   code-rcl serve                  # interactive graph in the browser
+   ```
+
+4. Check the blast radius before editing a symbol:
+
+   ```bash
+   code-rcl impact decorate --depth 3
+   ```
