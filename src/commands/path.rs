@@ -38,8 +38,14 @@ pub struct PathHop {
 pub struct PathReport {
     pub from: String,
     pub from_id: String,
+    /// Where the start node is declared. Several symbols can share a name, so
+    /// the rendered header needs this to say *which* one it walked from.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_loc: Option<String>,
     pub to: String,
     pub to_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to_loc: Option<String>,
     pub direction: String,
     pub found: bool,
     /// Number of edges on the path (0 when not found).
@@ -105,21 +111,22 @@ pub fn generate_reports(args: &PathArgs) -> Result<Vec<PathReport>> {
         );
     }
 
+    // A name is rarely unique, and reporting on an unrelated same-named symbol
+    // reads as a wrong answer. Pair the candidates nearest each other first, so
+    // the truncated list keeps the pairs the caller most likely meant.
     let mut pairs: Vec<(&Node, &Node)> = Vec::new();
-    'outer: for f in &froms {
+    for f in &froms {
         for t in &tos {
-            if f.id == t.id {
-                continue;
-            }
-            pairs.push((f, t));
-            if pairs.len() >= MAX_PAIRS {
-                break 'outer;
+            if f.id != t.id {
+                pairs.push((f, t));
             }
         }
     }
     if pairs.is_empty() {
         anyhow::bail!("'{}' and '{}' resolve to the same node", args.from, args.to);
     }
+    pairs.sort_by_key(|(f, t)| std::cmp::Reverse(proximity(f, t)));
+    pairs.truncate(MAX_PAIRS);
 
     let adjacency = build_adjacency(&graph, &args.kinds);
     let node_by_id: HashMap<&str, &Node> = graph.nodes.iter().map(|n| (n.id.as_str(), n)).collect();
@@ -131,8 +138,10 @@ pub fn generate_reports(args: &PathArgs) -> Result<Vec<PathReport>> {
         let mut report = PathReport {
             from: from.label.clone(),
             from_id: from.id.clone(),
+            from_loc: location_of(from),
             to: to.label.clone(),
             to_id: to.id.clone(),
+            to_loc: location_of(to),
             direction: args.direction.clone(),
             found: steps.is_some(),
             length: 0,
@@ -168,6 +177,34 @@ pub fn generate_reports(args: &PathArgs) -> Result<Vec<PathReport>> {
     }
 
     Ok(reports)
+}
+
+/// `path/to/file.rs:12` for a symbol node, the path alone for a file node.
+fn location_of(node: &Node) -> Option<String> {
+    let path = node.path.as_deref()?;
+    Some(match node.lines {
+        Some([start, _]) if start > 0 => format!("{path}:{start}"),
+        _ => path.to_string(),
+    })
+}
+
+/// How closely two candidates sit together: same file beats same directory,
+/// which beats anywhere else.
+fn proximity(from: &Node, to: &Node) -> u8 {
+    let (Some(a), Some(b)) = (from.path.as_deref(), to.path.as_deref()) else {
+        return 0;
+    };
+    if a == b {
+        2
+    } else if parent_dir(a) == parent_dir(b) {
+        1
+    } else {
+        0
+    }
+}
+
+fn parent_dir(path: &str) -> &str {
+    path.rfind('/').map(|i| &path[..i]).unwrap_or("")
 }
 
 fn hop_for_start(node: &Node) -> PathHop {
@@ -270,15 +307,30 @@ fn rebuild<'a>(
 
 pub fn render_ascii(reports: &[PathReport]) -> String {
     let mut out = String::new();
-    for report in reports {
-        write_report(&mut out, report);
+    // With one report the header name is unambiguous; with several, each is
+    // about a different pair of same-named symbols and has to say which.
+    let label_endpoints = reports.len() > 1;
+    for (i, report) in reports.iter().enumerate() {
+        if label_endpoints {
+            let _ = writeln!(out, "  [candidate {} of {}]", i + 1, reports.len());
+        }
+        write_report(&mut out, report, label_endpoints);
     }
     out
 }
 
-fn write_report(out: &mut String, report: &PathReport) {
+fn write_report(out: &mut String, report: &PathReport, label_endpoints: bool) {
     let _ = writeln!(out, "{RULE_HEAVY}");
     let _ = writeln!(out, "  PATH: {} → {}", report.from, report.to);
+    if label_endpoints {
+        let _ = writeln!(out, "{RULE_LIGHT}");
+        let _ = writeln!(
+            out,
+            "  From : {}\n  To   : {}",
+            report.from_loc.as_deref().unwrap_or("(unknown location)"),
+            report.to_loc.as_deref().unwrap_or("(unknown location)"),
+        );
+    }
     let _ = writeln!(out, "{RULE_LIGHT}");
     if report.found {
         let _ = writeln!(

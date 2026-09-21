@@ -2,7 +2,9 @@
 
 pub mod calls;
 pub mod helpers;
+pub mod macros;
 pub mod symbols;
+pub mod types;
 pub mod use_decl;
 
 pub use helpers::*;
@@ -31,6 +33,7 @@ pub fn parse(source: &str) -> ParsedFile {
         },
         stack: Vec::new(),
         sc: ScopeStack::new(source.len() as i64),
+        macro_depth: 0,
     };
     walker.walk(tree.root_node());
     walker.sc.finish_into(&mut walker.out);
@@ -44,6 +47,10 @@ pub(crate) struct Walker<'a> {
     /// Indices into `out.symbols` for the current lexical parent chain.
     pub(crate) stack: Vec<usize>,
     pub(crate) sc: ScopeStack,
+    /// How many macro bodies deep this walk already is. A macro's arguments are
+    /// re-parsed as a fragment and walked by a nested `Walker`, so this bounds
+    /// `assert!(matches!(..))`-style nesting.
+    pub(crate) macro_depth: u32,
 }
 
 impl<'a> Walker<'a> {
@@ -116,8 +123,9 @@ impl<'a> Walker<'a> {
                 .push(scope_kind, Some(i), node.start_byte() as i64, node.end_byte() as i64);
 
             match node.kind() {
-                "function_item" => self.bind_params(node),
+                "function_item" => self.bind_signature(node),
                 "struct_item" | "union_item" => self.bind_struct_fields(node),
+                "enum_item" => self.collect_enum_variant_types(node),
                 _ => {}
             }
 
@@ -287,6 +295,182 @@ use anyhow::*;
             .bindings
             .iter()
             .any(|b| b.binding_kind == "namespace" && b.name == "anyhow"));
+    }
+
+    #[test]
+    fn signature_types_become_type_refs() {
+        let src = r#"
+struct RunArgs;
+enum CommandError {}
+
+pub fn cmd_run(args: &RunArgs) -> Result<(), CommandError> { todo!() }
+"#;
+        let p = parse(src);
+        let type_ref = |n: &str| {
+            p.refs
+                .iter()
+                .find(|r| r.ref_kind == "type" && r.name == n)
+        };
+
+        // A struct used only as a parameter type is not dead code.
+        let args = type_ref("RunArgs").expect("param type ref");
+        assert!(!args.local_only);
+        assert!(args.resolved_local_symbol_index.is_some());
+
+        // The error type in the return position counts as a user too.
+        assert!(type_ref("CommandError").is_some(), "return type ref");
+    }
+
+    #[test]
+    fn type_refs_point_at_the_type_token() {
+        // `--precise` sends `name_start_byte` to the language server, so it has
+        // to land on `RunArgs`, not on the `&` or on the parameter name.
+        let src = "struct RunArgs;\nfn f(args: &RunArgs) {}\n";
+        let p = parse(src);
+        let r = p
+            .refs
+            .iter()
+            .find(|r| r.ref_kind == "type" && r.name == "RunArgs" && r.start_line == 2)
+            .expect("param type ref");
+        let at = r.name_start_byte.expect("name_start_byte") as usize;
+        assert_eq!(&src[at..at + "RunArgs".len()], "RunArgs");
+    }
+
+    #[test]
+    fn generic_parameters_are_not_mistaken_for_types() {
+        // A project type named `T` must not collect edges from every `<T>`.
+        let src = "struct T;\nfn identity<T>(value: T) -> T { value }\n";
+        let p = parse(src);
+        assert!(
+            !p.refs.iter().any(|r| r.ref_kind == "type" && r.name == "T"),
+            "generic placeholder T should not become a type ref"
+        );
+    }
+
+    #[test]
+    fn struct_fields_and_enum_payloads_become_type_refs() {
+        let src = r#"
+struct Pool;
+struct RunArgs;
+struct Server { pool: Pool }
+struct Wrapper(Pool);
+enum Command { Run(RunArgs) }
+"#;
+        let p = parse(src);
+        let has = |n: &str| p.refs.iter().any(|r| r.ref_kind == "type" && r.name == n);
+
+        assert!(has("Pool"), "named field type");
+        assert!(has("RunArgs"), "enum variant payload type");
+
+        // The field binding must survive alongside the new ref.
+        assert!(
+            p.bindings
+                .iter()
+                .any(|b| b.binding_kind == "field" && b.name == "pool"),
+            "field binding regressed"
+        );
+    }
+
+    #[test]
+    fn a_local_does_not_shadow_a_type_of_the_same_name() {
+        let src = r#"
+struct Config;
+fn load(cfg: &Config) {
+    let Config = 1;
+}
+"#;
+        let p = parse(src);
+        let r = p
+            .refs
+            .iter()
+            .find(|r| r.ref_kind == "type" && r.name == "Config")
+            .expect("param type ref");
+        assert!(!r.local_only, "type ref must skip local bindings");
+        assert!(r.resolved_local_symbol_index.is_some());
+    }
+
+    /// Names of `call` refs found in `src`.
+    fn call_names(src: &str) -> Vec<String> {
+        parse(src)
+            .refs
+            .into_iter()
+            .filter(|r| r.ref_kind == "call")
+            .map(|r| r.name)
+            .collect()
+    }
+
+    #[test]
+    fn calls_inside_macro_arguments_are_found() {
+        // The Jujutsu case: the only call to `run_inner` sits inside a
+        // `try_join!`, whose arguments the grammar leaves as raw tokens.
+        let src = r#"
+async fn run_inner(x: u32) -> u32 { x }
+
+async fn cmd_run() {
+    futures::try_join!(
+        async { run_inner(1).await },
+        async { other().await },
+    );
+}
+
+async fn other() -> u32 { 0 }
+"#;
+        let names = call_names(src);
+        assert!(names.contains(&"run_inner".to_string()), "got {names:?}");
+        assert!(names.contains(&"other".to_string()), "got {names:?}");
+
+        // And it resolves in-file, which is what makes the edge appear.
+        let p = parse(src);
+        let r = p
+            .refs
+            .iter()
+            .find(|r| r.name == "run_inner" && r.ref_kind == "call")
+            .unwrap();
+        assert!(!r.local_only);
+        assert!(r.resolved_local_symbol_index.is_some());
+    }
+
+    #[test]
+    fn a_macro_call_keeps_pointing_at_the_real_source_offsets() {
+        // `--precise` sends `name_start_byte` to a language server, so an
+        // offset rebased out of a fragment has to land on the real token.
+        let src = "fn helper() {}\nfn f() {\n    assert!(helper() == 1);\n}\n";
+        let p = parse(src);
+        let r = p
+            .refs
+            .iter()
+            .find(|r| r.name == "helper" && r.ref_kind == "call")
+            .expect("call inside assert!");
+        let at = r.name_start_byte.expect("name_start_byte") as usize;
+        assert_eq!(&src[at..at + "helper".len()], "helper");
+        assert_eq!(r.start_line, 3, "line must be the real source line");
+    }
+
+    #[test]
+    fn block_bodied_macros_are_read_as_statements() {
+        // `select!` does not hold a comma-separated expression list, so it
+        // needs the second wrapper.
+        let src = "fn f() {\n    tokio::select! {\n        a = poll() => {}\n    }\n}\n";
+        let names = call_names(src);
+        assert!(names.contains(&"poll".to_string()), "got {names:?}");
+    }
+
+    #[test]
+    fn macros_nested_in_macros_are_followed() {
+        let src = "fn g() -> u32 { 1 }\nfn f() {\n    assert!(matches!(g(), 1));\n}\n";
+        let names = call_names(src);
+        assert!(names.contains(&"g".to_string()), "got {names:?}");
+    }
+
+    #[test]
+    fn a_macro_that_is_not_rust_is_skipped_rather_than_guessed() {
+        // A DSL body must not spray invented references.
+        let src = "fn f() {\n    weird_dsl! { < > < > @@ ## => => };\n}\n";
+        let p = parse(src);
+        assert!(p.parse_ok);
+        // The macro itself is still recorded; nothing is invented from it.
+        let names = call_names(src);
+        assert!(names.contains(&"weird_dsl!".to_string()), "got {names:?}");
     }
 
     #[test]

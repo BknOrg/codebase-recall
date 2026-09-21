@@ -21,7 +21,7 @@ use postprocess::{
     apply_focus, collapse_to_files, degree_map, enforce_max_nodes, prune_unreferenced_externals,
     rollup_directories,
 };
-use refs::{ResolveCtx, Target, resolve_ref};
+use refs::{ResolveCtx, Target, base_type, resolve_ref};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Scope {
@@ -76,7 +76,10 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
     let mut sym_node: HashMap<i64, (String, String)> = HashMap::new();
 
     for f in &files {
-        if !keep_file(&f.path) {
+        // Config files are indexed for their keys, not their structure; they
+        // define no symbols and import nothing, so a node for one would only
+        // ever sit unconnected in the graph.
+        if !keep_file(&f.path) || crate::analysis::lang::is_config_group(&f.language) {
             continue;
         }
         let id = file_id(&f.path);
@@ -205,6 +208,54 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
     let mut defs_by_name: HashMap<&str, Vec<&SymbolRow>> = HashMap::new();
     for s in &symbols {
         defs_by_name.entry(s.name.as_str()).or_default().push(s);
+    }
+
+    // ---- implements: `impl Trait for Type` -> Type implements Trait -------
+    // The analyzer already stores the header verbatim as the `impl` symbol's
+    // name ("Display for Gauge<T>"), so both ends are in hand; only the edge
+    // was ever missing. A bare `impl Type` block declares no trait and is
+    // skipped. Without this a trait has no link to its implementors, so a call
+    // through `&dyn Trait` dead-ends at the trait definition.
+    if opts.kinds.contains("implements") && want_symbols {
+        let pick = |written: &str, want_trait: bool| -> Option<&SymbolRow> {
+            let defs = defs_by_name.get(base_type(written))?;
+            defs.iter()
+                .find(|s| {
+                    if want_trait {
+                        matches!(s.kind.as_str(), "trait" | "interface")
+                    } else {
+                        matches!(s.kind.as_str(), "struct" | "enum" | "class" | "type")
+                    }
+                })
+                .copied()
+        };
+        for s in &symbols {
+            if s.kind != "impl" {
+                continue;
+            }
+            let Some((trait_written, type_written)) = s.name.split_once(" for ") else {
+                continue;
+            };
+            let (Some(tr), Some(ty)) = (pick(trait_written, true), pick(type_written, false))
+            else {
+                continue;
+            };
+            let (Some((tr_node, _)), Some((ty_node, _))) =
+                (sym_node.get(&tr.id), sym_node.get(&ty.id))
+            else {
+                continue;
+            };
+            if tr_node != ty_node {
+                edges.add(
+                    ty_node.clone(),
+                    tr_node.clone(),
+                    "implements",
+                    1.0,
+                    None,
+                    s.start_line,
+                );
+            }
+        }
     }
 
     // Locally-visible name -> cross-file target, from the `bindings` table.

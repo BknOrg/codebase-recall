@@ -162,9 +162,14 @@ pub struct GraphQuery {
     #[arg(long, default_value = "both")]
     pub scope: String,
 
-    /// Edge kinds to include, comma-separated: imports, calls, references, contains
-    /// (`references` is noisy on large graphs, so it is off by default)
-    #[arg(long, value_delimiter = ',', default_value = "imports,calls,contains")]
+    /// Edge kinds to include, comma-separated: imports, calls, references,
+    /// contains, implements (`references` is noisy on large graphs, so it is
+    /// off by default)
+    #[arg(
+        long,
+        value_delimiter = ',',
+        default_value = "imports,calls,contains,implements"
+    )]
     pub kinds: Vec<String>,
 
     /// Only include files matching this glob
@@ -263,8 +268,8 @@ pub struct ImpactArgs {
     #[arg(long, default_value = "both")]
     pub direction: String,
 
-    /// Edge kinds to traverse, comma-separated (e.g. calls,imports)
-    #[arg(long, value_delimiter = ',', default_value = "calls,imports")]
+    /// Edge kinds to traverse, comma-separated (e.g. calls,imports,references)
+    #[arg(long, value_delimiter = ',', default_value = "calls,imports,references")]
     pub kinds: Vec<String>,
 
     /// Output result as JSON instead of ASCII tree
@@ -295,8 +300,8 @@ pub struct PathArgs {
     #[arg(long, default_value = ".")]
     pub project: PathBuf,
 
-    /// Edge kinds to follow, comma-separated (e.g. calls,imports)
-    #[arg(long, value_delimiter = ',', default_value = "calls,imports")]
+    /// Edge kinds to follow, comma-separated (e.g. calls,imports,references)
+    #[arg(long, value_delimiter = ',', default_value = "calls,imports,references")]
     pub kinds: Vec<String>,
 
     /// Edge direction: forward (FROM calls TO), reverse (TO calls FROM), or any

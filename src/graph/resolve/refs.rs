@@ -127,9 +127,18 @@ pub(super) fn resolve_ref(
                 .get(&s.file_id)
                 .is_some_and(|f| languages_compatible(&f.language, &importer.language))
         })
-        .filter(|s| match rk {
-            "value" => s.kind == "method",
-            "none" => matches!(s.kind.as_str(), "function" | "method"),
+        // A reference in type position names a type, never a function, even
+        // though it carries no receiver and so looks like a bare call here.
+        .filter(|s| match (rf.ref_kind.as_str(), rk) {
+            ("type", _) => is_type_kind(&s.kind),
+            // A name handed over as a value can be a function, a const, or a
+            // unit struct / enum variant used as a constructor.
+            ("value", _) => matches!(
+                s.kind.as_str(),
+                "function" | "method" | "variable" | "struct" | "enum"
+            ),
+            (_, "value") => s.kind == "method",
+            (_, "none") => matches!(s.kind.as_str(), "function" | "method"),
             _ => true,
         })
         .filter(|s| match (&inferred, nominal_typing) {
@@ -149,6 +158,20 @@ pub(super) fn resolve_ref(
     // that happens to share the name — and no import ties this file to it.
     if matches!(rk, "value" | "path")
         && STD_METHOD_NAMES.contains(&rf.name.as_str())
+        && !cands
+            .iter()
+            .any(|c| reachable.is_some_and(|r| r.contains(&c.file_id)))
+    {
+        return None;
+    }
+
+    // The same reasoning one level up, for names in type position. A file
+    // writing `Command` almost always means `std::process::Command`, not the
+    // unrelated project enum that happens to share the name — unless an import
+    // actually ties the two files together. Without this, adding type
+    // references made every common type name a hub.
+    if rf.ref_kind == "type"
+        && STD_TYPE_NAMES.contains(&rf.name.as_str())
         && !cands
             .iter()
             .any(|c| reachable.is_some_and(|r| r.contains(&c.file_id)))
@@ -246,7 +269,7 @@ fn belongs_to_receiver(ctx: &ResolveCtx, c: &SymbolRow, ty: &str) -> bool {
 
 /// The bare type name inside a written type: `&mut Gauge<'a, T>` and
 /// `impl<T> Trait for Gauge<T>` both compare as `Gauge`.
-fn base_type(written: &str) -> &str {
+pub(super) fn base_type(written: &str) -> &str {
     let written = written.rsplit(" for ").next().unwrap_or(written);
     let written = written.split('<').next().unwrap_or(written);
     written
@@ -267,6 +290,16 @@ fn names_foreign_type(rf: &RefRow, ctx: &ResolveCtx) -> bool {
         && head != "Self"
         && !is_type_name(ctx, head)
 }
+
+/// Type names the standard library (and the common ecosystem crates) already
+/// own. A same-named project type is only credible when an import connects the
+/// two files.
+const STD_TYPE_NAMES: &[&str] = &[
+    "Command", "Error", "Result", "Option", "Path", "PathBuf", "Duration", "File", "Entry",
+    "Builder", "Handle", "Sender", "Receiver", "Config", "Context", "State", "Instant", "Range",
+    "Output", "Child", "Args", "Event", "Message", "Request", "Response", "Value", "Node",
+    "Parser", "Formatter", "Writer", "Reader", "Iter", "Item", "Key", "Id", "Name", "Type",
+];
 
 /// Method names the standard library (and every collection type) already owns.
 /// A same-named project method is only credible when the file imports it.
@@ -346,14 +379,17 @@ fn method_owner_type(ctx: &ResolveCtx, symbol_id: i64) -> Option<String> {
 }
 
 fn is_type_name(ctx: &ResolveCtx, name: &str) -> bool {
-    ctx.defs_by_name.get(name).is_some_and(|list| {
-        list.iter().any(|s| {
-            matches!(
-                s.kind.as_str(),
-                "struct" | "enum" | "trait" | "interface" | "class" | "type" | "component"
-            )
-        })
-    })
+    ctx.defs_by_name
+        .get(name)
+        .is_some_and(|list| list.iter().any(|s| is_type_kind(&s.kind)))
+}
+
+/// Symbol kinds that a name in type position can legitimately reach.
+fn is_type_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "struct" | "enum" | "trait" | "interface" | "class" | "type" | "component"
+    )
 }
 
 fn dir_of(path: &str) -> &str {

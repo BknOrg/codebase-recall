@@ -58,51 +58,50 @@ impl<'a> Walker<'a> {
         Some(self.out.symbols.len() - 1)
     }
 
-    pub fn bind_params(&mut self, func: Node) {
-        let Some(params) = func.child_by_field_name("parameters") else {
-            return;
-        };
-        let kids: Vec<Node> = {
-            let mut c = params.walk();
-            params.named_children(&mut c).collect()
-        };
-        for p in kids {
-            if p.kind() != "parameter" {
-                continue;
-            }
-            let Some(pat) = p.child_by_field_name("pattern") else {
-                continue;
+    /// Bind each parameter to its declared type, and record the types named in
+    /// the signature — parameters and return type alike — as `type` references.
+    pub fn bind_signature(&mut self, func: Node) {
+        let generics = self.generic_param_names(func);
+
+        if let Some(params) = func.child_by_field_name("parameters") {
+            let kids: Vec<Node> = {
+                let mut c = params.walk();
+                params.named_children(&mut c).collect()
             };
-            let name = self.text(pat).to_string();
-            let ty = p
-                .child_by_field_name("type")
-                .map(|t| self.text(t).trim().to_string());
-            self.sc.bind(&name, "param", None, None, ty);
+            for p in kids {
+                if p.kind() != "parameter" {
+                    continue;
+                }
+                let Some(pat) = p.child_by_field_name("pattern") else {
+                    continue;
+                };
+                let name = self.text(pat).to_string();
+                let ty_node = p.child_by_field_name("type");
+                let ty = ty_node.map(|t| self.text(t).trim().to_string());
+                self.sc.bind(&name, "param", None, None, ty);
+                if let Some(t) = ty_node {
+                    self.collect_type_refs(t, &generics);
+                }
+            }
+        }
+
+        if let Some(ret) = func.child_by_field_name("return_type") {
+            self.collect_type_refs(ret, &generics);
         }
     }
 
     pub fn bind_struct_fields(&mut self, st: Node) {
+        let generics = self.generic_param_names(st);
         let Some(body) = st.child_by_field_name("body") else {
             return;
         };
-        let kids: Vec<Node> = {
-            let mut c = body.walk();
-            body.named_children(&mut c).collect()
-        };
-        for f in kids {
-            if f.kind() != "field_declaration" {
-                continue;
-            }
-            let (Some(n), Some(t)) = (
-                f.child_by_field_name("name"),
-                f.child_by_field_name("type"),
-            ) else {
-                continue;
-            };
-            let name = self.text(n).to_string();
-            let ty = simple_type_name(self.text(t));
-            self.sc.bind(&name, "field", None, None, Some(ty));
-        }
+        // A tuple struct's fields have no name to bind, but their types still
+        // earn an edge, which `collect_field_list_types` handles either way.
+        self.collect_field_list_types(body, &generics, |w, name_node, ty_node| {
+            let name = w.text(name_node).to_string();
+            let ty = simple_type_name(w.text(ty_node));
+            w.sc.bind(&name, "field", None, None, Some(ty));
+        });
     }
 
     pub fn collect_let(&mut self, node: Node) {

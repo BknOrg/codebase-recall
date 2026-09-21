@@ -111,7 +111,13 @@ pub fn execute_impact(default_project: &Path, args: &Value) -> Result<String> {
                 .filter_map(|k| k.as_str().map(|s| s.to_string()))
                 .collect()
         })
-        .unwrap_or_else(|| vec!["calls".to_string(), "imports".to_string()]);
+        .unwrap_or_else(|| {
+            vec![
+                "calls".to_string(),
+                "imports".to_string(),
+                "references".to_string(),
+            ]
+        });
 
     let as_json = args.get("json").and_then(|v| v.as_bool()).unwrap_or(false);
     let precise = args
@@ -182,7 +188,13 @@ pub fn execute_path(default_project: &Path, args: &Value) -> Result<String> {
                 .filter_map(|k| k.as_str().map(|s| s.to_string()))
                 .collect()
         })
-        .unwrap_or_else(|| vec!["calls".to_string(), "imports".to_string()]);
+        .unwrap_or_else(|| {
+            vec![
+                "calls".to_string(),
+                "imports".to_string(),
+                "references".to_string(),
+            ]
+        });
     let as_json = args.get("json").and_then(|v| v.as_bool()).unwrap_or(false);
 
     let path_args = PathArgs {

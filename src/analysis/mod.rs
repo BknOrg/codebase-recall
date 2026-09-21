@@ -9,6 +9,7 @@ pub mod python;
 mod rust;
 pub mod scope;
 mod sfc;
+mod toml;
 
 pub use lang::Language;
 
@@ -45,5 +46,6 @@ pub fn parse_file(language: Language, source: &str) -> ParsedFile {
         Language::Kotlin => kotlin::parse(source),
         Language::Vue | Language::Svelte => sfc::parse(source, language),
         Language::Go => go::parse(source),
+        Language::Toml => toml::parse(source),
     }
 }

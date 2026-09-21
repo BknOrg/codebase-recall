@@ -4,10 +4,10 @@
 //! [`MIGRATIONS`] moves the database from version `i` to version `i + 1`.
 
 /// Current schema version. Must equal `MIGRATIONS.len()`.
-pub const SCHEMA_VERSION: i64 = 4;
+pub const SCHEMA_VERSION: i64 = 5;
 
 /// Ordered migration scripts. `MIGRATIONS[0]` upgrades v0 -> v1, etc.
-pub const MIGRATIONS: &[&str] = &[V1, V2, V3, V4];
+pub const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5];
 
 const V1: &str = r#"
 CREATE TABLE meta (
@@ -144,6 +144,8 @@ DELETE FROM files;
 "#;
 
 /// v4 — string literals / config keys indexed from call arguments and macros.
+///
+/// This one shipped without the re-analysis reset it needed; [`V5`] repairs it.
 const V4: &str = r#"
 CREATE TABLE string_literals (
     id      INTEGER PRIMARY KEY,
@@ -155,4 +157,19 @@ CREATE TABLE string_literals (
 
 CREATE INDEX idx_strings_val  ON string_literals(value);
 CREATE INDEX idx_strings_file ON string_literals(file_id);
+"#;
+
+/// v5 — force one re-analysis so the v4 tables are actually populated.
+///
+/// Only the analyzer fills `string_literals`, and an unchanged file is never
+/// re-parsed, so every cache that upgraded to v4 kept an empty table and
+/// `search` answered "not found" for every config key. V4 itself cannot be
+/// fixed in place — it has already been applied, so it will never run again.
+///
+/// The same reset also republishes the `type` references added alongside this
+/// migration, which likewise only appear when a file is re-analyzed.
+///
+/// Only the derived cache is dropped; nothing in the working tree is touched.
+const V5: &str = r#"
+DELETE FROM files;
 "#;

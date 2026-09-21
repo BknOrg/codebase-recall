@@ -106,6 +106,11 @@ impl ScopeStack {
 ///
 /// `field` bindings are ignored here: a bare name never resolves to a field
 /// (that needs `self.` / `this.`), and the field's type is consumed elsewhere.
+///
+/// A `type` reference sits in the same scope as the body's locals but lives in
+/// a separate namespace, so it skips `local` / `param` bindings and keeps
+/// walking outward: `fn f(args: &RunArgs)` must reach the `RunArgs` type even
+/// where the body happens to declare `let RunArgs = ...`.
 pub fn resolve_locals(parsed: &mut ParsedFile) {
     if parsed.scopes.is_empty() {
         return;
@@ -116,6 +121,7 @@ pub fn resolve_locals(parsed: &mut ParsedFile) {
         }
         let at = parsed.refs[ri].start_byte;
         let name = parsed.refs[ri].name.clone();
+        let is_type = parsed.refs[ri].ref_kind == "type";
 
         // innermost (narrowest) scope containing `at`
         let mut best: Option<(i64, usize)> = None;
@@ -133,7 +139,10 @@ pub fn resolve_locals(parsed: &mut ParsedFile) {
 
         loop {
             let hit = parsed.bindings.iter().find(|b| {
-                b.scope_index == scope_idx && b.name == name && b.binding_kind != "field"
+                b.scope_index == scope_idx
+                    && b.name == name
+                    && b.binding_kind != "field"
+                    && !(is_type && matches!(b.binding_kind.as_str(), "local" | "param"))
             });
             if let Some(b) = hit {
                 match b.binding_kind.as_str() {

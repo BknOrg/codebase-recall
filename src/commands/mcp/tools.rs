@@ -64,7 +64,7 @@ pub fn list_tools() -> Value {
                     "kinds": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "Edge kinds to traverse: ['calls', 'imports', 'references']."
+                        "description": "Edge kinds to traverse. Defaults to ['calls', 'imports', 'references']; 'references' covers type positions (parameter, field, return type), so a struct used only as a parameter type still shows its users."
                     },
                     "precise": {
                         "type": "boolean",
@@ -106,7 +106,7 @@ pub fn list_tools() -> Value {
                     "kinds": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "Edge kinds to follow: ['calls', 'imports']."
+                        "description": "Edge kinds to follow. Defaults to ['calls', 'imports', 'references']."
                     },
                     "json": {
                         "type": "boolean",

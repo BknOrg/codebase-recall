@@ -1,0 +1,6 @@
+# Defaults shipped with the tool.
+edition = "2024"
+
+[runner]
+jobs = 4
+mode = "careful"   # inline comment must not become part of the key

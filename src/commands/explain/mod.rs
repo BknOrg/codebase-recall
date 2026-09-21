@@ -33,7 +33,11 @@ pub fn generate_reports(args: &ExplainArgs) -> Result<Vec<ExplainReport>> {
         project: args.project.clone(),
         depth: 1,
         direction: "both".to_string(),
-        kinds: vec!["calls".to_string(), "imports".to_string()],
+        kinds: vec![
+            "calls".to_string(),
+            "imports".to_string(),
+            "references".to_string(),
+        ],
         json: false,
         no_sync: args.no_sync,
         precise: args.precise.clone(),

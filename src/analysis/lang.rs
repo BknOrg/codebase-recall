@@ -14,6 +14,16 @@ pub enum Language {
     Vue,
     Svelte,
     Go,
+    /// Configuration, not code: indexed for its keys only, so a setting read in
+    /// code can be traced to where it is defined.
+    Toml,
+}
+
+/// Whether a stored language group names configuration rather than source.
+/// Config files carry indexed keys for `search`, but no symbols, so they stay
+/// out of the dependency graph where they would only add unconnected nodes.
+pub fn is_config_group(group: &str) -> bool {
+    matches!(group, "toml")
 }
 
 impl Language {
@@ -32,6 +42,7 @@ impl Language {
             "vue" => Language::Vue,
             "svelte" => Language::Svelte,
             "go" => Language::Go,
+            "toml" => Language::Toml,
             _ => return None,
         })
     }
@@ -48,6 +59,7 @@ impl Language {
             Language::Vue => "vue",
             Language::Svelte => "svelte",
             Language::Go => "go",
+            Language::Toml => "toml",
         }
     }
 

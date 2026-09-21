@@ -23,9 +23,13 @@ impl<'a> Walker<'a> {
                 a.named_children(&mut c).count() as i64
             });
         if let Some(args_node) = node.child_by_field_name("arguments") {
-            let mut c = args_node.walk();
-            for arg in args_node.named_children(&mut c) {
+            let args: Vec<Node> = {
+                let mut c = args_node.walk();
+                args_node.named_children(&mut c).collect()
+            };
+            for arg in args {
                 self.check_and_record_string_literal(arg, Some(&name));
+                self.collect_value_ref(arg);
             }
         }
         self.out.refs.push(NewRef {
@@ -86,6 +90,9 @@ impl<'a> Walker<'a> {
             for child in token_tree.named_children(&mut c) {
                 self.check_and_record_string_literal(child, Some(&macro_name));
             }
+            // The grammar stops at the token tree, so every call written inside
+            // the macro is invisible until the tokens are re-parsed.
+            self.collect_macro_body(token_tree);
         }
         self.out.refs.push(NewRef {
             name: macro_name,
@@ -95,6 +102,45 @@ impl<'a> Walker<'a> {
             start_byte: node.start_byte() as i64,
             name_start_byte: Some(m.start_byte() as i64),
             receiver_kind: "none".to_string(),
+            ..Default::default()
+        });
+    }
+
+    /// A name handed to a function rather than called: `spawn(worker)`,
+    /// `Box::new(AsyncCliDispatchFn(crate::commands::run_command))`. Without
+    /// this the callback target looks like dead code — nothing ever "calls" it.
+    ///
+    /// Bare identifiers are recorded too, and the vast majority of them are
+    /// locals. That is safe because `resolve_locals` settles any name bound to
+    /// a `local`/`param` as `local_only`, which never becomes an edge; only
+    /// names that escape the function's own scope survive.
+    pub fn collect_value_ref(&mut self, arg: Node) {
+        let (name_node, receiver) = match arg.kind() {
+            "identifier" => (arg, None),
+            "scoped_identifier" => {
+                let path = arg
+                    .child_by_field_name("path")
+                    .map(|n| self.text(n).to_string());
+                match arg.child_by_field_name("name") {
+                    Some(n) => (n, path),
+                    None => return,
+                }
+            }
+            _ => return,
+        };
+        let name = self.text(name_node).to_string();
+        if name.is_empty() {
+            return;
+        }
+        let receiver_kind = if receiver.is_some() { "path" } else { "none" };
+        self.out.refs.push(NewRef {
+            name,
+            ref_kind: "value".to_string(),
+            receiver,
+            start_line: self.line(name_node),
+            start_byte: name_node.start_byte() as i64,
+            name_start_byte: Some(name_node.start_byte() as i64),
+            receiver_kind: receiver_kind.to_string(),
             ..Default::default()
         });
     }

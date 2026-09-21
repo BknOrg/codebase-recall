@@ -80,18 +80,34 @@ fn write_report(out: &mut String, r: &ExplainReport) {
         let _ = writeln!(out);
     }
 
+    // A type only ever named in a signature or a field has references but no
+    // calls, so a "CALLED BY" header would misdescribe its whole listing. Each
+    // row still states its own edge kind.
     write_section(
         out,
-        "▲ CALLED BY",
+        &section_title("▲", &r.relations.callers, "CALLED BY", "USED BY"),
         "(no incoming callers or references found)",
         &r.relations.callers,
     );
     write_section(
         out,
-        "▼ CALLS",
-        "(no outgoing calls found)",
+        &section_title("▼", &r.relations.callees, "CALLS", "USES"),
+        "(no outgoing calls or references found)",
         &r.relations.callees,
     );
+}
+
+/// `calls_title` while every edge really is a call, `mixed_title` as soon as a
+/// non-call relation (a type reference, an import) shows up.
+fn section_title(
+    arrow: &str,
+    items: &[crate::commands::impact::ImpactItem],
+    calls_title: &str,
+    mixed_title: &str,
+) -> String {
+    let all_calls = items.iter().all(|i| i.edge_kind == "calls");
+    let word = if all_calls { calls_title } else { mixed_title };
+    format!("{arrow} {word}")
 }
 
 fn write_section(
