@@ -1,6 +1,6 @@
 ---
 name: gsd-code-rcl-context
-description: Runs `code-rcl dump` and writes CODE-CONTEXT.md for downstream GSD agents to consume via required_reading. Spawned at the plan:pre hook point by GSD's loop dispatcher via the code-rcl capability's ref.agent step, when workflow.code_rcl_context is enabled.
+description: Runs `code-rcl dump` and writes CODE-CONTEXT.md for downstream GSD agents to consume via required_reading; also runs at verify:post to cross-check VERIFICATION.md's claimed file-path references against the cached dump. Spawned at the plan:pre and verify:post hook points by GSD's loop dispatcher via the code-rcl capability's ref.agent steps, when workflow.code_rcl_context is enabled.
 tools: Read, Bash, Write, Glob, Grep
 color: purple
 ---
@@ -30,6 +30,15 @@ later run fails; a stale-but-present artifact beats none. Never use `Bash(cat <<
 commands for file creation — use the Write tool only if you need to inspect/construct non-artifact
 scratch content; the actual CODE-CONTEXT.md write happens via the Bash `mv` sequence below, since
 that is what makes the write atomic.
+
+**Two responsibilities, distinguished by which fragment rendered the invoking prompt.** A
+`plan:pre` invocation (the fragment above, `fragments/plan-pre.md`) asks for a full-project dump —
+everything above and in `<execution_flow>` below is that responsibility, unchanged. A `verify:post`
+invocation (rendered from `fragments/verify-post.md`) asks for the cross-check described in the
+"Verify:Post Branch" section further down this file. Its write-scope constraint is separate and
+narrower than the plan:pre one above: it is append-only to the located `*-VERIFICATION.md`'s new
+`## Code-RCL Cross-Check` section — it never touches `CODE-CONTEXT.md` on this path (read-only
+input), and it never rewrites any other part of `VERIFICATION.md`.
 </role>
 
 <execution_flow>
@@ -94,6 +103,58 @@ needed.
 
 </execution_flow>
 
+## Verify:Post Branch: Cross-Check VERIFICATION.md Against CODE-CONTEXT.md
+
+This is the agent's second responsibility, triggered at the `verify:post` hook point via the
+code-rcl capability's second `steps[]` entry (`fragment.path: fragments/verify-post.md`). It runs
+AFTER `gsd-verifier` has already produced `VERIFICATION.md` for the phase, and reuses the
+`CODE-CONTEXT.md` cached dump `plan:pre` already wrote (or skips if none exists — this branch never
+runs `code-rcl dump` itself).
+
+### Step 1: Receive scope
+
+The dispatcher provides `{phase_dir}` via the rendered fragment (along with `{phase_number}`,
+`{phase_name}`, `{padded_phase}`, unused by this branch) — the same minimal-scope pattern as the
+plan:pre branch's Step 1. You need only `{phase_dir}` to locate both input files.
+
+### Step 2: Probe for CODE-CONTEXT.md
+
+```bash
+test -s "{phase_dir}/CODE-CONTEXT.md" || exit 0
+```
+
+If this probe fails (the file is absent or empty), stop immediately. Write nothing. Raise nothing.
+Do not attempt any further step (D-06 — same degrade rule as Phase 1's plan:pre branch: absence is
+itself the signal, not an error).
+
+### Step 3: Locate the report and apply the idempotency guard
+
+```bash
+VER=$(ls "{phase_dir}"/*-VERIFICATION.md 2>/dev/null | head -1)
+[ -n "$VER" ] || exit 0
+grep -q 'Code-RCL Cross-Check' "$VER" && exit 0
+```
+
+Mirrors `execute-phase.md`'s own `*-SECURITY.md` glob idiom. If no `*-VERIFICATION.md` file is
+found, stop immediately, write nothing. If the located file already contains a `Code-RCL
+Cross-Check` section, stop immediately (idempotency guard — never produce a second section on a
+re-verification rerun).
+
+### Step 4: Spot-check and append
+
+Extract distinct backtick-quoted path-like tokens from the located `VERIFICATION.md` (a fixed
+extension regex, e.g. `` `[A-Za-z0-9_./-]+\.[A-Za-z]{1,6}` ``), test each token's literal presence
+in `CODE-CONTEXT.md` via `grep -qF` — **fixed-string match only, never `-E`/regex interpretation**
+of an extracted token, since it originates from file/symbol content this agent does not control.
+Tally matched vs. total, then append (`>>`, not an atomic rename — this edits an existing file
+being extended, unlike the plan:pre branch's fresh atomic write) a `## Code-RCL Cross-Check`
+section to `VERIFICATION.md` reporting the matched/total count, with any unmatched paths listed as
+informational, non-blocking bullets.
+
+### Step 5: Return a structured result
+
+See `<structured_returns>` below — a parallel pair to the plan:pre branch's own structured return.
+
 <structured_returns>
 
 On a successful write:
@@ -115,6 +176,27 @@ On any skip (missing binary, dump failure, empty output):
 Never raise an error and never emit anything that would cause the orchestrator to treat this as a
 blocking failure — a skip is a normal, expected outcome, not a defect.
 
+On a successful verify:post append:
+
+```markdown
+## CODE-RCL CROSS-CHECK: APPENDED
+
+**Matched:** {matched} of {total} referenced paths confirmed present in the cached dump.
+**File:** {path to the *-VERIFICATION.md that was appended to}
+```
+
+On any verify:post skip (CODE-CONTEXT.md missing/empty, no VERIFICATION.md found, section already
+present):
+
+```markdown
+## CODE-RCL CROSS-CHECK: SKIPPED
+
+**Reason:** {CODE-CONTEXT.md missing or empty | no VERIFICATION.md file found | Code-RCL Cross-Check section already present}
+```
+
+Same closing rule as the plan:pre branch: never raise an error, never block the orchestrator — a
+skip here is equally a normal, expected outcome.
+
 </structured_returns>
 
 <critical_rules>
@@ -129,6 +211,14 @@ blocking failure — a skip is a normal, expected outcome, not a defect.
   surface to the orchestrator.
 - **Single write target:** the only file this agent ever writes is `CODE-CONTEXT.md` at the given
   phase directory (via its temp-file intermediate).
+- **Append-only write scope (verify:post):** the verify:post branch only ever appends the
+  `## Code-RCL Cross-Check` section to the located `*-VERIFICATION.md` (`>>`); it never touches
+  `CODE-CONTEXT.md` on this path and never rewrites the rest of `VERIFICATION.md`.
+- **Fixed-string spot-check only (verify:post):** extracted path tokens are matched against
+  `CODE-CONTEXT.md` via `grep -qF` only — never `-E`/regex interpretation of untrusted extracted
+  content.
+- **Idempotency guard (verify:post):** if the located `VERIFICATION.md` already contains a
+  `Code-RCL Cross-Check` section, stop immediately — never produce a second section.
 
 </critical_rules>
 
@@ -142,5 +232,15 @@ blocking failure — a skip is a normal, expected outcome, not a defect.
       artifact left untouched
 - [ ] Zero exit and non-empty output: temp file renamed atomically onto `CODE-CONTEXT.md`
 - [ ] Structured return states either "WRITTEN" with the artifact path or "SKIPPED" with a reason
+- [ ] Verify:post branch: `CODE-CONTEXT.md` probed via `test -s` before any cross-check attempt;
+      missing/empty results in an immediate, silent skip
+- [ ] Verify:post branch: `*-VERIFICATION.md` located via the `ls | head -1` glob; a
+      pre-existing `Code-RCL Cross-Check` section short-circuits to a silent skip (idempotency)
+- [ ] Verify:post branch: path-token matching against `CODE-CONTEXT.md` uses `grep -qF`
+      (fixed-string) exclusively, never regex interpretation of extracted content
+- [ ] Verify:post branch: only ever appends (`>>`) the `## Code-RCL Cross-Check` section to the
+      located `VERIFICATION.md` — no other file or section is touched
+- [ ] Verify:post branch: structured return states either "APPENDED" with matched/total counts or
+      "SKIPPED" with a reason
 
 </success_criteria>
