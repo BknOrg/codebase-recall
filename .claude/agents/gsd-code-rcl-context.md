@@ -106,10 +106,16 @@ needed.
 ## Verify:Post Branch: Cross-Check VERIFICATION.md Against CODE-CONTEXT.md
 
 This is the agent's second responsibility, triggered at the `verify:post` hook point via the
-code-rcl capability's second `steps[]` entry (`fragment.path: fragments/verify-post.md`). It runs
-AFTER `gsd-verifier` has already produced `VERIFICATION.md` for the phase, and reuses the
-`CODE-CONTEXT.md` cached dump `plan:pre` already wrote (or skips if none exists — this branch never
-runs `code-rcl dump` itself).
+code-rcl capability's second `steps[]` entry (`fragment.path: fragments/verify-post.md`).
+`verify:post` is dispatched from two places in GSD's own workflows, and this branch only has a
+chance to fire in one of them: `/gsd-execute-phase`'s own `aggregate_results` step dispatches
+`verify:post` *before* `VERIFICATION.md` is created, so this branch always finds no report there
+and silently skips every time. This branch only actually activates via a subsequent, optional
+`/gsd-verify-work` run that completes with zero UAT issues — not automatically as part of
+`/gsd-execute-phase`. By the time `/gsd-verify-work` dispatches `verify:post`, `VERIFICATION.md`
+already exists (written earlier by `/gsd-execute-phase`'s `verify_phase_goal` step), and this
+branch reuses the `CODE-CONTEXT.md` cached dump `plan:pre` already wrote (or skips if none exists —
+this branch never runs `code-rcl dump` itself).
 
 ### Step 1: Receive scope
 
@@ -138,7 +144,11 @@ grep -q 'Code-RCL Cross-Check' "$VER" && exit 0
 Mirrors `execute-phase.md`'s own `*-SECURITY.md` glob idiom. If no `*-VERIFICATION.md` file is
 found, stop immediately, write nothing. If the located file already contains a `Code-RCL
 Cross-Check` section, stop immediately (idempotency guard — never produce a second section on a
-re-verification rerun).
+re-verification rerun). **Note:** when this branch is dispatched via `/gsd-execute-phase`'s
+`aggregate_results` step, `VERIFICATION.md` does not exist yet, so this glob always comes up empty
+and the branch always exits here — that is expected, not a bug. This branch only produces a
+cross-check section when reached via a subsequent `/gsd-verify-work` run (gated on zero UAT
+issues), by which point `VERIFICATION.md` already exists.
 
 ### Step 4: Spot-check and append
 
@@ -150,6 +160,37 @@ Tally matched vs. total, then append (`>>`, not an atomic rename — this edits 
 being extended, unlike the plan:pre branch's fresh atomic write) a `## Code-RCL Cross-Check`
 section to `VERIFICATION.md` reporting the matched/total count, with any unmatched paths listed as
 informational, non-blocking bullets.
+
+Run this exact pipeline — it is the deterministic, reproducible implementation of the extraction,
+matching, and append described above; do not improvise an alternative:
+
+```bash
+TOTAL=0; MATCHED=0; UNMATCHED=()
+while IFS= read -r tok; do
+  TOTAL=$((TOTAL+1))
+  if grep -qF -- "$tok" "{phase_dir}/CODE-CONTEXT.md"; then
+    MATCHED=$((MATCHED+1))
+  else
+    UNMATCHED+=("$tok")
+  fi
+done < <(grep -oE '`[A-Za-z0-9_./-]+\.[A-Za-z]{1,6}`' "$VER" | tr -d '`' | sort -u)
+
+{
+  printf '\n## Code-RCL Cross-Check\n\n'
+  printf '**Matched:** %s of %s referenced paths confirmed present in the cached dump.\n' "$MATCHED" "$TOTAL"
+  if [ "${#UNMATCHED[@]}" -gt 0 ]; then
+    printf '\n**Unmatched (informational, non-blocking):**\n'
+    for u in "${UNMATCHED[@]}"; do
+      printf -- '- `%s`\n' "$u"
+    done
+  fi
+} >> "$VER"
+```
+
+`grep -oE` extracts the backtick-quoted spans matching the fixed extension regex, `tr -d '`'`
+strips the surrounding backticks, and `sort -u` deduplicates ("distinct"). The per-token loop runs
+the fixed-string `grep -qF` check and buckets each token into `MATCHED`/`UNMATCHED`. The final
+section is constructed and appended via `printf`/`>>` only — never an unspecified heredoc.
 
 ### Step 5: Return a structured result
 
