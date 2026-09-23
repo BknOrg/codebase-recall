@@ -1,0 +1,49 @@
+{
+  "id": "code-rcl",
+  "role": "feature",
+  "version": "0.1.0",
+  "title": "code-rcl plan-time context",
+  "description": "Optional plan-time codebase context via code-rcl's incremental, cached dump; owns the gsd-code-rcl-context agent and workflow.code_rcl_context activation key.",
+  "tier": "standard",
+  "requires": [],
+  "engines": {
+    "gsd": ">=1.6.0"
+  },
+  "runtimeCompat": {
+    "supported": [
+      "*"
+    ],
+    "unsupported": []
+  },
+  "skills": [],
+  "agents": [
+    "gsd-code-rcl-context"
+  ],
+  "hooks": [],
+  "config": {
+    "workflow.code_rcl_context": {
+      "type": "boolean",
+      "default": false,
+      "description": "Run code-rcl's plan-time context dump before planning, writing CODE-CONTEXT.md for downstream agents to consume via required_reading."
+    }
+  },
+  "steps": [
+    {
+      "point": "plan:pre",
+      "ref": {
+        "agent": "gsd-code-rcl-context"
+      },
+      "fragment": {
+        "path": "fragments/plan-pre.md"
+      },
+      "produces": [
+        "CODE-CONTEXT.md"
+      ],
+      "consumes": [],
+      "when": "workflow.code_rcl_context",
+      "onError": "skip"
+    }
+  ],
+  "contributions": [],
+  "gates": []
+}
