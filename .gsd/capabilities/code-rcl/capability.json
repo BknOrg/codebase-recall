@@ -24,7 +24,7 @@
     "workflow.code_rcl_context": {
       "type": "boolean",
       "default": false,
-      "description": "Run code-rcl's plan-time context dump before planning, writing CODE-CONTEXT.md for downstream agents to consume via required_reading."
+      "description": "Run code-rcl's plan-time context dump before planning (writing CODE-CONTEXT.md for downstream agents to consume via required_reading). Also gates an optional verify:post cross-check step that spot-checks VERIFICATION.md's file-path claims against that cached dump -- this only activates via a subsequent /gsd-verify-work run that completes with zero UAT issues, not automatically as part of /gsd-execute-phase."
     }
   },
   "steps": [
