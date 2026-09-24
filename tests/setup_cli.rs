@@ -113,3 +113,31 @@ fn setup_print_reminder_outputs_hook_text() {
     // Printing the reminder must not install anything.
     assert!(!dir.join(".mcp.json").exists());
 }
+
+#[test]
+fn init_appends_to_git_exclude_with_proper_newlines() {
+    let dir = scratch_repo("init_exclude");
+    let exclude = dir.join(".git/info/exclude");
+
+    // Case 1: Existing file without trailing newline
+    std::fs::write(&exclude, "some_rule").unwrap();
+    let out = Command::new(BIN)
+        .arg("init")
+        .current_dir(&dir)
+        .output()
+        .expect("failed to run code-rcl init");
+    assert!(out.status.success());
+    let content = std::fs::read_to_string(&exclude).unwrap();
+    assert_eq!(content, "some_rule\n.code-rcl/\n");
+
+    // Case 2: Idempotent - running init again does not re-add
+    let out = Command::new(BIN)
+        .arg("init")
+        .current_dir(&dir)
+        .output()
+        .expect("failed to run code-rcl init");
+    assert!(out.status.success());
+    let content2 = std::fs::read_to_string(&exclude).unwrap();
+    assert_eq!(content2, "some_rule\n.code-rcl/\n");
+}
+

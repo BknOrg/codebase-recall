@@ -26,9 +26,10 @@ include_external = false
 
 pub fn run(args: InitArgs) -> Result<()> {
     let project = &args.project;
+    let project_normalized = project.display().to_string().replace('\\', "/");
 
     let db = CacheDb::open(project)?;
-    db.meta_set("root", &project.display().to_string())?;
+    db.meta_set("root", &project_normalized)?;
     db.meta_set("schema_version", &cache::schema::SCHEMA_VERSION.to_string())?;
     if db.meta_get("created_at")?.is_none() {
         db.meta_set(
@@ -47,36 +48,51 @@ pub fn run(args: InitArgs) -> Result<()> {
             .with_context(|| format!("writing {}", config_path.display()))?;
     }
 
-    ensure_gitignored(project)?;
+    ensure_git_excluded(project)?;
 
-    println!(
-        "Initialized code-rcl cache at {}",
-        cache::ctx_dir(project).display()
-    );
+    let ctx_display = cache::ctx_dir(project)
+        .display()
+        .to_string()
+        .replace('\\', "/");
+    println!("Initialized code-rcl cache at {}", ctx_display);
     println!("Next: `code-rcl sync` to populate the graph cache.");
     Ok(())
 }
 
-/// Make sure the project's `.gitignore` ignores `.code-ctx/`.
-fn ensure_gitignored(project: &Path) -> Result<()> {
-    let gitignore = project.join(".gitignore");
+/// Make sure the project's `.git/info/exclude` ignores `.code-rcl/`.
+fn ensure_git_excluded(project: &Path) -> Result<()> {
+    let git_dir = project.join(".git");
+    if !git_dir.exists() {
+        return Ok(());
+    }
+
+    let exclude_dir = git_dir.join("info");
+    if !exclude_dir.exists() {
+        fs::create_dir_all(&exclude_dir)
+            .with_context(|| format!("creating directory {}", exclude_dir.display()))?;
+    }
+
+    let exclude_file = exclude_dir.join("exclude");
     let entry = format!("{}/", cache::CODE_CTX_DIR);
 
-    let already = fs::read_to_string(&gitignore)
-        .map(|c| {
-            c.lines()
-                .any(|l| l.trim() == entry || l.trim() == cache::CODE_CTX_DIR)
-        })
-        .unwrap_or(false);
+    let content = fs::read_to_string(&exclude_file).unwrap_or_default();
+    let already = content
+        .lines()
+        .any(|l| l.trim() == entry || l.trim() == cache::CODE_CTX_DIR);
     if already {
         return Ok(());
+    }
+
+    let mut prefix = "";
+    if !content.is_empty() && !content.ends_with('\n') {
+        prefix = "\n";
     }
 
     let mut f = fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(&gitignore)
-        .with_context(|| format!("opening {}", gitignore.display()))?;
-    writeln!(f, "{entry}")?;
+        .open(&exclude_file)
+        .with_context(|| format!("opening {}", exclude_file.display()))?;
+    write!(f, "{prefix}{entry}\n")?;
     Ok(())
 }
