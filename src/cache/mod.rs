@@ -1,5 +1,6 @@
-//! SQLite-backed graph cache stored at `<project>/.code-rcl/cache.db`.
+//! Hybrid BknDb (.bkndb) and SQLite-backed graph cache stored at `<project>/.code-rcl/`.
 
+pub mod bkndb;
 pub mod mappers;
 pub mod models;
 pub mod mutations;
@@ -10,6 +11,9 @@ pub mod utils;
 #[allow(unused_imports)]
 pub use utils::levenshtein;
 
+#[allow(unused_imports)]
+pub use bkndb::BknDbCodeStore;
+
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -17,11 +21,15 @@ use rusqlite::Connection;
 
 /// Directory that holds all code-rcl project state.
 pub const CODE_CTX_DIR: &str = ".code-rcl";
-/// Cache database file name inside [`CODE_CTX_DIR`].
+/// Primary BknDb database file name inside [`CODE_CTX_DIR`].
+pub const BKNDB_FILE: &str = "cache.bkndb";
+/// Secondary backup SQLite database file name inside [`CODE_CTX_DIR`].
 pub const DB_FILE: &str = "cache.db";
 
 pub struct CacheDb {
     pub(crate) conn: Connection,
+    #[allow(dead_code)]
+    pub(crate) bkndb: Option<bkndb::BknDbCodeStore>,
 }
 
 /// Absolute path to `<project>/.code-rcl`.
@@ -32,6 +40,11 @@ pub fn ctx_dir(project_root: &Path) -> PathBuf {
 /// Absolute path to `<project>/.code-rcl/cache.db`.
 pub fn db_path(project_root: &Path) -> PathBuf {
     ctx_dir(project_root).join(DB_FILE)
+}
+
+/// Absolute path to `<project>/.code-rcl/cache.bkndb`.
+pub fn bkndb_path(project_root: &Path) -> PathBuf {
+    ctx_dir(project_root).join(BKNDB_FILE)
 }
 
 impl CacheDb {
@@ -45,9 +58,26 @@ impl CacheDb {
         conn.pragma_update(None, "foreign_keys", true)?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
 
-        let mut db = Self { conn };
+        let bkn_store = bkndb::BknDbCodeStore::open(&bkndb_path(project_root)).ok();
+
+        let mut db = Self {
+            conn,
+            bkndb: bkn_store,
+        };
         db.migrate()?;
         Ok(db)
+    }
+
+    /// Access the primary BknDb store if opened.
+    #[allow(dead_code)]
+    pub fn bkndb(&self) -> Option<&bkndb::BknDbCodeStore> {
+        self.bkndb.as_ref()
+    }
+
+    /// Access the mutable primary BknDb store if opened.
+    #[allow(dead_code)]
+    pub fn bkndb_mut(&mut self) -> Option<&mut bkndb::BknDbCodeStore> {
+        self.bkndb.as_mut()
     }
 
     fn migrate(&mut self) -> Result<()> {

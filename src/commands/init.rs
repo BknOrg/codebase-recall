@@ -11,6 +11,10 @@ const CONFIG_FILE: &str = "config.toml";
 const DEFAULT_CONFIG: &str = r#"# code-rcl project configuration
 schema_version = 1
 
+[storage]
+# Storage backend: "bkndb" (default primary, .bkndb) or "sqlite" (backup, .db)
+backend = "bkndb"
+
 [sync]
 # Skip source files larger than this many KB.
 max_file_kb = 512

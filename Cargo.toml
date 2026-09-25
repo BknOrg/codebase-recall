@@ -1,6 +1,6 @@
 [package]
 name = "codebase-recall"
-version = "0.7.7"
+version = "0.8.0"
 edition = "2024"
 authors = ["Bkn Org"]
 description = "CLI based application for codebase dumper for LLMs and fast review/recall project"
@@ -17,6 +17,7 @@ clap = { version = "4.5", features = ["derive"] }
 ignore = "0.4"
 anyhow = "1.0"
 rusqlite = { version = "0.32", features = ["bundled"] }
+bkndb = "0.1"
 blake3 = "1"
 tree-sitter = "0.25"
 tree-sitter-rust = "0.24"

@@ -215,7 +215,7 @@ pub(super) fn resolve_ref(
         // The score says how well the winner fits; how alone it is says how far
         // to trust it. A name only one definition carries is a much safer guess
         // than the same score won against rivals, so it earns a higher ceiling.
-        let base = 0.4 + 0.03 * best.0 as f32;
+        let base: f32 = 0.4 + 0.03 * best.0 as f32;
         let conf = if scored.len() == 1 {
             (base + 0.15).clamp(0.55, 0.75)
         } else if margin >= 4 {
