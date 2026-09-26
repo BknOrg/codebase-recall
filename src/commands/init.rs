@@ -6,26 +6,47 @@ use std::path::Path;
 use crate::cache::{self, CacheDb};
 use crate::cli::InitArgs;
 
-const CONFIG_FILE: &str = "config.toml";
+use crate::config::CONFIG_FILE;
 
 const DEFAULT_CONFIG: &str = r#"# code-rcl project configuration
+# Precedence: command-line flag > this file > built-in default.
+# Every key is optional; a missing key uses the built-in default shown here.
 schema_version = 1
 
 [storage]
-# Storage backend: "bkndb" (default primary, .bkndb) or "sqlite" (backup, .db)
+# Accepted but not applied yet.
 backend = "bkndb"
 
 [sync]
 # Skip source files larger than this many KB.
 max_file_kb = 512
-# Languages to analyze.
-languages = ["rust", "javascript", "typescript", "python", "java", "kotlin"]
+# Restrict analysis to these languages. Omit (or leave empty) to analyze every
+# supported language: rust, javascript, typescript, python, java, kotlin, vue,
+# svelte, go, toml.
+# languages = ["rust", "python"]
 
 [graph]
-# Drop resolved edges below this confidence.
+# Drop resolved edges below this confidence (0.0 to 1.0).
 min_confidence = 0.4
 # Include edges to external (npm / pypi / crate) modules.
 include_external = false
+# Cap on total graph nodes (0 disables the cap).
+max_nodes = 4000
+# BFS depth around --focus.
+depth = 2
+# Edge kinds to include.
+kinds = ["imports", "calls", "contains", "implements"]
+
+[precise]
+# true acts like passing --precise for sync, graph and serve.
+enabled = false
+# Seconds to wait for a single language-server answer.
+timeout_secs = 15
+
+[precise.kotlin]
+# Kotlin language server: "jetbrains" (kotlin-lsp, default),
+# "fwcd" (kotlin-language-server) or "auto" (jetbrains, falling back to fwcd).
+server = "jetbrains"
 "#;
 
 pub fn run(args: InitArgs) -> Result<()> {
@@ -99,4 +120,21 @@ fn ensure_git_excluded(project: &Path) -> Result<()> {
         .with_context(|| format!("opening {}", exclude_file.display()))?;
     write!(f, "{prefix}{entry}\n")?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::ProjectConfig;
+    use std::path::Path;
+
+    #[test]
+    fn default_config_parses_to_builtin_defaults() {
+        let cfg = ProjectConfig::from_toml_str(DEFAULT_CONFIG, Path::new("config.toml")).unwrap();
+        let dflt = ProjectConfig::default();
+        assert_eq!(cfg.graph, dflt.graph);
+        assert_eq!(cfg.precise, dflt.precise);
+        assert_eq!(cfg.sync.max_file_kb, dflt.sync.max_file_kb);
+        assert_eq!(cfg.sync.languages, dflt.sync.languages);
+    }
 }

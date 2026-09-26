@@ -7,6 +7,7 @@ use crate::assets;
 use crate::cache::CacheDb;
 use crate::cli::{GraphArgs, GraphQuery, SyncArgs};
 use crate::commands::sync;
+use crate::config::{self, ProjectConfig};
 use crate::graph::CodeGraph;
 use crate::graph::render::{self, Format};
 use crate::graph::resolve::{self, GraphOptions, Scope};
@@ -15,6 +16,8 @@ use crate::graph::resolve::{self, GraphOptions, Scope};
 /// Shared by `graph` (file output) and `serve` (browser).
 pub fn build_graph(query: &GraphQuery) -> Result<CodeGraph> {
     let project = query.project.clone();
+    let cfg = ProjectConfig::load(&project)?;
+    let settings = config::resolve_graph(query, &cfg);
     let mut db = CacheDb::open(&project)?;
 
     if !query.no_sync {
@@ -47,7 +50,7 @@ pub fn build_graph(query: &GraphQuery) -> Result<CodeGraph> {
         "both" | "" => Scope::Both,
         other => anyhow::bail!("unknown --scope `{other}` (expected file, symbol, or both)"),
     };
-    let kinds: HashSet<String> = query
+    let kinds: HashSet<String> = settings
         .kinds
         .iter()
         .map(|k| k.trim().to_ascii_lowercase())
@@ -75,12 +78,12 @@ pub fn build_graph(query: &GraphQuery) -> Result<CodeGraph> {
         root: root_display,
         scope,
         kinds,
-        min_confidence: query.min_confidence,
-        include_external: query.include_external,
+        min_confidence: settings.min_confidence,
+        include_external: settings.include_external,
         path_glob,
         focus: query.focus.clone(),
-        depth: query.depth,
-        max_nodes: query.max_nodes,
+        depth: settings.depth,
+        max_nodes: settings.max_nodes,
     };
 
     resolve::build(&db, &opts)

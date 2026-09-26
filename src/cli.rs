@@ -164,12 +164,9 @@ pub struct GraphQuery {
 
     /// Edge kinds to include, comma-separated: imports, calls, references,
     /// contains, implements (`references` is noisy on large graphs, so it is
-    /// off by default)
-    #[arg(
-        long,
-        value_delimiter = ',',
-        default_value = "imports,calls,contains,implements"
-    )]
+    /// off by default) [default: from .code-rcl/config.toml, else
+    /// imports,calls,contains,implements]
+    #[arg(long, value_delimiter = ',')]
     pub kinds: Vec<String>,
 
     /// Only include files matching this glob
@@ -180,22 +177,31 @@ pub struct GraphQuery {
     #[arg(long)]
     pub focus: Option<String>,
 
-    /// BFS depth around --focus
-    #[arg(long, default_value_t = 2)]
-    pub depth: u32,
-
-    /// Drop edges below this confidence
-    #[arg(long, default_value_t = 0.4)]
-    pub min_confidence: f32,
-
-    /// Include edges to external modules (npm/pypi/crate deps)
+    /// BFS depth around --focus [default: from .code-rcl/config.toml, else 2]
     #[arg(long)]
-    pub include_external: bool,
+    pub depth: Option<u32>,
+
+    /// Drop edges below this confidence [default: from .code-rcl/config.toml, else 0.4]
+    #[arg(long)]
+    pub min_confidence: Option<f32>,
+
+    /// Include edges to external modules (npm/pypi/crate deps); pass
+    /// `--include-external=false` to override config.toml
+    /// [default: from .code-rcl/config.toml, else false]
+    #[arg(
+        long,
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "true",
+        value_name = "BOOL"
+    )]
+    pub include_external: Option<bool>,
 
     /// Cap on total graph nodes; past this the lowest-degree symbols are dropped
     /// (files, dirs and externals are always kept). 0 disables the cap.
-    #[arg(long, default_value_t = 4000)]
-    pub max_nodes: usize,
+    /// [default: from .code-rcl/config.toml, else 4000]
+    #[arg(long)]
+    pub max_nodes: Option<usize>,
 
     /// Do not auto-sync changed files before rendering
     #[arg(long)]

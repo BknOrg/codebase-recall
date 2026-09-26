@@ -37,10 +37,11 @@ pub fn analysis_query(
         kinds,
         path: None,
         focus: None,
-        depth: 2,
-        min_confidence: 0.0,
-        include_external: false,
-        max_nodes: 0,
+        // Pinned: analysis results must never depend on config.toml [graph].
+        depth: Some(2),
+        min_confidence: Some(0.0),
+        include_external: Some(false),
+        max_nodes: Some(0),
         no_sync,
         precise,
     }

@@ -72,10 +72,11 @@ pub fn generate_relation_bundle(
         ],
         path: None,
         focus: Some(target.to_string()),
-        depth,
-        min_confidence: 0.4,
-        include_external: false,
-        max_nodes: 4000,
+        depth: Some(depth),
+        // None: min_confidence / include_external come from config.toml.
+        min_confidence: None,
+        include_external: None,
+        max_nodes: Some(4000),
         no_sync,
         precise: Default::default(),
     };

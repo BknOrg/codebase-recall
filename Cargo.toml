@@ -33,6 +33,7 @@ globset = "0.4"
 tiny_http = "0.12"
 webbrowser = "1.2"
 ctrlc = "3.5"
+toml = "0.8"
 
 # The profile that 'dist' will build with
 [profile.dist]

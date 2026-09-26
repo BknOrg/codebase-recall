@@ -3,6 +3,7 @@ mod assets;
 mod cache;
 mod cli;
 mod commands;
+mod config;
 mod dump;
 mod graph;
 mod precise;
