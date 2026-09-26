@@ -6,6 +6,8 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::config::{KOTLIN_SERVERS, ProjectConfig};
+
 /// One language server, and everything needed to launch it and to explain
 /// itself when it cannot be launched.
 pub struct Backend {
@@ -77,27 +79,7 @@ pub const BACKENDS: &[Backend] = &[
                       cross-file calls will come back unresolved",
         index_timeout_secs: 600,
     },
-    Backend {
-        lang_group: "kotlin",
-        language_id: "kotlin",
-        candidates: &[("kotlin-language-server", &[])],
-        env_override: "CODE_RCL_LSP_KOTLIN",
-        install_hint: "download a release from \
-                       https://github.com/fwcd/kotlin-language-server/releases, unzip it and put \
-                       `server/bin/kotlin-language-server` on PATH, or point \
-                       CODE_RCL_LSP_KOTLIN at it",
-        project_markers: &[
-            "build.gradle.kts",
-            "build.gradle",
-            "settings.gradle.kts",
-            "settings.gradle",
-            "pom.xml",
-        ],
-        marker_hint: "kotlin-language-server resolves types through the Gradle/Maven classpath; \
-                      without a build script it falls back to syntax-only analysis and most \
-                      cross-file calls will come back unresolved",
-        index_timeout_secs: 600,
-    },
+    KOTLIN_JETBRAINS,
     Backend {
         lang_group: "typescript",
         language_id: "typescript",
@@ -139,6 +121,92 @@ pub const BACKENDS: &[Backend] = &[
     },
 ];
 
+const KOTLIN_MARKERS: &[&str] = &[
+    "build.gradle.kts",
+    "build.gradle",
+    "settings.gradle.kts",
+    "settings.gradle",
+    "pom.xml",
+];
+
+/// JetBrains' official Kotlin LSP. The default Kotlin backend.
+pub const KOTLIN_JETBRAINS: Backend = Backend {
+    lang_group: "kotlin",
+    language_id: "kotlin",
+    candidates: &[("intellij-server", &["--stdio"])],
+    env_override: "CODE_RCL_LSP_KOTLIN",
+    install_hint: "install JetBrains' official Kotlin LSP (https://github.com/Kotlin/kotlin-lsp) \
+                   and put `intellij-server` on PATH. To use \
+                   fwcd's kotlin-language-server instead, add `server = \"fwcd\"` (or \
+                   `server = \"auto\"` to try intellij-server first and fall back to fwcd) under \
+                   `[precise.kotlin]` in .code-rcl/config.toml",
+    project_markers: KOTLIN_MARKERS,
+    marker_hint: "kotlin-lsp resolves types through the Gradle/Maven project model; without a \
+                  build script it falls back to syntax-only analysis and most cross-file \
+                  calls will come back unresolved",
+    index_timeout_secs: 900,
+};
+
+/// fwcd's community `kotlin-language-server`, selected by `server = "fwcd"`.
+pub const KOTLIN_FWCD: Backend = Backend {
+    lang_group: "kotlin",
+    language_id: "kotlin",
+    candidates: &[("kotlin-language-server", &[])],
+    env_override: "CODE_RCL_LSP_KOTLIN",
+    install_hint: "download a release from \
+                   https://github.com/fwcd/kotlin-language-server/releases, unzip it and put \
+                   `server/bin/kotlin-language-server` on PATH, \
+                   (this server is selected by `server = \"fwcd\"` \
+                   under `[precise.kotlin]` in .code-rcl/config.toml)",
+    project_markers: KOTLIN_MARKERS,
+    marker_hint: "kotlin-language-server resolves types through the Gradle/Maven classpath; \
+                  without a build script it falls back to syntax-only analysis and most \
+                  cross-file calls will come back unresolved",
+    index_timeout_secs: 600,
+};
+
+/// Tries JetBrains' `kotlin-lsp` first, then fwcd's `kotlin-language-server`.
+pub const KOTLIN_AUTO: Backend = Backend {
+    lang_group: "kotlin",
+    language_id: "kotlin",
+    candidates: &[
+        ("kotlin-lsp", &["--stdio"]),
+        ("kotlin-language-server", &[]),
+    ],
+    env_override: "CODE_RCL_LSP_KOTLIN",
+    install_hint: "install JetBrains' Kotlin LSP (https://github.com/Kotlin/kotlin-lsp, \
+                   `kotlin-lsp` on PATH) or fwcd's kotlin-language-server \
+                   (https://github.com/fwcd/kotlin-language-server/releases, \
+                   `kotlin-language-server` on PATH), or point CODE_RCL_LSP_KOTLIN at either",
+    project_markers: KOTLIN_MARKERS,
+    marker_hint: "the Kotlin servers resolve types through the Gradle/Maven project model; \
+                  without a build script they fall back to syntax-only analysis and most \
+                  cross-file calls will come back unresolved",
+    index_timeout_secs: 900,
+};
+
+/// `BACKENDS` with the Kotlin entry chosen by `[precise.kotlin] server`.
+/// Only the built-in entries are ever selected; config never supplies a
+/// command line.
+pub fn select_backends(cfg: &ProjectConfig) -> anyhow::Result<Vec<&'static Backend>> {
+    let kotlin: Option<&'static Backend> = match cfg.precise.kotlin.server.as_str() {
+        "jetbrains" => None,
+        "fwcd" => Some(&KOTLIN_FWCD),
+        "auto" => Some(&KOTLIN_AUTO),
+        other => anyhow::bail!(
+            "unknown [precise.kotlin] server `{other}` (expected one of: {})",
+            KOTLIN_SERVERS.join(", ")
+        ),
+    };
+    Ok(BACKENDS
+        .iter()
+        .map(|b| match kotlin {
+            Some(k) if b.lang_group == "kotlin" => k,
+            _ => b,
+        })
+        .collect())
+}
+
 /// Comma-separated language groups `--precise` can serve, for help text.
 pub fn supported_languages() -> String {
     BACKENDS
@@ -166,7 +234,7 @@ impl Launcher {
             .unwrap_or_default()
             .to_ascii_lowercase();
         // Windows cannot execute .cmd/.bat directly — and npm-installed servers
-        // (pyright) and the JVM ones (jdtls, kotlin-language-server) ship
+        // (pyright) and the JVM ones (jdtls, kotlin-lsp, kotlin-language-server) ship
         // exactly that — so route them through the shell.
         if cfg!(windows) && matches!(ext.as_str(), "cmd" | "bat") {
             let mut cmd = Command::new("cmd");
@@ -329,5 +397,76 @@ mod tests {
         assert!(err.contains("code-rcl-no-such-server"));
         assert!(err.contains("rustup component add rust-analyzer"));
         assert!(err.contains("CODE_RCL_LSP_RUST"));
+    }
+
+    fn kotlin_cfg(server: &str) -> ProjectConfig {
+        ProjectConfig::from_toml_str(
+            &format!("[precise.kotlin]\nserver = \"{server}\"\n"),
+            Path::new("config.toml"),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn select_backends_default_is_jetbrains_and_keeps_others() {
+        let sel = select_backends(&ProjectConfig::default()).unwrap();
+        assert_eq!(sel.len(), BACKENDS.len());
+        for (chosen, orig) in sel.iter().zip(BACKENDS) {
+            assert_eq!(chosen.lang_group, orig.lang_group);
+            assert_eq!(chosen.candidates, orig.candidates);
+        }
+        let k = sel.iter().find(|b| b.lang_group == "kotlin").unwrap();
+        assert_eq!(k.candidates[0], ("kotlin-lsp", &["--stdio"][..]));
+    }
+
+    #[test]
+    fn select_backends_fwcd_and_auto() {
+        let fwcd = select_backends(&kotlin_cfg("fwcd")).unwrap();
+        let k = fwcd.iter().find(|b| b.lang_group == "kotlin").unwrap();
+        assert_eq!(k.candidates, &[("kotlin-language-server", &[][..])]);
+        assert_eq!(k.env_override, "CODE_RCL_LSP_KOTLIN");
+
+        let auto = select_backends(&kotlin_cfg("auto")).unwrap();
+        let k = auto.iter().find(|b| b.lang_group == "kotlin").unwrap();
+        assert_eq!(k.candidates.len(), 2);
+        assert_eq!(k.candidates[0].0, "kotlin-lsp");
+        assert_eq!(k.candidates[1].0, "kotlin-language-server");
+        assert_eq!(k.env_override, "CODE_RCL_LSP_KOTLIN");
+
+        // Other languages are untouched.
+        for sel in [&fwcd, &auto] {
+            for (chosen, orig) in sel.iter().zip(BACKENDS) {
+                if orig.lang_group != "kotlin" {
+                    assert_eq!(chosen.candidates, orig.candidates);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn select_backends_rejects_an_invalid_server() {
+        let mut cfg = ProjectConfig::default();
+        cfg.precise.kotlin.server = "nope".to_string();
+        let err = format!(
+            "{:#}",
+            select_backends(&cfg)
+                .err()
+                .expect("invalid server is rejected")
+        );
+        assert!(err.contains("nope"), "{err}");
+        assert!(err.contains("jetbrains, fwcd, auto"), "{err}");
+    }
+
+    #[test]
+    fn kotlin_variants_are_self_describing() {
+        for b in [&KOTLIN_JETBRAINS, &KOTLIN_FWCD, &KOTLIN_AUTO] {
+            assert!(!b.candidates.is_empty());
+            assert!(!b.install_hint.is_empty());
+            assert!(b.project_markers.is_empty() == b.marker_hint.is_empty());
+            assert_eq!(b.env_override, "CODE_RCL_LSP_KOTLIN");
+            assert_eq!(b.lang_group, "kotlin");
+        }
+        let hint = KOTLIN_JETBRAINS.install_hint;
+        assert!(hint.contains("fwcd") && hint.contains("auto") && hint.contains("config.toml"));
     }
 }

@@ -519,7 +519,7 @@ code-rcl setup --workspace --remove --git-hook
 | **TypeScript** | `typescript-language-server`| `npm install -g typescript-language-server typescript` | `CODE_RCL_LSP_TYPESCRIPT` |
 | **JavaScript** | `typescript-language-server`| `npm install -g typescript-language-server typescript` | `CODE_RCL_LSP_JAVASCRIPT` |
 | **Java** | `jdtls` | Eclipse JDT.LS release (JDK 17+) | `CODE_RCL_LSP_JAVA` |
-| **Kotlin** | `kotlin-language-server` | kotlin-language-server release | `CODE_RCL_LSP_KOTLIN` |
+| **Kotlin** | `kotlin-lsp` (JetBrains, default) or `kotlin-language-server` (fwcd, `server = "fwcd"` in config.toml) | Kotlin/kotlin-lsp or kotlin-language-server release | `CODE_RCL_LSP_KOTLIN` |
 
 *Note:* If a language server is not installed, `code-rcl` logs a warning and gracefully falls back to AST heuristics for that language without failing the overall command.
 

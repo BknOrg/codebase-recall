@@ -3,7 +3,7 @@
 //! The default pipeline infers where a reference points from the AST alone,
 //! which cannot follow generics, trait/interface dispatch or overloads. This
 //! pass asks the compiler-grade tool for each language instead —
-//! rust-analyzer, Pyright, Eclipse JDT LS, kotlin-language-server — for the one
+//! rust-analyzer, Pyright, Eclipse JDT LS, kotlin-lsp / kotlin-language-server — for the one
 //! question that matters here: *where is this name defined?*
 //!
 //! The answer is stored per reference and read back by the graph resolver as
@@ -41,6 +41,9 @@ pub struct PreciseOptions {
     pub request_timeout: Duration,
     /// `--language` tokens, empty for "every language that has a backend".
     pub language_filter: Vec<String>,
+    /// The backends to use, with the Kotlin one chosen by
+    /// `[precise.kotlin] server` (see [`backend::select_backends`]).
+    pub backends: Vec<&'static Backend>,
 }
 
 /// What one language's pass achieved, for the summary line.
@@ -105,8 +108,10 @@ pub fn run_precise_pass(
         by_language.entry(f.language.as_str()).or_default().push(f);
     }
 
-    let selected: Vec<(&'static Backend, Vec<&FileRow>)> = backend::BACKENDS
+    let selected: Vec<(&'static Backend, Vec<&FileRow>)> = opts
+        .backends
         .iter()
+        .copied()
         .filter(|b| language_selected(b.lang_group, &opts.language_filter))
         .filter_map(|b| {
             by_language

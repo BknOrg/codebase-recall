@@ -10,7 +10,7 @@
 | `CODE_RCL_LSP_RUST` | Optional | Search `PATH` | Full path to the Rust language server executable used by `sync --precise`. |
 | `CODE_RCL_LSP_PYTHON` | Optional | Search `PATH` | Full path to the Python language server (for example pyright). |
 | `CODE_RCL_LSP_JAVA` | Optional | Search `PATH` | Full path to the Java language server launcher. Needs a JDK 17+. |
-| `CODE_RCL_LSP_KOTLIN` | Optional | Search `PATH` | Full path to the Kotlin language server. |
+| `CODE_RCL_LSP_KOTLIN` | Optional | Search `PATH` | Full path to the Kotlin language server: JetBrains' `kotlin-lsp` (default) or fwcd's `kotlin-language-server`, whichever `[precise.kotlin] server` selects. Overrides the binary path only, not the selection. |
 | `CODE_RCL_LSP_TYPESCRIPT` | Optional | Search `PATH` | Full path to the TypeScript language server. |
 | `CODE_RCL_LSP_JAVASCRIPT` | Optional | Search `PATH` | Full path to the JavaScript language server. |
 | `CODE_RCL_LSP_GO` | Optional | Search `PATH` | Full path to the Go language server. |
@@ -31,26 +31,77 @@ No `.env` file is used. Files named `.env*` are deliberately skipped by `dump`.
 
 It also appends `.code-ctx/` to the project's `.gitignore` if not already present. <!-- VERIFY: init.rs adds `.code-ctx/` to .gitignore, but the cache directory constant is `.code-rcl`; the mismatch may be a bug, so confirm intended behavior -->
 
-Default `config.toml`:
+Default `config.toml` (written by `code-rcl init`; every line is optional):
 
 ```toml
 # code-rcl project configuration
+# Precedence: command-line flag > this file > built-in default.
+# Every key is optional; a missing key uses the built-in default shown here.
 schema_version = 1
+
+[storage]
+# Accepted but not applied yet.
+backend = "bkndb"
 
 [sync]
 # Skip source files larger than this many KB.
 max_file_kb = 512
-# Languages to analyze.
-languages = ["rust", "javascript", "typescript", "python", "java", "kotlin"]
+# Restrict analysis to these languages. Omit (or leave empty) to analyze every
+# supported language: rust, javascript, typescript, python, java, kotlin, vue,
+# svelte, go, toml.
+# languages = ["rust", "python"]
 
 [graph]
-# Drop resolved edges below this confidence.
+# Drop resolved edges below this confidence (0.0 to 1.0).
 min_confidence = 0.4
 # Include edges to external (npm / pypi / crate) modules.
 include_external = false
+# Cap on total graph nodes (0 disables the cap).
+max_nodes = 4000
+# BFS depth around --focus.
+depth = 2
+# Edge kinds to include.
+kinds = ["imports", "calls", "contains", "implements"]
+
+[precise]
+# true acts like passing --precise for sync, graph and serve.
+enabled = false
+# Seconds to wait for a single language-server answer.
+timeout_secs = 15
+
+[precise.kotlin]
+# Kotlin language server: "jetbrains" (kotlin-lsp, default),
+# "fwcd" (kotlin-language-server) or "auto" (jetbrains, falling back to fwcd).
+server = "jetbrains"
 ```
 
-Note: in the current source, `config.toml` is written by `init` but no code reads it back. Effective settings come from the command-line flags below.
+### How config.toml is applied
+
+Precedence is always **command-line flag > `config.toml` > built-in default**. A missing file, or a missing key, silently uses the built-in default, so projects without a config (or with an older one) behave as before. An explicit flag always wins, including `--include-external=false` over `include_external = true` and `--max-nodes 0` over a non-zero `max_nodes`.
+
+| Key | Default | Honored by |
+|-----|---------|------------|
+| `[sync] max_file_kb` | `512` | `sync` and every implicit sync (`graph`, `serve`, `dump`, `impact`, MCP, ...), so the cache never flips between two size limits |
+| `[sync] languages` | all | same as above; `--language` overrides it |
+| `[graph] min_confidence` | `0.4` | `graph`, `serve`, `dump -r` |
+| `[graph] include_external` | `false` | `graph`, `serve`, `dump -r` |
+| `[graph] max_nodes` | `4000` | `graph`, `serve` |
+| `[graph] depth` | `2` | `graph`, `serve` (BFS depth around `--focus`) |
+| `[graph] kinds` | `imports, calls, contains, implements` | `graph`, `serve`; `--kinds` replaces the list entirely |
+| `[precise] enabled` | `false` | `sync`, `graph`, `serve` only (acts like `--precise`) |
+| `[precise] timeout_secs` | `15` | wherever a precise pass runs; `--precise-timeout` overrides it |
+| `[precise.kotlin] server` | `jetbrains` | the Kotlin backend of a precise pass |
+| `[storage] backend` | `bkndb` | accepted, not applied yet |
+
+Internal analysis commands (`impact`, `path`, `explain`, `report`, `digest` and the MCP graph/impact tools) ignore `[graph]` and keep `min_confidence` 0.0, so their output does not change when you edit `[graph]`. They do use `[sync]` (an implicit sync must use the same limits as `sync`).
+
+**Kotlin language server.** `[precise.kotlin] server` picks the backend: `jetbrains` (default, `kotlin-lsp --stdio`), `fwcd` (`kotlin-language-server`) or `auto` (`kotlin-lsp`, falling back to `kotlin-language-server`). `CODE_RCL_LSP_KOTLIN` still overrides the binary path. Other languages are unaffected. Config only selects among these built-in servers; it never supplies a command line.
+
+**Errors.** Unknown keys, out-of-range or invalid values (`min_confidence` outside 0.0 to 1.0, `max_file_kb` below 1, `timeout_secs` outside 1 to 86400, an unknown Kotlin server or language) and broken TOML are errors that name the config file, the key/value and the valid options. Config is never silently ignored.
+
+**Older configs.** A `config.toml` written by an older `init` carries `languages = ["rust", "javascript", "typescript", "python", "java", "kotlin"]`. That list is now honored and restricts sync to those languages (go, vue, svelte and toml are skipped). Delete the line to analyze everything; `sync` prints a note on stderr when the filter comes from config.
+
+**Security.** `[precise] enabled = true` is equivalent to typing `--precise` (language servers such as rust-analyzer may run project build scripts). `init` adds `.code-rcl/` to `.git/info/exclude` so the config does not travel with a clone.
 
 ## Required vs optional settings
 

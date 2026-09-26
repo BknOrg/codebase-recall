@@ -71,7 +71,7 @@ pub fn run(mut args: SyncArgs) -> Result<()> {
 pub fn run_precise(db: &mut CacheDb, args: &SyncArgs) -> Result<PreciseStats> {
     let cfg = ProjectConfig::load(&args.project)?;
     let settings = config::resolve_sync(args, &cfg);
-    let opts = precise_options(&args.precise, &settings.languages, &cfg);
+    let opts = precise_options(&args.precise, &settings.languages, &cfg)?;
     precise::run_precise_pass(db, &args.project, &opts)
 }
 
@@ -79,12 +79,13 @@ pub fn precise_options(
     args: &PreciseArgs,
     language_filter: &[String],
     cfg: &ProjectConfig,
-) -> PreciseOptions {
-    PreciseOptions {
+) -> Result<PreciseOptions> {
+    Ok(PreciseOptions {
         full: args.precise_full,
         request_timeout: Duration::from_secs(config::resolve_precise_timeout(args, cfg).max(1)),
         language_filter: language_filter.to_vec(),
-    }
+        backends: precise::backend::select_backends(cfg)?,
+    })
 }
 
 /// Print what the precise pass did. All output goes to stderr so stdout

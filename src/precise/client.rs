@@ -67,7 +67,7 @@ impl LspClient {
                 "starting language server `{}`.\n  \
                  It was found at {}, but could not be executed. \
                  Check that it runs from a terminal and that any runtime it needs \
-                 (Node.js for pyright, a JDK for jdtls/kotlin-language-server) is installed.",
+                 (Node.js for pyright, a JDK for jdtls, kotlin-lsp and kotlin-language-server) is installed.",
                 launcher.name,
                 launcher.program.display()
             )

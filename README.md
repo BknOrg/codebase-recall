@@ -503,8 +503,10 @@ Nothing is bundled. Install the servers for your languages; a missing server is 
 | **TypeScript** | `typescript-language-server` | `npm install -g typescript-language-server typescript` | `CODE_RCL_LSP_TYPESCRIPT` |
 | **JavaScript** | `typescript-language-server` | `npm install -g typescript-language-server typescript` | `CODE_RCL_LSP_JAVASCRIPT` |
 | **Java** | `jdtls` (Eclipse JDT LS) | [eclipse.jdt.ls releases](https://github.com/eclipse-jdtls/eclipse.jdt.ls) (needs JDK 17+) | `CODE_RCL_LSP_JAVA` |
-| **Kotlin** | `kotlin-language-server` | [kotlin-language-server releases](https://github.com/fwcd/kotlin-language-server/releases) | `CODE_RCL_LSP_KOTLIN` |
+| **Kotlin** | `kotlin-lsp` (JetBrains, default) or `kotlin-language-server` (fwcd, `server = "fwcd"`) | [Kotlin/kotlin-lsp](https://github.com/Kotlin/kotlin-lsp), [kotlin-language-server releases](https://github.com/fwcd/kotlin-language-server/releases) | `CODE_RCL_LSP_KOTLIN` |
 | **Go** | `gopls` | `go install golang.org/x/tools/gopls@latest` | `CODE_RCL_LSP_GO` |
+
+Per-project defaults for these flags, and the Kotlin server choice (`[precise.kotlin] server`), live in `.code-rcl/config.toml`; see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
 #### `sync --precise` Options
 
