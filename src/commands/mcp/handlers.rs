@@ -137,7 +137,7 @@ pub fn execute_impact(default_project: &Path, args: &Value) -> Result<String> {
         precise: PreciseArgs {
             precise,
             precise_full: false,
-            precise_timeout: 15,
+            precise_timeout: None,
         },
     };
 
@@ -335,13 +335,13 @@ pub fn execute_sync(default_project: &Path, args: &Value) -> Result<String> {
 
     let sync_args = crate::cli::SyncArgs {
         project: project.clone(),
-        max_file_kb: 512,
+        max_file_kb: None,
         language: languages,
         no_report: false,
         precise: PreciseArgs {
             precise,
             precise_full: full,
-            precise_timeout: 15,
+            precise_timeout: None,
         },
     };
 
@@ -437,7 +437,7 @@ pub fn execute_graph(default_project: &Path, args: &Value) -> Result<String> {
         precise: PreciseArgs {
             precise,
             precise_full: false,
-            precise_timeout: 15,
+            precise_timeout: None,
         },
     };
 

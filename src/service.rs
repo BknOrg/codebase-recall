@@ -15,7 +15,7 @@ use crate::commands::sync::{self, SyncStats};
 pub fn auto_sync(db: &mut CacheDb, project: &Path) -> Result<SyncStats> {
     let args = SyncArgs {
         project: project.to_path_buf(),
-        max_file_kb: 512,
+        max_file_kb: None,
         language: Vec::new(),
         no_report: true,
         precise: PreciseArgs::default(),

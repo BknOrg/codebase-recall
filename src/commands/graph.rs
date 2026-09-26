@@ -23,7 +23,7 @@ pub fn build_graph(query: &GraphQuery) -> Result<CodeGraph> {
     if !query.no_sync {
         let sync_args = SyncArgs {
             project: project.clone(),
-            max_file_kb: 512,
+            max_file_kb: None,
             language: Vec::new(),
             no_report: true,
             precise: query.precise.clone(),
@@ -89,8 +89,9 @@ pub fn build_graph(query: &GraphQuery) -> Result<CodeGraph> {
     resolve::build(&db, &opts)
 }
 
-pub fn run(args: GraphArgs) -> Result<()> {
+pub fn run(mut args: GraphArgs) -> Result<()> {
     let project = args.query.project.clone();
+    ProjectConfig::load(&project)?.apply_precise_default(&mut args.query.precise);
 
     let formats = parse_formats(&args.format)?;
 

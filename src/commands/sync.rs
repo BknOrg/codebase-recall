@@ -7,11 +7,21 @@ use crate::analysis::{self, Language};
 use crate::cache::CacheDb;
 use crate::cache::models::FileRow;
 use crate::cli::{PreciseArgs, SyncArgs};
+use crate::config::{self, ProjectConfig};
 use crate::dump::walker;
 use crate::precise::{self, PreciseOptions, PreciseStats};
 
-pub fn run(args: SyncArgs) -> Result<()> {
+pub fn run(mut args: SyncArgs) -> Result<()> {
     let project = args.project.clone();
+    let cfg = ProjectConfig::load(&project)?;
+    cfg.apply_precise_default(&mut args.precise);
+    let settings = config::resolve_sync(&args, &cfg);
+    if settings.languages_from_config {
+        eprintln!(
+            "note: [sync] languages in .code-rcl/config.toml limits analysis to: {} (pass --language to override)",
+            settings.languages.join(", ")
+        );
+    }
     let mut db = CacheDb::open(&project)?;
     let stats = sync_cache(&mut db, &args)?;
     let (total_symbols, total_imports) = db.totals()?;
@@ -59,14 +69,20 @@ pub fn run(args: SyncArgs) -> Result<()> {
 
 /// Run the language-server pass for the languages this sync covered.
 pub fn run_precise(db: &mut CacheDb, args: &SyncArgs) -> Result<PreciseStats> {
-    let opts = precise_options(&args.precise, &args.language);
+    let cfg = ProjectConfig::load(&args.project)?;
+    let settings = config::resolve_sync(args, &cfg);
+    let opts = precise_options(&args.precise, &settings.languages, &cfg);
     precise::run_precise_pass(db, &args.project, &opts)
 }
 
-pub fn precise_options(args: &PreciseArgs, language_filter: &[String]) -> PreciseOptions {
+pub fn precise_options(
+    args: &PreciseArgs,
+    language_filter: &[String],
+    cfg: &ProjectConfig,
+) -> PreciseOptions {
     PreciseOptions {
         full: args.precise_full,
-        request_timeout: Duration::from_secs(args.precise_timeout.max(1)),
+        request_timeout: Duration::from_secs(config::resolve_precise_timeout(args, cfg).max(1)),
         language_filter: language_filter.to_vec(),
     }
 }
@@ -115,8 +131,10 @@ pub struct SyncStats {
 /// `graph`'s auto-sync.
 pub fn sync_cache(db: &mut CacheDb, args: &SyncArgs) -> Result<SyncStats> {
     let project = &args.project;
-    let max_bytes = args.max_file_kb.saturating_mul(1024);
-    let filter = &args.language;
+    let cfg = ProjectConfig::load(project)?;
+    let settings = config::resolve_sync(args, &cfg);
+    let max_bytes = settings.max_bytes;
+    let filter = &settings.languages;
 
     // Current source files on disk.
     let mut on_disk: Vec<DiskFile> = Vec::new();

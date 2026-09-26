@@ -100,10 +100,12 @@ pub struct SyncArgs {
     pub project: PathBuf,
 
     /// Skip source files larger than this many KB
-    #[arg(long, default_value_t = 512)]
-    pub max_file_kb: u64,
+    /// [default: from .code-rcl/config.toml, else 512]
+    #[arg(long)]
+    pub max_file_kb: Option<u64>,
 
     /// Restrict to a subset of languages (e.g. rust,js,py)
+    /// [default: from .code-rcl/config.toml `[sync] languages`, else all]
     #[arg(long, value_delimiter = ',')]
     pub language: Vec<String>,
 
@@ -119,9 +121,13 @@ pub struct SyncArgs {
 #[derive(Parser, Debug, Clone)]
 pub struct PreciseArgs {
     /// Resolve references through the real language server for each language
-    /// (rust-analyzer, pyright, jdtls, kotlin-language-server, typescript-language-server) instead of
-    /// guessing from the AST. Needs those servers installed; any that are
+    /// (rust-analyzer, pyright, jdtls, typescript-language-server, and for
+    /// Kotlin JetBrains' kotlin-lsp by default or fwcd's kotlin-language-server
+    /// when `[precise.kotlin] server` in .code-rcl/config.toml says so) instead
+    /// of guessing from the AST. Needs those servers installed; any that are
     /// missing are reported and their language keeps its heuristic edges.
+    /// `[precise] enabled = true` in config.toml makes this flag implicit for
+    /// sync, graph and serve.
     #[arg(long)]
     pub precise: bool,
 
@@ -131,13 +137,9 @@ pub struct PreciseArgs {
     pub precise_full: bool,
 
     /// Seconds to wait for a single language-server answer
-    #[arg(
-        long,
-        default_value_t = 15,
-        value_name = "SECONDS",
-        requires = "precise"
-    )]
-    pub precise_timeout: u64,
+    /// [default: from .code-rcl/config.toml, else 15]
+    #[arg(long, value_name = "SECONDS", requires = "precise")]
+    pub precise_timeout: Option<u64>,
 }
 
 impl Default for PreciseArgs {
@@ -145,7 +147,7 @@ impl Default for PreciseArgs {
         Self {
             precise: false,
             precise_full: false,
-            precise_timeout: 15,
+            precise_timeout: None,
         }
     }
 }

@@ -202,3 +202,107 @@ fn impact_ignores_graph_config() {
     }
     remove_config(&dir);
 }
+
+// ---- [sync] / [precise] ----------------------------------------------------
+
+/// Two small .rs files, one small .py file and one .rs file padded past 2 KB.
+fn sync_project(tag: &str) -> PathBuf {
+    let dir = fresh_dir(tag);
+    write(&dir, "a.rs", "pub fn a() {}\n");
+    write(&dir, "b.rs", "pub fn b() { crate::a(); }\n");
+    write(&dir, "c.py", "def c():\n    return 1\n");
+    let mut big = String::from("pub fn big() {}\n");
+    while big.len() < 2500 {
+        big.push_str("// padding padding padding padding padding padding padding\n");
+    }
+    write(&dir, "big.rs", &big);
+    dir
+}
+
+fn sync(dir: &Path, extra: &[&str]) -> Output {
+    let mut args = vec!["sync", "--no-report"];
+    args.extend_from_slice(extra);
+    let out = run(dir, &args);
+    assert!(
+        out.status.success(),
+        "sync {extra:?} failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    out
+}
+
+/// Parse `sync: N source files (+A ~B =C -D)`.
+fn sync_line(out: &Output) -> (usize, usize, usize, usize, usize) {
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let line = stdout
+        .lines()
+        .find(|l| l.starts_with("sync: "))
+        .unwrap_or_else(|| panic!("no sync line in {stdout}"));
+    let num = |s: &str| -> usize {
+        s.trim_matches(|c: char| !c.is_ascii_digit())
+            .parse()
+            .unwrap()
+    };
+    let mut it = line["sync: ".len()..].split_whitespace();
+    let scanned = num(it.next().unwrap());
+    let toks: Vec<&str> = line[line.find('(').unwrap() + 1..line.find(')').unwrap()]
+        .split_whitespace()
+        .collect();
+    (scanned, num(toks[0]), num(toks[1]), num(toks[2]), num(toks[3]))
+}
+
+fn scanned(out: &Output) -> usize {
+    sync_line(out).0
+}
+
+#[test]
+fn config_max_file_kb_and_flag_override() {
+    let dir = sync_project("maxkb");
+    let baseline = scanned(&sync(&dir, &[]));
+
+    write_config(&dir, "[sync]\nmax_file_kb = 1\n");
+    let limited = scanned(&sync(&dir, &[]));
+    assert!(limited < baseline, "config limit scans fewer files");
+    assert_eq!(scanned(&sync(&dir, &["--max-file-kb", "8"])), baseline);
+}
+
+#[test]
+fn config_languages_and_flag_override() {
+    let dir = sync_project("langs");
+    let baseline = scanned(&sync(&dir, &[]));
+    let flag_py = scanned(&sync(&dir, &["--language", "python"]));
+    let flag_rs = scanned(&sync(&dir, &["--language", "rust"]));
+    assert!(flag_py < baseline);
+
+    write_config(&dir, "[sync]\nlanguages = [\"python\"]\n");
+    let out = sync(&dir, &[]);
+    assert_eq!(scanned(&out), flag_py);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("languages") && err.contains("config.toml"), "{err}");
+
+    let out = sync(&dir, &["--language", "rust"]);
+    assert_eq!(scanned(&out), flag_rs);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!err.contains("note: [sync] languages"), "{err}");
+}
+
+#[test]
+fn implicit_sync_uses_the_same_limit_as_explicit_sync() {
+    let dir = sync_project("implicit");
+    write_config(&dir, "[sync]\nmax_file_kb = 1\n");
+
+    let first = sync_line(&sync(&dir, &[]));
+    let g = graph(&dir, &[]);
+    let labels: Vec<&str> = g["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|n| n["label"].as_str())
+        .collect();
+    assert!(labels.contains(&"a"), "small file symbols kept: {labels:?}");
+    assert!(!labels.contains(&"big"), "over-limit file stays out: {labels:?}");
+
+    let second = sync_line(&sync(&dir, &[]));
+    assert_eq!(second.0, first.0);
+    assert_eq!((second.1, second.2, second.4), (0, 0, 0), "no thrash: {second:?}");
+}

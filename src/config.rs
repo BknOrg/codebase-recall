@@ -11,7 +11,7 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 
 use crate::analysis::Language;
-use crate::cli::GraphQuery;
+use crate::cli::{GraphQuery, PreciseArgs, SyncArgs};
 
 pub const CONFIG_FILE: &str = "config.toml";
 
@@ -157,6 +157,11 @@ impl ProjectConfig {
         Self::from_toml_str(&text, &path)
     }
 
+    /// `[precise] enabled` acts like passing `--precise` (flag OR config).
+    pub fn apply_precise_default(&self, precise: &mut PreciseArgs) {
+        precise.precise = precise.precise || self.precise.enabled;
+    }
+
     /// Parse and validate `text`; `source` is only used in error messages.
     pub fn from_toml_str(text: &str, source: &Path) -> Result<Self> {
         let cfg: ProjectConfig =
@@ -226,6 +231,36 @@ pub fn resolve_graph(query: &GraphQuery, cfg: &ProjectConfig) -> GraphSettings {
             query.kinds.clone()
         },
     }
+}
+
+/// Sync settings after applying CLI flag > config.toml > built-in default.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SyncSettings {
+    pub max_bytes: u64,
+    pub languages: Vec<String>,
+    /// True when the language filter came from config.toml (not `--language`).
+    pub languages_from_config: bool,
+}
+
+pub fn resolve_sync(args: &SyncArgs, cfg: &ProjectConfig) -> SyncSettings {
+    let (languages, languages_from_config) = if !args.language.is_empty() {
+        (args.language.clone(), false)
+    } else {
+        let from_cfg = !cfg.sync.languages.is_empty();
+        (cfg.sync.languages.clone(), from_cfg)
+    };
+    SyncSettings {
+        max_bytes: args
+            .max_file_kb
+            .unwrap_or(cfg.sync.max_file_kb)
+            .saturating_mul(1024),
+        languages,
+        languages_from_config,
+    }
+}
+
+pub fn resolve_precise_timeout(args: &PreciseArgs, cfg: &ProjectConfig) -> u64 {
+    args.precise_timeout.unwrap_or(cfg.precise.timeout_secs)
 }
 
 #[cfg(test)]
@@ -356,6 +391,67 @@ include_external = false
         );
         assert_eq!(query(&[]).min_confidence, None);
         assert!(query(&[]).kinds.is_empty());
+    }
+
+    fn sync_args(args: &[&str]) -> SyncArgs {
+        let mut argv = vec!["code-rcl", "sync"];
+        argv.extend_from_slice(args);
+        match Cli::try_parse_from(argv).unwrap().command {
+            Command::Sync(s) => s,
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn resolve_sync_precedence() {
+        let dflt = ProjectConfig::default();
+        let s = resolve_sync(&sync_args(&[]), &dflt);
+        assert_eq!(s.max_bytes, 512 * 1024);
+        assert!(s.languages.is_empty() && !s.languages_from_config);
+
+        let mut cfg = ProjectConfig::default();
+        cfg.sync.max_file_kb = 1024;
+        assert_eq!(resolve_sync(&sync_args(&[]), &cfg).max_bytes, 1024 * 1024);
+        assert_eq!(
+            resolve_sync(&sync_args(&["--max-file-kb", "8"]), &cfg).max_bytes,
+            8 * 1024
+        );
+
+        cfg.sync.languages = vec!["python".to_string()];
+        let s = resolve_sync(&sync_args(&[]), &cfg);
+        assert_eq!(s.languages, vec!["python".to_string()]);
+        assert!(s.languages_from_config);
+        let s = resolve_sync(&sync_args(&["--language", "rust"]), &cfg);
+        assert_eq!(s.languages, vec!["rust".to_string()]);
+        assert!(!s.languages_from_config);
+    }
+
+    #[test]
+    fn resolve_precise_timeout_precedence() {
+        let mut cfg = ProjectConfig::default();
+        let none = PreciseArgs::default();
+        assert_eq!(resolve_precise_timeout(&none, &cfg), 15);
+        cfg.precise.timeout_secs = 40;
+        assert_eq!(resolve_precise_timeout(&none, &cfg), 40);
+        let flag = PreciseArgs {
+            precise_timeout: Some(30),
+            ..PreciseArgs::default()
+        };
+        assert_eq!(resolve_precise_timeout(&flag, &cfg), 30);
+    }
+
+    #[test]
+    fn apply_precise_default_is_flag_or_config() {
+        let mut cfg = ProjectConfig::default();
+        let mut args = PreciseArgs::default();
+        cfg.apply_precise_default(&mut args);
+        assert!(!args.precise);
+        cfg.precise.enabled = true;
+        cfg.apply_precise_default(&mut args);
+        assert!(args.precise);
+        cfg.precise.enabled = false;
+        cfg.apply_precise_default(&mut args);
+        assert!(args.precise, "config false must not turn a passed flag off");
     }
 
     #[test]
