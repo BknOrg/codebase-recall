@@ -5,7 +5,7 @@ This guide covers working on `codebase-recall` (binary: `code-rcl`) itself. For 
 
 ## Local setup
 
-Prerequisites: a Rust toolchain that supports the 2024 edition (`edition = "2024"` in `Cargo.toml`). SQLite is bundled via `rusqlite`'s `bundled` feature, so no system SQLite is needed. The tree-sitter grammars are compiled from crates, so a working C compiler is required.
+Prerequisites: a Rust toolchain that supports the 2024 edition (`edition = "2024"` in `Cargo.toml`). The cache is an embedded, pure-Rust `bkndb` database, so no system database library is needed. The tree-sitter grammars are compiled from crates, so a working C compiler is required.
 
 1. Fork and clone the repository:
 

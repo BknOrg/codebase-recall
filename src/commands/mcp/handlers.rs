@@ -360,10 +360,6 @@ pub fn execute_sync(default_project: &Path, args: &Value) -> Result<String> {
         stats.imports
     );
 
-    if let Err(e) = report::refresh_after_sync(&project, &stats, precise) {
-        eprintln!("warning: could not refresh the code report: {e:#}");
-    }
-
     if precise {
         let precise_stats = sync::run_precise(&mut db, &sync_args)?;
         sync::report_precise(&precise_stats);
@@ -390,6 +386,13 @@ pub fn execute_sync(default_project: &Path, args: &Value) -> Result<String> {
                 out.push_str(&format!("- {w}\n"));
             }
         }
+    }
+
+    // The report reopens the cache to build its graph, and bkndb allows one
+    // open handle per file, so release ours first.
+    drop(db);
+    if let Err(e) = report::refresh_after_sync(&project, &stats, precise) {
+        eprintln!("warning: could not refresh the code report: {e:#}");
     }
 
     Ok(out)

@@ -14,7 +14,7 @@ const DEFAULT_CONFIG: &str = r#"# code-rcl project configuration
 schema_version = 1
 
 [storage]
-# Accepted but not applied yet.
+# Storage engine for .code-rcl/cache.bkndb. "bkndb" is the only supported value.
 backend = "bkndb"
 
 [sync]
@@ -44,7 +44,7 @@ enabled = false
 timeout_secs = 15
 
 [precise.kotlin]
-# Kotlin language server: "jetbrains" (kotlin-lsp, default),
+# Kotlin language server: "jetbrains" (intellij-server, default),
 # "fwcd" (kotlin-language-server) or "auto" (jetbrains, falling back to fwcd).
 server = "jetbrains"
 "#;
@@ -55,7 +55,6 @@ pub fn run(args: InitArgs) -> Result<()> {
 
     let db = CacheDb::open(project)?;
     db.meta_set("root", &project_normalized)?;
-    db.meta_set("schema_version", &cache::schema::SCHEMA_VERSION.to_string())?;
     if db.meta_get("created_at")?.is_none() {
         db.meta_set(
             "created_at",

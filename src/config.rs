@@ -17,6 +17,8 @@ pub const CONFIG_FILE: &str = "config.toml";
 
 /// Valid values of `[precise.kotlin] server`.
 pub const KOTLIN_SERVERS: [&str; 3] = ["jetbrains", "fwcd", "auto"];
+/// Storage engines for `[storage] backend`; bkndb is the only one.
+pub const STORAGE_BACKENDS: [&str; 1] = ["bkndb"];
 
 /// Every language a `[sync] languages` token may name.
 const ALL_LANGUAGES: [Language; 10] = [
@@ -54,7 +56,7 @@ impl Default for ProjectConfig {
     }
 }
 
-/// Accepted but not applied yet.
+/// Which engine holds `.code-rcl/cache.bkndb`; see [`STORAGE_BACKENDS`].
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct StorageConfig {
@@ -190,6 +192,13 @@ fn validate(cfg: &ProjectConfig, source: &Path) -> Result<()> {
             "{file}: [precise] timeout_secs = {t} is out of range (expected 1 to 86400 seconds)"
         );
     }
+    let backend = cfg.storage.backend.as_str();
+    if !STORAGE_BACKENDS.contains(&backend) {
+        anyhow::bail!(
+            "{file}: [storage] backend = \"{backend}\" is not valid (expected one of: {})",
+            STORAGE_BACKENDS.join(", ")
+        );
+    }
     let server = cfg.precise.kotlin.server.as_str();
     if !KOTLIN_SERVERS.contains(&server) {
         anyhow::bail!(
@@ -284,6 +293,15 @@ mod tests {
             Command::Graph(g) => g.query,
             _ => unreachable!(),
         }
+    }
+
+    #[test]
+    fn unknown_storage_backend_is_rejected() {
+        let err = parse("[storage]
+backend = \"sqlite\"
+").unwrap_err().to_string();
+        assert!(err.contains("[storage] backend = \"sqlite\""), "{err}");
+        assert!(err.contains("expected one of: bkndb"), "{err}");
     }
 
     #[test]

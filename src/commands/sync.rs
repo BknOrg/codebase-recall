@@ -56,6 +56,10 @@ pub fn run(mut args: SyncArgs) -> Result<()> {
         }
     }
 
+    // The report reopens the cache to build its graph, and bkndb allows one
+    // open handle per file, so release ours first.
+    drop(db);
+
     if !args.no_report {
         // A stale or missing report must never fail a sync that itself succeeded.
         match crate::commands::report::refresh_after_sync(&project, &stats, args.precise.precise) {

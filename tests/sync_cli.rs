@@ -31,9 +31,16 @@ fn sync(dir: &Path, extra: &[&str]) -> String {
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
-fn cached_files(dir: &Path) -> i64 {
-    let conn = rusqlite::Connection::open(dir.join(".code-rcl").join("cache.db")).unwrap();
-    conn.query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0)).unwrap()
+/// Rows in the `files` table. Opens the cache directly, so call it only while
+/// no `code-rcl` process is running (bkndb locks the file exclusively).
+fn cached_files(dir: &Path) -> usize {
+    let db = bkndb::BknDb::open(dir.join(".code-rcl").join("cache.bkndb")).unwrap();
+    db.relational()
+        .table_named("files")
+        .unwrap()
+        .select()
+        .count()
+        .unwrap()
 }
 
 #[test]
@@ -59,4 +66,27 @@ fn deleted_file_is_still_removed_under_a_filter() {
     let out = sync(&dir, &["--language", "rust"]);
     assert!(out.contains("-1)"), "a really deleted file should be dropped: {out}");
     assert_eq!(cached_files(&dir), 1);
+}
+
+#[test]
+fn locked_cache_reports_which_process_holds_it() {
+    let dir = project("locked_cache");
+    sync(&dir, &[]);
+
+    // bkndb locks the file exclusively; hold it the way a running `serve` would.
+    let _held = bkndb::BknDb::open(dir.join(".code-rcl").join("cache.bkndb")).unwrap();
+
+    let out = Command::new(BIN)
+        .arg("sync")
+        .arg("--project")
+        .arg(&dir)
+        .arg("--no-report")
+        .output()
+        .expect("run code-rcl sync");
+    assert!(!out.status.success(), "sync must fail while the cache is locked");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("in use by another code-rcl process"),
+        "unhelpful lock error: {stderr}"
+    );
 }

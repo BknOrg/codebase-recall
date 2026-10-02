@@ -183,7 +183,7 @@ pub fn list_tools() -> Value {
         },
         {
             "name": "code_rcl_search",
-            "description": "Fast symbol, function, struct, interface, and string-literal lookup from SQLite cache with fuzzy 'did you mean' suggestions and hybrid full-text grep fallback when exact symbols are not found.",
+            "description": "Fast symbol, function, struct, interface, and string-literal lookup from the bkndb cache with fuzzy 'did you mean' suggestions and hybrid full-text grep fallback when exact symbols are not found.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

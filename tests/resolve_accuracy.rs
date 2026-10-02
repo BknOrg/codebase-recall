@@ -216,16 +216,24 @@ fn local_shadow_app_marks_local_only() {
         .expect("run code-rcl sync");
     assert!(status.success());
 
-    let db_path = work.join(".code-rcl").join("cache.db");
-    let conn = rusqlite::Connection::open(db_path).unwrap();
-    let local_only: i64 = conn
-        .query_row("SELECT local_only FROM refs WHERE name = 'tick'", [], |r| {
-            r.get(0)
-        })
-        .expect("ref 'tick' harus ada di cache");
+    let db = bkndb::BknDb::open(work.join(".code-rcl").join("cache.bkndb")).unwrap();
+    let tick = db
+        .relational()
+        .table_named("refs")
+        .unwrap()
+        .select()
+        .where_eq("name", "tick")
+        .run()
+        .unwrap();
+    let local_only = tick
+        .first()
+        .expect("ref 'tick' harus ada di cache")
+        .values
+        .get("local_only");
 
     assert_eq!(
-        local_only, 1,
+        local_only,
+        Some(&bkndb::value::PropValue::Bool(true)),
         "resolver harus menandai `tick` sebagai local_only karena di-shadow closure lokal"
     );
 }
@@ -287,44 +295,51 @@ fn generic_type_app_precise_marks_std_vec_as_external() {
         .expect("run code-rcl sync --precise");
     assert!(status.success());
 
-    let db_path = work.join(".code-rcl").join("cache.db");
-    let conn = rusqlite::Connection::open(db_path).unwrap();
+    let db = bkndb::BknDb::open(work.join(".code-rcl").join("cache.bkndb")).unwrap();
+    let pushes = db
+        .relational()
+        .table_named("refs")
+        .unwrap()
+        .select()
+        .where_eq("name", "push")
+        .run()
+        .unwrap();
 
     // Vec::push in collect_std_vec must be marked as external by rust-analyzer
-    let (vec_push_status, vec_push_sym): (Option<String>, Option<i64>) = conn
-        .query_row(
-            "SELECT precise_status, precise_symbol_id FROM refs WHERE name = 'push' AND receiver = 'v'",
-            [],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )
+    let vec_push = pushes
+        .iter()
+        .find(|r| r.values.get("receiver") == Some(&bkndb::value::PropValue::Str("v".into())))
         .expect("ref 'push' with receiver 'v' must exist in cache");
 
     assert_eq!(
-        vec_push_status.as_deref(),
-        Some("external"),
+        vec_push.values.get("precise_status"),
+        Some(&bkndb::value::PropValue::Str("external".into())),
         "Vec::push must be resolved as external"
     );
-    assert_eq!(
-        vec_push_sym, None,
+    assert!(
+        matches!(
+            vec_push.values.get("precise_symbol_id"),
+            None | Some(bkndb::value::PropValue::Null)
+        ),
         "Vec::push must not link to any internal symbol"
     );
 
     // CustomBuffer::push in collect_custom_buffer must be marked as hit linking to CustomBuffer::push
-    let (buf_push_status, buf_push_sym): (Option<String>, Option<i64>) = conn
-        .query_row(
-            "SELECT precise_status, precise_symbol_id FROM refs WHERE name = 'push' AND receiver = 'buf'",
-            [],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )
+    let buf_push = pushes
+        .iter()
+        .find(|r| r.values.get("receiver") == Some(&bkndb::value::PropValue::Str("buf".into())))
         .expect("ref 'push' with receiver 'buf' must exist in cache");
 
     assert_eq!(
-        buf_push_status.as_deref(),
-        Some("hit"),
+        buf_push.values.get("precise_status"),
+        Some(&bkndb::value::PropValue::Str("hit".into())),
         "CustomBuffer::push must be resolved as hit"
     );
     assert!(
-        buf_push_sym.is_some(),
+        matches!(
+            buf_push.values.get("precise_symbol_id"),
+            Some(bkndb::value::PropValue::Int(_))
+        ),
         "CustomBuffer::push must link to an internal symbol"
     );
 }

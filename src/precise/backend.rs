@@ -165,17 +165,17 @@ pub const KOTLIN_FWCD: Backend = Backend {
     index_timeout_secs: 600,
 };
 
-/// Tries JetBrains' `kotlin-lsp` first, then fwcd's `kotlin-language-server`.
+/// Tries JetBrains' `intellij-server` first, then fwcd's `kotlin-language-server`.
 pub const KOTLIN_AUTO: Backend = Backend {
     lang_group: "kotlin",
     language_id: "kotlin",
     candidates: &[
-        ("kotlin-lsp", &["--stdio"]),
+        ("intellij-server", &["--stdio"]),
         ("kotlin-language-server", &[]),
     ],
     env_override: "CODE_RCL_LSP_KOTLIN",
     install_hint: "install JetBrains' Kotlin LSP (https://github.com/Kotlin/kotlin-lsp, \
-                   `kotlin-lsp` on PATH) or fwcd's kotlin-language-server \
+                   `intellij-server` on PATH) or fwcd's kotlin-language-server \
                    (https://github.com/fwcd/kotlin-language-server/releases, \
                    `kotlin-language-server` on PATH), or point CODE_RCL_LSP_KOTLIN at either",
     project_markers: KOTLIN_MARKERS,
@@ -234,7 +234,7 @@ impl Launcher {
             .unwrap_or_default()
             .to_ascii_lowercase();
         // Windows cannot execute .cmd/.bat directly — and npm-installed servers
-        // (pyright) and the JVM ones (jdtls, kotlin-lsp, kotlin-language-server) ship
+        // (pyright) and the JVM ones (jdtls, intellij-server, kotlin-language-server) ship
         // exactly that — so route them through the shell.
         if cfg!(windows) && matches!(ext.as_str(), "cmd" | "bat") {
             let mut cmd = Command::new("cmd");
@@ -416,7 +416,7 @@ mod tests {
             assert_eq!(chosen.candidates, orig.candidates);
         }
         let k = sel.iter().find(|b| b.lang_group == "kotlin").unwrap();
-        assert_eq!(k.candidates[0], ("kotlin-lsp", &["--stdio"][..]));
+        assert_eq!(k.candidates[0], ("intellij-server", &["--stdio"][..]));
     }
 
     #[test]
@@ -429,7 +429,7 @@ mod tests {
         let auto = select_backends(&kotlin_cfg("auto")).unwrap();
         let k = auto.iter().find(|b| b.lang_group == "kotlin").unwrap();
         assert_eq!(k.candidates.len(), 2);
-        assert_eq!(k.candidates[0].0, "kotlin-lsp");
+        assert_eq!(k.candidates[0].0, "intellij-server");
         assert_eq!(k.candidates[1].0, "kotlin-language-server");
         assert_eq!(k.env_override, "CODE_RCL_LSP_KOTLIN");
 

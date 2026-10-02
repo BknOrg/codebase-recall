@@ -10,7 +10,7 @@
 | `CODE_RCL_LSP_RUST` | Optional | Search `PATH` | Full path to the Rust language server executable used by `sync --precise`. |
 | `CODE_RCL_LSP_PYTHON` | Optional | Search `PATH` | Full path to the Python language server (for example pyright). |
 | `CODE_RCL_LSP_JAVA` | Optional | Search `PATH` | Full path to the Java language server launcher. Needs a JDK 17+. |
-| `CODE_RCL_LSP_KOTLIN` | Optional | Search `PATH` | Full path to the Kotlin language server: JetBrains' `kotlin-lsp` (default) or fwcd's `kotlin-language-server`, whichever `[precise.kotlin] server` selects. Overrides the binary path only, not the selection. |
+| `CODE_RCL_LSP_KOTLIN` | Optional | Search `PATH` | Full path to the Kotlin language server: JetBrains' `intellij-server` (default) or fwcd's `kotlin-language-server`, whichever `[precise.kotlin] server` selects. Overrides the binary path only, not the selection. |
 | `CODE_RCL_LSP_TYPESCRIPT` | Optional | Search `PATH` | Full path to the TypeScript language server. |
 | `CODE_RCL_LSP_JAVASCRIPT` | Optional | Search `PATH` | Full path to the JavaScript language server. |
 | `CODE_RCL_LSP_GO` | Optional | Search `PATH` | Full path to the Go language server. |
@@ -26,10 +26,10 @@ No `.env` file is used. Files named `.env*` are deliberately skipped by `dump`.
 
 `code-rcl init` creates a `.code-rcl/` directory in the target project containing:
 
-- `cache.db`: the SQLite graph cache.
+- `cache.bkndb`: the bkndb graph cache. It is derived from your sources, so it is safe to delete; the next sync rebuilds it. A `cache.db` left by an older version is no longer read and can be deleted.
 - `config.toml`: a default project configuration (not overwritten unless `--force` is passed).
 
-It also appends `.code-ctx/` to the project's `.gitignore` if not already present. <!-- VERIFY: init.rs adds `.code-ctx/` to .gitignore, but the cache directory constant is `.code-rcl`; the mismatch may be a bug, so confirm intended behavior -->
+In a git repository it also appends `.code-rcl/` to `.git/info/exclude` (if not already present), so the cache is never committed and your `.gitignore` is left alone.
 
 Default `config.toml` (written by `code-rcl init`; every line is optional):
 
@@ -40,7 +40,7 @@ Default `config.toml` (written by `code-rcl init`; every line is optional):
 schema_version = 1
 
 [storage]
-# Accepted but not applied yet.
+# Storage engine for .code-rcl/cache.bkndb. "bkndb" is the only supported value.
 backend = "bkndb"
 
 [sync]
@@ -70,7 +70,7 @@ enabled = false
 timeout_secs = 15
 
 [precise.kotlin]
-# Kotlin language server: "jetbrains" (kotlin-lsp, default),
+# Kotlin language server: "jetbrains" (intellij-server, default),
 # "fwcd" (kotlin-language-server) or "auto" (jetbrains, falling back to fwcd).
 server = "jetbrains"
 ```
@@ -91,11 +91,11 @@ Precedence is always **command-line flag > `config.toml` > built-in default**. A
 | `[precise] enabled` | `false` | `sync`, `graph`, `serve` only (acts like `--precise`) |
 | `[precise] timeout_secs` | `15` | wherever a precise pass runs; `--precise-timeout` overrides it |
 | `[precise.kotlin] server` | `jetbrains` | the Kotlin backend of a precise pass |
-| `[storage] backend` | `bkndb` | accepted, not applied yet |
+| `[storage] backend` | `bkndb` | the storage engine; `bkndb` is the only valid value |
 
 Internal analysis commands (`impact`, `path`, `explain`, `report`, `digest` and the MCP graph/impact tools) ignore `[graph]` and keep `min_confidence` 0.0, so their output does not change when you edit `[graph]`. They do use `[sync]` (an implicit sync must use the same limits as `sync`).
 
-**Kotlin language server.** `[precise.kotlin] server` picks the backend: `jetbrains` (default, `kotlin-lsp --stdio`), `fwcd` (`kotlin-language-server`) or `auto` (`kotlin-lsp`, falling back to `kotlin-language-server`). `CODE_RCL_LSP_KOTLIN` still overrides the binary path. Other languages are unaffected. Config only selects among these built-in servers; it never supplies a command line.
+**Kotlin language server.** `[precise.kotlin] server` picks the backend: `jetbrains` (default, `intellij-server --stdio`), `fwcd` (`kotlin-language-server`) or `auto` (`intellij-server`, falling back to `kotlin-language-server`). `CODE_RCL_LSP_KOTLIN` still overrides the binary path. Other languages are unaffected. Config only selects among these built-in servers; it never supplies a command line.
 
 **Errors.** Unknown keys, out-of-range or invalid values (`min_confidence` outside 0.0 to 1.0, `max_file_kb` below 1, `timeout_secs` outside 1 to 86400, an unknown Kotlin server or language) and broken TOML are errors that name the config file, the key/value and the valid options. Config is never silently ignored.
 

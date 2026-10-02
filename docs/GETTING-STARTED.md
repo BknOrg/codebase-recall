@@ -66,7 +66,7 @@ From the root of any project you want to analyze:
 
 ```bash
 cd path/to/your/project
-code-rcl init     # creates .code-rcl/ (cache.db, config.toml) and updates .gitignore
+code-rcl init     # creates .code-rcl/ (cache.bkndb, config.toml) and adds it to .git/info/exclude
 code-rcl serve    # syncs, then opens the interactive graph in your browser
 ```
 
@@ -82,7 +82,7 @@ code-rcl digest                 # architecture outline to stdout
 1. **`code-rcl: command not found` after `cargo install`.** Cargo's bin directory (`~/.cargo/bin`, or `%USERPROFILE%\.cargo\bin` on Windows) is not on your `PATH`. Add it and restart the shell.
 2. **Build fails with an edition or unstable-feature error.** Your Rust toolchain is too old for edition 2024. Run `rustup update stable`.
 3. **`--precise` reports a missing language server.** Nothing is bundled; install the server for that language (the error message includes the install command). Without it, that language keeps its heuristic edges.
-4. **Graph or dump seems stale.** Commands auto-sync by default; if you passed `--no-sync`, run `code-rcl sync` to refresh the cache in `.code-rcl/cache.db`.
+4. **Graph or dump seems stale.** Commands auto-sync by default; if you passed `--no-sync`, run `code-rcl sync` to refresh the cache in `.code-rcl/cache.bkndb`.
 5. **Files missing from a dump.** Files matched by `.gitignore`, binaries, lockfiles, `.env*` files, and files over the size limit (default 50 KB for `dump`) are skipped. Raise it with `--max-size-kb`.
 
 ## Next Steps

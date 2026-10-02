@@ -1,175 +1,188 @@
-//! SQLite schema and forward-only migrations for the graph cache.
+//! bkndb table definitions for the cache.
 //!
-//! `PRAGMA user_version` tracks the applied schema version. Each entry in
-//! [`MIGRATIONS`] moves the database from version `i` to version `i + 1`.
+//! The cache is derived data: whenever [`SCHEMA_VERSION`] changes (or the file
+//! was created by an older layout), every table is dropped and recreated, and
+//! the next sync re-analyzes every file.
 
-/// Current schema version. Must equal `MIGRATIONS.len()`.
-pub const SCHEMA_VERSION: i64 = 5;
+use anyhow::Result;
+use bkndb::relational::{ColumnKind, ColumnSchema, TableSchema};
 
-/// Ordered migration scripts. `MIGRATIONS[0]` upgrades v0 -> v1, etc.
-pub const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5];
+/// Bump whenever any table below changes shape.
+pub const SCHEMA_VERSION: i64 = 6;
 
-const V1: &str = r#"
-CREATE TABLE meta (
-    key   TEXT PRIMARY KEY,
-    value TEXT
-);
+/// `cache_meta` key that records the [`SCHEMA_VERSION`] the file was built with.
+pub const SCHEMA_VERSION_KEY: &str = "schema_version";
 
-CREATE TABLE files (
-    id           INTEGER PRIMARY KEY,
-    path         TEXT NOT NULL UNIQUE,      -- project-relative, unix-normalized
-    language     TEXT NOT NULL,
-    content_hash TEXT NOT NULL,
-    mtime        INTEGER,
-    size         INTEGER,
-    parsed_ok    INTEGER NOT NULL DEFAULT 0,
-    updated_at   INTEGER
-);
+/// Not `meta`: bkndb reserves that name for its own bookkeeping.
+pub const META: &str = "cache_meta";
+pub const FILES: &str = "files";
+pub const SYMBOLS: &str = "symbols";
+pub const IMPORTS: &str = "imports";
+pub const REFS: &str = "refs";
+pub const SCOPES: &str = "scopes";
+pub const BINDINGS: &str = "bindings";
+pub const STRING_LITERALS: &str = "string_literals";
 
-CREATE TABLE symbols (
-    id               INTEGER PRIMARY KEY,
-    file_id          INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
-    name             TEXT NOT NULL,
-    kind             TEXT NOT NULL,          -- function|method|class|struct|enum|interface|type|variable
-    parent_symbol_id INTEGER REFERENCES symbols(id) ON DELETE CASCADE,
-    is_exported      INTEGER NOT NULL DEFAULT 0,
-    start_line       INTEGER,
-    end_line         INTEGER,
-    start_byte       INTEGER,
-    end_byte         INTEGER,
-    signature        TEXT
-);
+/// Every table the cache owns, built once per [`super::CacheDb`].
+pub struct Schemas {
+    pub meta: TableSchema,
+    pub files: TableSchema,
+    pub symbols: TableSchema,
+    pub imports: TableSchema,
+    pub refs: TableSchema,
+    pub scopes: TableSchema,
+    pub bindings: TableSchema,
+    pub string_literals: TableSchema,
+}
 
-CREATE TABLE imports (
-    id            INTEGER PRIMARY KEY,
-    file_id       INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
-    raw_specifier TEXT NOT NULL,
-    imported_name TEXT,
-    alias         TEXT,
-    is_relative   INTEGER NOT NULL DEFAULT 0,
-    start_line    INTEGER
-);
+use ColumnKind::{Bool, Float, Int, Str};
 
-CREATE TABLE refs (
-    id             INTEGER PRIMARY KEY,
-    file_id        INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
-    from_symbol_id INTEGER REFERENCES symbols(id) ON DELETE CASCADE,
-    name           TEXT NOT NULL,
-    ref_kind       TEXT NOT NULL,            -- call|read|write|type
-    receiver       TEXT,
-    start_line     INTEGER
-);
+/// An auto-increment `id` table; nullable columns, `indexes` on the lookup keys.
+fn table(name: &str, columns: &[(&str, ColumnKind)], indexes: &[&str]) -> Result<TableSchema> {
+    let mut b = TableSchema::builder(name).column(ColumnSchema::new("id", Int));
+    for (col, kind) in columns {
+        b = b.column(ColumnSchema::new(*col, *kind));
+    }
+    b = b.primary_key("id").auto_increment();
+    for idx in indexes {
+        b = b.index(*idx);
+    }
+    Ok(b.build()?)
+}
 
-CREATE INDEX idx_symbols_file ON symbols(file_id);
-CREATE INDEX idx_symbols_name ON symbols(name);
-CREATE INDEX idx_imports_file ON imports(file_id);
-CREATE INDEX idx_refs_file    ON refs(file_id);
-"#;
+impl Schemas {
+    pub fn build() -> Result<Self> {
+        let meta = TableSchema::builder(META)
+            .column(ColumnSchema::new("key", Str))
+            .column(ColumnSchema::new("value", Str))
+            .primary_key("key")
+            .build()?;
 
-/// v2 — scope tree + bindings (a compact, SCIP-shaped symbol table) plus a few
-/// denormalized columns that the layered resolver reads.
-///
-/// * `scopes`  — one lexical scope per node (module / fn / class / block).
-/// * `bindings` — every name introduced in a scope, with an optional declared
-///   type. `binding_kind = 'field'` rows are the "type composition" data:
-///   `struct Foo { bar: Bar }` yields a field binding `bar` with `type_expr = "Bar"`.
-/// * `refs.local_only` — the ref resolves to a local/param inside its own file,
-///   so it must NOT become a cross-symbol edge.
-/// * `refs.resolved_symbol_id` — same-file scope resolution, computed at sync.
-const V2: &str = r#"
-CREATE TABLE scopes (
-    id              INTEGER PRIMARY KEY,
-    file_id         INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
-    parent_scope_id INTEGER REFERENCES scopes(id) ON DELETE CASCADE,
-    owner_symbol_id INTEGER REFERENCES symbols(id) ON DELETE SET NULL,
-    kind            TEXT NOT NULL,           -- module|function|method|class|struct|block
-    start_byte      INTEGER NOT NULL,
-    end_byte        INTEGER NOT NULL
-);
+        let files = table(
+            FILES,
+            &[
+                ("path", Str),
+                ("language", Str),
+                ("content_hash", Str),
+                ("mtime", Int),
+                ("size", Int),
+                ("parsed_ok", Bool),
+                ("updated_at", Int),
+                ("precise_synced_at", Int),
+            ],
+            &["path"],
+        )?;
 
-CREATE TABLE bindings (
-    id           INTEGER PRIMARY KEY,
-    file_id      INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
-    scope_id     INTEGER NOT NULL REFERENCES scopes(id) ON DELETE CASCADE,
-    name         TEXT NOT NULL,
-    binding_kind TEXT NOT NULL,              -- local|param|field|symbol|import|namespace
-    symbol_id    INTEGER REFERENCES symbols(id) ON DELETE SET NULL,
-    import_id    INTEGER REFERENCES imports(id) ON DELETE SET NULL,
-    type_expr    TEXT
-);
+        let symbols = table(
+            SYMBOLS,
+            &[
+                ("file_id", Int),
+                ("name", Str),
+                ("kind", Str),
+                ("parent_symbol_id", Int),
+                ("is_exported", Bool),
+                ("start_line", Int),
+                ("end_line", Int),
+                ("start_byte", Int),
+                ("end_byte", Int),
+                ("signature", Str),
+                ("param_count", Int),
+                ("type_name", Str),
+            ],
+            &["file_id"],
+        )?;
 
-CREATE INDEX idx_scopes_file   ON scopes(file_id);
-CREATE INDEX idx_bindings_file  ON bindings(file_id);
-CREATE INDEX idx_bindings_scope ON bindings(scope_id);
+        let imports = table(
+            IMPORTS,
+            &[
+                ("file_id", Int),
+                ("raw_specifier", Str),
+                ("imported_name", Str),
+                ("alias", Str),
+                ("is_relative", Bool),
+                ("start_line", Int),
+            ],
+            &["file_id"],
+        )?;
 
-ALTER TABLE refs ADD COLUMN arg_count          INTEGER;
-ALTER TABLE refs ADD COLUMN receiver_kind      TEXT;      -- none|path|value|self
-ALTER TABLE refs ADD COLUMN local_only         INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE refs ADD COLUMN resolved_symbol_id INTEGER REFERENCES symbols(id) ON DELETE SET NULL;
-ALTER TABLE refs ADD COLUMN resolved_confidence REAL;
+        let refs = table(
+            REFS,
+            &[
+                ("file_id", Int),
+                ("from_symbol_id", Int),
+                ("name", Str),
+                ("ref_kind", Str),
+                ("receiver", Str),
+                ("start_line", Int),
+                ("arg_count", Int),
+                ("receiver_kind", Str),
+                ("local_only", Bool),
+                ("resolved_symbol_id", Int),
+                ("resolved_confidence", Float),
+                ("name_start_byte", Int),
+                ("precise_symbol_id", Int),
+                ("precise_confidence", Float),
+                ("precise_status", Str),
+            ],
+            &["file_id"],
+        )?;
 
-ALTER TABLE symbols ADD COLUMN param_count INTEGER;
-ALTER TABLE symbols ADD COLUMN type_name   TEXT;          -- method: owning type's simple name
-"#;
+        let scopes = table(
+            SCOPES,
+            &[
+                ("file_id", Int),
+                ("parent_scope_id", Int),
+                ("owner_symbol_id", Int),
+                ("kind", Str),
+                ("start_byte", Int),
+                ("end_byte", Int),
+            ],
+            &["file_id"],
+        )?;
 
-/// v3 — ground-truth resolution from a real language server (`sync --precise`).
-///
-/// * `refs.name_start_byte` — byte offset of the *name token* of the reference
-///   (`bar` in `foo.bar()`), which is where a `textDocument/definition` request
-///   has to point. The whole-expression offset would resolve `foo` instead.
-/// * `refs.precise_status` — what the server answered:
-///   `hit` (a definition inside the project, `precise_symbol_id` is set),
-///   `external` (a definition outside the project tree — stdlib or a dependency),
-///   `nonode` (inside the project but at a place we keep no symbol node for),
-///   `unresolved` (the server had no answer). `NULL` means never queried.
-///   Only `hit` yields an edge; `external`/`nonode` deliberately yield none,
-///   which is how precise mode removes the false edges heuristics would invent.
-/// * `files.precise_synced_at` — when this file's refs were last queried. Reset
-///   to `NULL` whenever the file is re-analyzed, so stale answers are re-asked.
-///
-/// Existing rows predate `name_start_byte`, and unchanged files are never
-/// re-parsed, so the file table is cleared to force one full re-analysis. Only
-/// the derived cache is dropped; nothing in the working tree is touched.
-const V3: &str = r#"
-ALTER TABLE refs ADD COLUMN name_start_byte    INTEGER;
-ALTER TABLE refs ADD COLUMN precise_symbol_id  INTEGER REFERENCES symbols(id) ON DELETE SET NULL;
-ALTER TABLE refs ADD COLUMN precise_confidence REAL;
-ALTER TABLE refs ADD COLUMN precise_status     TEXT;      -- hit|external|nonode|unresolved
+        let bindings = table(
+            BINDINGS,
+            &[
+                ("file_id", Int),
+                ("scope_id", Int),
+                ("name", Str),
+                ("binding_kind", Str),
+                ("symbol_id", Int),
+                ("import_id", Int),
+                ("type_expr", Str),
+            ],
+            &["file_id"],
+        )?;
 
-ALTER TABLE files ADD COLUMN precise_synced_at INTEGER;
+        let string_literals = table(
+            STRING_LITERALS,
+            &[("file_id", Int), ("value", Str), ("callee", Str), ("line", Int)],
+            &["file_id"],
+        )?;
 
-CREATE INDEX idx_refs_precise ON refs(file_id, precise_status);
+        Ok(Self {
+            meta,
+            files,
+            symbols,
+            imports,
+            refs,
+            scopes,
+            bindings,
+            string_literals,
+        })
+    }
 
-DELETE FROM files;
-"#;
-
-/// v4 — string literals / config keys indexed from call arguments and macros.
-///
-/// This one shipped without the re-analysis reset it needed; [`V5`] repairs it.
-const V4: &str = r#"
-CREATE TABLE string_literals (
-    id      INTEGER PRIMARY KEY,
-    file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
-    value   TEXT NOT NULL,
-    callee  TEXT,
-    line    INTEGER
-);
-
-CREATE INDEX idx_strings_val  ON string_literals(value);
-CREATE INDEX idx_strings_file ON string_literals(file_id);
-"#;
-
-/// v5 — force one re-analysis so the v4 tables are actually populated.
-///
-/// Only the analyzer fills `string_literals`, and an unchanged file is never
-/// re-parsed, so every cache that upgraded to v4 kept an empty table and
-/// `search` answered "not found" for every config key. V4 itself cannot be
-/// fixed in place — it has already been applied, so it will never run again.
-///
-/// The same reset also republishes the `type` references added alongside this
-/// migration, which likewise only appear when a file is re-analyzed.
-///
-/// Only the derived cache is dropped; nothing in the working tree is touched.
-const V5: &str = r#"
-DELETE FROM files;
-"#;
+    /// Every table, parents before children.
+    pub fn all(&self) -> [&TableSchema; 8] {
+        [
+            &self.meta,
+            &self.files,
+            &self.symbols,
+            &self.imports,
+            &self.refs,
+            &self.scopes,
+            &self.bindings,
+            &self.string_literals,
+        ]
+    }
+}

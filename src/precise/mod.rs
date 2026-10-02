@@ -3,7 +3,7 @@
 //! The default pipeline infers where a reference points from the AST alone,
 //! which cannot follow generics, trait/interface dispatch or overloads. This
 //! pass asks the compiler-grade tool for each language instead —
-//! rust-analyzer, Pyright, Eclipse JDT LS, kotlin-lsp / kotlin-language-server — for the one
+//! rust-analyzer, Pyright, Eclipse JDT LS, intellij-server / kotlin-language-server — for the one
 //! question that matters here: *where is this name defined?*
 //!
 //! The answer is stored per reference and read back by the graph resolver as

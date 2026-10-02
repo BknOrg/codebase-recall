@@ -5,7 +5,7 @@ description: Comprehensive AST-based codebase analysis, token-efficient LLM cont
 
 # `code-rcl` Codebase Recall & Architecture Intelligence Skill
 
-`code-rcl` (`codebase-recall`) is a high-performance, standalone Rust CLI that parses codebases using Tree-sitter into a persistent, Blake3-indexed SQLite cache (`.code-rcl/cache.db`). It provides instant codebase intelligence, architecture digests, caller/impact tracking, and dependency-aware prompt context without requiring the AI agent to read every source file manually.
+`code-rcl` (`codebase-recall`) is a high-performance, standalone Rust CLI that parses codebases using Tree-sitter into a persistent, Blake3-indexed bkndb cache (`.code-rcl/cache.bkndb`). It provides instant codebase intelligence, architecture digests, caller/impact tracking, and dependency-aware prompt context without requiring the AI agent to read every source file manually.
 
 This skill treats `code-rcl` as both an **installed system tool** and a **Model Context Protocol (MCP) server** that runs against **any target repository** the agent is tasked to analyze or modify.
 
@@ -135,7 +135,7 @@ Use this matrix to determine the optimal command for your analytical task:
 
 ## 3. Detailed Command Reference
 
-All commands automatically initialize `.code-rcl/cache.db` and incrementally sync modified source files on demand (unless `--no-sync` is specified).
+All commands automatically initialize `.code-rcl/cache.bkndb` and incrementally sync modified source files on demand (unless `--no-sync` is specified).
 
 ### 3.1 `code-rcl digest` — Architectural Skeleton & Hub Detection
 
@@ -344,7 +344,7 @@ Things to know:
 
 ### 3.3 `code-rcl search` — High-Speed Symbol, String & Hybrid Search
 
-Instantly finds symbols, types, and string literals across the codebase using the SQLite cache (0–5ms), eliminating manual grep overhead. Includes automatic fuzzy suggestions and hybrid fallback to full-text file search.
+Instantly finds symbols, types, and string literals across the codebase using the bkndb cache (0–5ms), eliminating manual grep overhead. Includes automatic fuzzy suggestions and hybrid fallback to full-text file search.
 
 ```bash
 # Search for symbol declarations
@@ -519,7 +519,7 @@ code-rcl setup --workspace --remove --git-hook
 | **TypeScript** | `typescript-language-server`| `npm install -g typescript-language-server typescript` | `CODE_RCL_LSP_TYPESCRIPT` |
 | **JavaScript** | `typescript-language-server`| `npm install -g typescript-language-server typescript` | `CODE_RCL_LSP_JAVASCRIPT` |
 | **Java** | `jdtls` | Eclipse JDT.LS release (JDK 17+) | `CODE_RCL_LSP_JAVA` |
-| **Kotlin** | `kotlin-lsp` (JetBrains, default) or `kotlin-language-server` (fwcd, `server = "fwcd"` in config.toml) | Kotlin/kotlin-lsp or kotlin-language-server release | `CODE_RCL_LSP_KOTLIN` |
+| **Kotlin** | `intellij-server` (JetBrains, default) or `kotlin-language-server` (fwcd, `server = "fwcd"` in config.toml) | Kotlin/kotlin-lsp or kotlin-language-server release | `CODE_RCL_LSP_KOTLIN` |
 
 *Note:* If a language server is not installed, `code-rcl` logs a warning and gracefully falls back to AST heuristics for that language without failing the overall command.
 
@@ -537,7 +537,7 @@ code-rcl setup --workspace --remove --git-hook
    - Multiple symbols across different files may share the same name (e.g. `run`, `new`, `parse`).
    - `impact <name> --json` always returns a **JSON array** where each element corresponds to a matching definition. Never assume the array length is 1.
 3. **`--precise` State Persistence:**
-   - LSP resolution results are stored directly in `.code-rcl/cache.db`.
+   - LSP resolution results are stored directly in `.code-rcl/cache.bkndb`.
    - Running a subsequent command without `--precise` will still read the compiler-grade edges unless file content changes. To force a complete re-evaluation, run `code-rcl sync --precise --precise-full` or delete `.code-rcl/`.
 4. **Stale Session `PATH`:**
    - The official installer updates system environment variables, but existing terminal sessions do not reload them automatically. Always invoke the binary via its absolute path (`~/.code-rcl/bin/code-rcl` or `$HOME\.code-rcl\bin\code-rcl.exe`) or run `code-rcl setup`.

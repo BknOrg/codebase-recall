@@ -3,7 +3,7 @@
 
 ## System overview
 
-`codebase-recall` (binary `code-rcl`) is a single-binary Rust CLI that analyzes a source tree and produces token-efficient context for LLMs and developers: codebase digests, impact (blast radius) reports, relation-aware context dumps, and dependency graphs. Source files are parsed with tree-sitter, stored incrementally in a per-project SQLite cache, resolved into a code graph, and rendered as markdown, JSON, DOT, or an interactive HTML viewer. The architecture is a layered, cache-then-graph pipeline; it also exposes its tools over an MCP JSON-RPC stdio server.
+`codebase-recall` (binary `code-rcl`) is a single-binary Rust CLI that analyzes a source tree and produces token-efficient context for LLMs and developers: codebase digests, impact (blast radius) reports, relation-aware context dumps, and dependency graphs. Source files are parsed with tree-sitter, stored incrementally in a per-project bkndb cache, resolved into a code graph, and rendered as markdown, JSON, DOT, or an interactive HTML viewer. The architecture is a layered, cache-then-graph pipeline; it also exposes its tools over an MCP JSON-RPC stdio server.
 
 ## Component diagram
 
@@ -13,7 +13,7 @@ graph TD
     Commands --> Service[service.rs]
     Service --> Sync[commands/sync.rs]
     Sync --> Analysis[analysis/ tree-sitter]
-    Sync --> Cache[cache/ SQLite]
+    Sync --> Cache[cache/ bkndb]
     Service --> Graph[graph/ resolve, community, query]
     Graph --> Cache
     Graph --> Precise[precise/ LSP]
@@ -32,7 +32,7 @@ graph TD
 
 `serve` builds the graph, then `server/mod.rs` serves embedded assets on 127.0.0.1 using `tiny_http`; a `/live` event stream keeps the server alive and it exits when the browser tab closes, on `/quit`, or on Ctrl-C.
 
-Persistent state lives only in `<project>/.code-rcl/cache.db` (plus a generated `REPORT.md`).
+Persistent state lives only in `<project>/.code-rcl/cache.bkndb` (plus a generated `REPORT.md`). bkndb locks that file exclusively, so one `code-rcl` process opens a project's cache at a time; code that needs the graph again while it holds a `CacheDb` (for example `sync` building its report) drops the handle first.
 
 ## Key abstractions
 
@@ -42,7 +42,7 @@ Persistent state lives only in `<project>/.code-rcl/cache.db` (plus a generated 
 | `Language` | `src/analysis/lang.rs` | Supported language detection |
 | `CodeGraph` / `Node` / `Edge` | `src/graph/mod.rs` | Resolved dependency graph with communities |
 | `GraphQuery`, `SyncArgs`, `PreciseArgs` | `src/cli.rs` | Shared CLI argument groups |
-| `CacheDb` | `src/cache/mod.rs` | SQLite access; schema and forward-only migrations in `src/cache/schema.rs` (`SCHEMA_VERSION`) |
+| `CacheDb` | `src/cache/mod.rs` | bkndb access; table definitions in `src/cache/schema.rs`. A `SCHEMA_VERSION` change drops and rebuilds every table, and the next sync re-analyzes the tree |
 | service helpers | `src/service.rs` | Shared auto-sync and `GraphQuery` builders; use these rather than rebuilding setup in each command |
 
 Languages analyzed: Rust, Python (including notebooks), JavaScript/TypeScript (including single-file components), Java, Kotlin, Go, and TOML config keys.
@@ -55,7 +55,7 @@ src/
   commands/         one module per subcommand (sync, digest, impact, graph, serve, dump, mcp, setup, ...)
   service.rs        shared sync and graph-query helpers
   analysis/         tree-sitter extraction, one module per language
-  cache/            SQLite schema, queries, mutations, models
+  cache/            bkndb tables, queries, mutations, models
   graph/            resolve -> CodeGraph, community detection, query, render
   precise/          optional LSP clients (rust-analyzer, Pyright, JDT, kotlin-ls)
   dump/             context bundle walker and formatter

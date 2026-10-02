@@ -1,5 +1,6 @@
 use anyhow::Result;
-use rusqlite::params;
+use bkndb::BknError;
+use bkndb::value::{PropValue, Properties};
 
 use super::CacheDb;
 use super::models::{
@@ -7,20 +8,45 @@ use super::models::{
 };
 use super::utils::{innermost_symbol, unix_now};
 
+/// Row from `(column, value)` pairs; `None` options become `Null` and are not stored.
+fn props<const N: usize>(items: [(&str, PropValue); N]) -> Properties {
+    items.into_iter().map(|(k, v)| (k.to_string(), v)).collect()
+}
+
+/// The integer primary key bkndb handed back for an auto-increment insert.
+fn int_pk(pk: PropValue) -> std::result::Result<i64, BknError> {
+    match pk {
+        PropValue::Int(v) => Ok(v),
+        other => Err(BknError::Encoding(format!("expected integer primary key, got {other:?}"))),
+    }
+}
+
 impl CacheDb {
     pub fn meta_set(&self, key: &str, value: &str) -> Result<()> {
-        self.conn.execute(
-            "INSERT INTO meta(key, value) VALUES(?1, ?2)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            params![key, value],
-        )?;
+        self.db.write_tx(|b| {
+            b.relational()
+                .table(self.tables.meta.clone())
+                .upsert(props([("key", key.into()), ("value", value.into())]))?;
+            Ok(())
+        })?;
         Ok(())
     }
 
-    /// Remove a file and all its analysis rows (cascades).
+    /// Remove a file and all its analysis rows.
     pub fn delete_file(&self, path: &str) -> Result<()> {
-        self.conn
-            .execute("DELETE FROM files WHERE path = ?1", [path])?;
+        let t = &self.tables;
+        self.db.write_tx(|b| {
+            let mut rel = b.relational();
+            let rows = rel.table(t.files.clone()).select_eq("path", &PropValue::from(path))?;
+            for row in rows {
+                let file_id = PropValue::Int(int_pk(row.pk.clone())?);
+                for child in [&t.symbols, &t.imports, &t.refs, &t.scopes, &t.bindings, &t.string_literals] {
+                    rel.table(child.clone()).delete_where_eq("file_id", &file_id)?;
+                }
+                rel.table(t.files.clone()).delete(&row.pk)?;
+            }
+            Ok(())
+        })?;
         Ok(())
     }
 
@@ -33,52 +59,57 @@ impl CacheDb {
         file_id: i64,
         results: &[(i64, PreciseStatus, Option<i64>, f64)],
     ) -> Result<()> {
-        let tx = self.conn.transaction()?;
-        {
-            let mut upd = tx.prepare_cached(
-                "UPDATE refs
-                    SET precise_status = ?2, precise_symbol_id = ?3, precise_confidence = ?4
-                  WHERE id = ?1",
-            )?;
+        let t = &self.tables;
+        let now = unix_now();
+        self.db.write_tx(|b| {
+            let mut rel = b.relational();
             for (ref_id, status, symbol_id, confidence) in results {
                 let conf = matches!(status, PreciseStatus::Hit).then_some(*confidence);
-                upd.execute(params![ref_id, status.as_str(), symbol_id, conf])?;
+                rel.table(t.refs.clone()).update(&PropValue::Int(*ref_id), |row| {
+                    row.insert("precise_status".into(), status.as_str().into());
+                    row.insert("precise_symbol_id".into(), (*symbol_id).into());
+                    row.insert("precise_confidence".into(), conf.into());
+                })?;
             }
-        }
-        tx.execute(
-            "UPDATE files SET precise_synced_at = ?2 WHERE id = ?1",
-            params![file_id, unix_now()],
-        )?;
-        tx.commit()?;
+            rel.table(t.files.clone()).update(&PropValue::Int(file_id), |row| {
+                row.insert("precise_synced_at".into(), now.into());
+            })?;
+            Ok(())
+        })?;
         Ok(())
     }
 
     /// Forget every language-server answer for the given files, so the next
     /// `--precise` run asks again from scratch.
     pub fn clear_precise(&mut self, file_ids: &[i64]) -> Result<()> {
-        let tx = self.conn.transaction()?;
-        {
-            let mut clear_refs = tx.prepare_cached(
-                "UPDATE refs
-                    SET precise_status = NULL, precise_symbol_id = NULL, precise_confidence = NULL
-                  WHERE file_id = ?1",
-            )?;
-            let mut clear_file =
-                tx.prepare_cached("UPDATE files SET precise_synced_at = NULL WHERE id = ?1")?;
+        let t = &self.tables;
+        self.db.write_tx(|b| {
+            let mut rel = b.relational();
             for id in file_ids {
-                clear_refs.execute([id])?;
-                clear_file.execute([id])?;
+                rel.table(t.refs.clone()).update_where_eq(
+                    "file_id",
+                    &PropValue::Int(*id),
+                    &[
+                        ("precise_status", PropValue::Null),
+                        ("precise_symbol_id", PropValue::Null),
+                        ("precise_confidence", PropValue::Null),
+                    ],
+                )?;
+                rel.table(t.files.clone()).update(&PropValue::Int(*id), |row| {
+                    row.insert("precise_synced_at".into(), PropValue::Null);
+                })?;
             }
-        }
-        tx.commit()?;
+            Ok(())
+        })?;
         Ok(())
     }
 
     /// Replace all analysis rows for a single file in one transaction.
     ///
-    /// `symbols` must be ordered outermost-first so `parent_index` always
-    /// refers to an earlier entry. Each ref is attached to the innermost
-    /// symbol whose byte range contains `ref.start_byte`.
+    /// `symbols` must be ordered outermost-first so `parent_index` normally
+    /// refers to an earlier entry (a forward reference is wired up afterwards).
+    /// Each ref is attached to the innermost symbol whose byte range contains
+    /// `ref.start_byte`.
     #[allow(clippy::too_many_arguments)]
     pub fn replace_file_analysis(
         &mut self,
@@ -95,192 +126,190 @@ impl CacheDb {
         bindings: &[NewBinding],
         string_literals: &[NewStringLiteral],
     ) -> Result<()> {
+        let t = &self.tables;
         let now = unix_now();
-        let tx = self.conn.transaction()?;
 
-        tx.execute(
-            "INSERT INTO files(path, language, content_hash, mtime, size, parsed_ok, updated_at)
-             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)
-             ON CONFLICT(path) DO UPDATE SET
-                 language = excluded.language,
-                 content_hash = excluded.content_hash,
-                 mtime = excluded.mtime,
-                 size = excluded.size,
-                 parsed_ok = excluded.parsed_ok,
-                 updated_at = excluded.updated_at,
-                 -- the file changed, so any language-server answers for it are
-                 -- stale and must be asked again on the next --precise run
-                 precise_synced_at = NULL",
-            params![
-                path,
-                language,
-                content_hash,
-                mtime,
-                size,
-                parsed_ok as i64,
-                now
-            ],
-        )?;
-        let file_id: i64 =
-            tx.query_row("SELECT id FROM files WHERE path = ?1", [path], |r| r.get(0))?;
+        self.db.write_tx(|b| {
+            let mut rel = b.relational();
 
-        // Cascades clear symbols/imports/refs/scopes/bindings for this file.
-        tx.execute("DELETE FROM symbols WHERE file_id = ?1", [file_id])?;
-        tx.execute("DELETE FROM imports WHERE file_id = ?1", [file_id])?;
-        tx.execute("DELETE FROM refs WHERE file_id = ?1", [file_id])?;
-        tx.execute("DELETE FROM scopes WHERE file_id = ?1", [file_id])?;
-        tx.execute("DELETE FROM bindings WHERE file_id = ?1", [file_id])?;
-        tx.execute("DELETE FROM string_literals WHERE file_id = ?1", [file_id])?;
+            // Upsert the file row, keeping its id stable across re-syncs.
+            let existing = rel.table(t.files.clone()).select_eq("path", &PropValue::from(path))?;
+            let file_id = match existing.first() {
+                Some(row) => {
+                    rel.table(t.files.clone()).update(&row.pk, |v| {
+                        v.insert("language".into(), language.into());
+                        v.insert("content_hash".into(), content_hash.into());
+                        v.insert("mtime".into(), mtime.into());
+                        v.insert("size".into(), size.into());
+                        v.insert("parsed_ok".into(), parsed_ok.into());
+                        v.insert("updated_at".into(), now.into());
+                        // the file changed, so any language-server answers for it are
+                        // stale and must be asked again on the next --precise run
+                        v.insert("precise_synced_at".into(), PropValue::Null);
+                    })?;
+                    int_pk(row.pk.clone())?
+                }
+                None => int_pk(rel.table(t.files.clone()).insert(props([
+                    ("path", path.into()),
+                    ("language", language.into()),
+                    ("content_hash", content_hash.into()),
+                    ("mtime", mtime.into()),
+                    ("size", size.into()),
+                    ("parsed_ok", parsed_ok.into()),
+                    ("updated_at", now.into()),
+                ]))?)?,
+            };
 
-        // Pass 1: insert symbols without parents, remember ids + ranges.
-        let mut ids: Vec<i64> = Vec::with_capacity(symbols.len());
-        {
-            let mut ins = tx.prepare_cached(
-                "INSERT INTO symbols(file_id, name, kind, is_exported,
-                                     start_line, end_line, start_byte, end_byte, signature,
-                                     param_count, type_name)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-            )?;
-            for s in symbols {
-                ins.execute(params![
-                    file_id,
-                    s.name,
-                    s.kind,
-                    s.is_exported as i64,
-                    s.start_line,
-                    s.end_line,
-                    s.start_byte,
-                    s.end_byte,
-                    s.signature,
-                    s.param_count,
-                    s.type_name,
-                ])?;
-                ids.push(tx.last_insert_rowid());
+            // No foreign keys: clear this file's child rows by hand.
+            let fid = PropValue::Int(file_id);
+            for child in [&t.symbols, &t.imports, &t.refs, &t.scopes, &t.bindings, &t.string_literals] {
+                rel.table(child.clone()).delete_where_eq("file_id", &fid)?;
             }
-        }
 
-        // Pass 2: wire parents.
-        {
-            let mut upd = tx.prepare_cached("UPDATE symbols SET parent_symbol_id = ?1 WHERE id = ?2")?;
+            // Symbols: the parent is wired at insert time when it comes earlier.
+            let mut ids: Vec<i64> = Vec::with_capacity(symbols.len());
+            let mut late_parents: Vec<(usize, usize)> = Vec::new();
             for (i, s) in symbols.iter().enumerate() {
-                if let Some(pidx) = s.parent_index
-                    && let Some(&pid) = ids.get(pidx)
+                let parent = s.parent_index.and_then(|p| ids.get(p).copied());
+                if let Some(p) = s.parent_index
+                    && parent.is_none()
+                    && p < symbols.len()
                 {
-                    upd.execute(params![pid, ids[i]])?;
+                    late_parents.push((i, p));
                 }
+                let pk = rel.table(t.symbols.clone()).insert(props([
+                    ("file_id", file_id.into()),
+                    ("name", s.name.as_str().into()),
+                    ("kind", s.kind.as_str().into()),
+                    ("parent_symbol_id", parent.into()),
+                    ("is_exported", s.is_exported.into()),
+                    ("start_line", s.start_line.into()),
+                    ("end_line", s.end_line.into()),
+                    ("start_byte", s.start_byte.into()),
+                    ("end_byte", s.end_byte.into()),
+                    ("signature", s.signature.clone().into()),
+                    ("param_count", s.param_count.into()),
+                    ("type_name", s.type_name.clone().into()),
+                ]))?;
+                ids.push(int_pk(pk)?);
             }
-        }
+            for (i, p) in late_parents {
+                let parent_id = ids[p];
+                rel.table(t.symbols.clone()).update(&PropValue::Int(ids[i]), |row| {
+                    row.insert("parent_symbol_id".into(), parent_id.into());
+                })?;
+            }
 
-        // Scopes: pass 1 insert (parent left null), pass 2 wire parent ids.
-        let mut scope_ids: Vec<i64> = Vec::with_capacity(scopes.len());
-        {
-            let mut ins = tx.prepare_cached(
-                "INSERT INTO scopes(file_id, owner_symbol_id, kind, start_byte, end_byte)
-                 VALUES(?1, ?2, ?3, ?4, ?5)",
-            )?;
-            for sc in scopes {
-                let owner = sc.owner_symbol_index.and_then(|i| ids.get(i).copied());
-                ins.execute(params![file_id, owner, sc.kind, sc.start_byte, sc.end_byte])?;
-                scope_ids.push(tx.last_insert_rowid());
-            }
-        }
-        {
-            let mut upd = tx.prepare_cached("UPDATE scopes SET parent_scope_id = ?1 WHERE id = ?2")?;
+            // Scopes, same shape as symbols.
+            let mut scope_ids: Vec<i64> = Vec::with_capacity(scopes.len());
+            let mut late_scopes: Vec<(usize, usize)> = Vec::new();
             for (i, sc) in scopes.iter().enumerate() {
-                if let Some(pidx) = sc.parent_index
-                    && let Some(&pid) = scope_ids.get(pidx)
+                let parent = sc.parent_index.and_then(|p| scope_ids.get(p).copied());
+                if let Some(p) = sc.parent_index
+                    && parent.is_none()
+                    && p < scopes.len()
                 {
-                    upd.execute(params![pid, scope_ids[i]])?;
+                    late_scopes.push((i, p));
                 }
+                let owner = sc.owner_symbol_index.and_then(|i| ids.get(i).copied());
+                let pk = rel.table(t.scopes.clone()).insert(props([
+                    ("file_id", file_id.into()),
+                    ("parent_scope_id", parent.into()),
+                    ("owner_symbol_id", owner.into()),
+                    ("kind", sc.kind.as_str().into()),
+                    ("start_byte", sc.start_byte.into()),
+                    ("end_byte", sc.end_byte.into()),
+                ]))?;
+                scope_ids.push(int_pk(pk)?);
             }
-        }
-
-        // Imports (before bindings so `namespace` bindings can point at them).
-        let mut import_ids: Vec<i64> = Vec::with_capacity(imports.len());
-        {
-            let mut ins = tx.prepare_cached(
-                "INSERT INTO imports(file_id, raw_specifier, imported_name, alias, is_relative, start_line)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
-            )?;
-            for im in imports {
-                ins.execute(params![
-                    file_id,
-                    im.raw_specifier,
-                    im.imported_name,
-                    im.alias,
-                    im.is_relative as i64,
-                    im.start_line,
-                ])?;
-                import_ids.push(tx.last_insert_rowid());
+            for (i, p) in late_scopes {
+                let parent_id = scope_ids[p];
+                rel.table(t.scopes.clone()).update(&PropValue::Int(scope_ids[i]), |row| {
+                    row.insert("parent_scope_id".into(), parent_id.into());
+                })?;
             }
-        }
 
-        // Bindings.
-        {
-            let mut ins = tx.prepare_cached(
-                "INSERT INTO bindings(file_id, scope_id, name, binding_kind, symbol_id, import_id, type_expr)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            )?;
-            for b in bindings {
-                let Some(&scope_id) = scope_ids.get(b.scope_index) else {
-                    continue;
-                };
-                let symbol_id = b.symbol_index.and_then(|i| ids.get(i).copied());
-                let import_id = b.import_index.and_then(|i| import_ids.get(i).copied());
-                ins.execute(params![
-                    file_id,
-                    scope_id,
-                    b.name,
-                    b.binding_kind,
-                    symbol_id,
-                    import_id,
-                    b.type_expr,
-                ])?;
+            // Imports (before bindings so `namespace` bindings can point at them).
+            let import_ids: Vec<i64> = if imports.is_empty() {
+                Vec::new()
+            } else {
+                let pks = rel.table(t.imports.clone()).insert_bulk(imports.iter().map(|im| {
+                    props([
+                        ("file_id", file_id.into()),
+                        ("raw_specifier", im.raw_specifier.as_str().into()),
+                        ("imported_name", im.imported_name.clone().into()),
+                        ("alias", im.alias.clone().into()),
+                        ("is_relative", im.is_relative.into()),
+                        ("start_line", im.start_line.into()),
+                    ])
+                }))?;
+                pks.into_iter().map(int_pk).collect::<std::result::Result<_, _>>()?
+            };
+
+            // Bindings.
+            let binding_rows: Vec<Properties> = bindings
+                .iter()
+                .filter_map(|bd| {
+                    let scope_id = *scope_ids.get(bd.scope_index)?;
+                    let symbol_id = bd.symbol_index.and_then(|i| ids.get(i).copied());
+                    let import_id = bd.import_index.and_then(|i| import_ids.get(i).copied());
+                    Some(props([
+                        ("file_id", file_id.into()),
+                        ("scope_id", scope_id.into()),
+                        ("name", bd.name.as_str().into()),
+                        ("binding_kind", bd.binding_kind.as_str().into()),
+                        ("symbol_id", symbol_id.into()),
+                        ("import_id", import_id.into()),
+                        ("type_expr", bd.type_expr.clone().into()),
+                    ]))
+                })
+                .collect();
+            if !binding_rows.is_empty() {
+                rel.table(t.bindings.clone()).insert_bulk(binding_rows)?;
             }
-        }
 
-        // Refs, attached to their enclosing symbol. `resolved_local_symbol_index`
-        // (from the analyzer's scope walk) becomes a same-file `resolved_symbol_id`.
-        {
-            let mut ins = tx.prepare_cached(
-                "INSERT INTO refs(file_id, from_symbol_id, name, ref_kind, receiver, start_line,
-                                  arg_count, receiver_kind, local_only,
-                                  resolved_symbol_id, resolved_confidence, name_start_byte)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-            )?;
-            for rf in refs {
-                let enclosing = innermost_symbol(symbols, &ids, rf.start_byte);
-                let resolved = rf.resolved_local_symbol_index.and_then(|i| ids.get(i).copied());
-                let resolved_conf: Option<f64> = resolved.map(|_| 0.95);
-                ins.execute(params![
-                    file_id,
-                    enclosing,
-                    rf.name,
-                    rf.ref_kind,
-                    rf.receiver,
-                    rf.start_line,
-                    rf.arg_count,
-                    rf.receiver_kind,
-                    rf.local_only as i64,
-                    resolved,
-                    resolved_conf,
-                    rf.name_start_byte,
-                ])?;
+            // Refs, attached to their enclosing symbol. `resolved_local_symbol_index`
+            // (from the analyzer's scope walk) becomes a same-file `resolved_symbol_id`.
+            let ref_rows: Vec<Properties> = refs
+                .iter()
+                .map(|rf| {
+                    let enclosing = innermost_symbol(symbols, &ids, rf.start_byte);
+                    let resolved = rf.resolved_local_symbol_index.and_then(|i| ids.get(i).copied());
+                    let resolved_conf: Option<f64> = resolved.map(|_| 0.95);
+                    props([
+                        ("file_id", file_id.into()),
+                        ("from_symbol_id", enclosing.into()),
+                        ("name", rf.name.as_str().into()),
+                        ("ref_kind", rf.ref_kind.as_str().into()),
+                        ("receiver", rf.receiver.clone().into()),
+                        ("start_line", rf.start_line.into()),
+                        ("arg_count", rf.arg_count.into()),
+                        ("receiver_kind", rf.receiver_kind.as_str().into()),
+                        ("local_only", rf.local_only.into()),
+                        ("resolved_symbol_id", resolved.into()),
+                        ("resolved_confidence", resolved_conf.into()),
+                        ("name_start_byte", rf.name_start_byte.into()),
+                    ])
+                })
+                .collect();
+            if !ref_rows.is_empty() {
+                rel.table(t.refs.clone()).insert_bulk(ref_rows)?;
             }
-        }
 
-        // String literals
-        {
-            let mut ins = tx.prepare_cached(
-                "INSERT INTO string_literals(file_id, value, callee, line)
-                 VALUES(?1, ?2, ?3, ?4)",
-            )?;
-            for sl in string_literals {
-                ins.execute(params![file_id, sl.value, sl.callee, sl.line])?;
+            // String literals.
+            if !string_literals.is_empty() {
+                rel.table(t.string_literals.clone()).insert_bulk(string_literals.iter().map(|sl| {
+                    props([
+                        ("file_id", file_id.into()),
+                        ("value", sl.value.as_str().into()),
+                        ("callee", sl.callee.clone().into()),
+                        ("line", sl.line.into()),
+                    ])
+                }))?;
             }
-        }
 
-        tx.commit()?;
+            Ok(())
+        })?;
         Ok(())
     }
 }

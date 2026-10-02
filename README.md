@@ -32,7 +32,7 @@
 
 - **Multi-Language AST Parsing:** Powered by tree-sitter for **Rust**, **Go**, **JavaScript/JSX**, **TypeScript/TSX**, **Python**, **Java**, **Kotlin**, and Single-File Components (**Vue**, **Svelte**).
 - **Multi-Tier Resolution:** Tracks symbols (functions, structs, classes, enums, methods), imports, and call references across files with confidence scoring.
-- **Incremental SQLite Caching:** Stores file hashes (Blake3) and AST entities in `.code-rcl/cache.db`. Re-runs only parse files modified since the last sync.
+- **Incremental bkndb Caching:** Stores file hashes (Blake3) and AST entities in `.code-rcl/cache.bkndb`, an embedded single-file database. Re-runs only parse files modified since the last sync.
 - **Interactive Browser Viewer (`serve`):**
   - Instant local visualization powered by vendored d3-force simulation (smooth zoom, pan, and drag).
   - Toggle edge kinds (`imports`, `calls`, `references`).
@@ -92,7 +92,7 @@ The compiled binary is available as `code-rcl`.
 | `code-rcl path` | Find the shortest chain of calls/imports connecting one symbol to another. |
 | `code-rcl explain` | Summarize one symbol: signature, docs, members, direct callers/callees, risk flags. |
 | `code-rcl report` | Architecture report: core hubs, subsystems (communities), bridges, suggested questions. Kept fresh in `.code-rcl/REPORT.md` by `sync`. |
-| `code-rcl init` | Initialize `.code-rcl/` (SQLite cache DB + `config.toml`) and ensure it is in `.gitignore`. |
+| `code-rcl init` | Initialize `.code-rcl/` (`cache.bkndb` + `config.toml`) and add it to `.git/info/exclude`. |
 | `code-rcl sync` | Incrementally parse changed source files into the graph cache. |
 | `code-rcl graph` | Auto-sync, then export the relation graph to file(s) (`html`, `json`, `dot`). |
 | `code-rcl serve` | Auto-sync, then host an interactive relation graph in the browser; exits when the tab closes. |
@@ -180,7 +180,7 @@ code-rcl dump -r App --no-sync
 ### Quick Setup
 
 ```bash
-# 1. Initialize .code-rcl/ in your project (creates cache.db and config.toml)
+# 1. Initialize .code-rcl/ in your project (creates cache.bkndb and config.toml)
 code-rcl init
 
 # 2. Parse source files into cache (Blake3-based incremental indexing)
@@ -503,7 +503,7 @@ Nothing is bundled. Install the servers for your languages; a missing server is 
 | **TypeScript** | `typescript-language-server` | `npm install -g typescript-language-server typescript` | `CODE_RCL_LSP_TYPESCRIPT` |
 | **JavaScript** | `typescript-language-server` | `npm install -g typescript-language-server typescript` | `CODE_RCL_LSP_JAVASCRIPT` |
 | **Java** | `jdtls` (Eclipse JDT LS) | [eclipse.jdt.ls releases](https://github.com/eclipse-jdtls/eclipse.jdt.ls) (needs JDK 17+) | `CODE_RCL_LSP_JAVA` |
-| **Kotlin** | `kotlin-lsp` (JetBrains, default) or `kotlin-language-server` (fwcd, `server = "fwcd"`) | [Kotlin/kotlin-lsp](https://github.com/Kotlin/kotlin-lsp), [kotlin-language-server releases](https://github.com/fwcd/kotlin-language-server/releases) | `CODE_RCL_LSP_KOTLIN` |
+| **Kotlin** | `intellij-server` (JetBrains, default) or `kotlin-language-server` (fwcd, `server = "fwcd"`) | [Kotlin/kotlin-lsp](https://github.com/Kotlin/kotlin-lsp), [kotlin-language-server releases](https://github.com/fwcd/kotlin-language-server/releases) | `CODE_RCL_LSP_KOTLIN` |
 | **Go** | `gopls` | `go install golang.org/x/tools/gopls@latest` | `CODE_RCL_LSP_GO` |
 
 Per-project defaults for these flags, and the Kotlin server choice (`[precise.kotlin] server`), live in `.code-rcl/config.toml`; see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
@@ -624,7 +624,7 @@ Alternatively, you can manually add `code-rcl` to your agent's MCP configuration
 ### Exposed MCP Tools
 
 1. **`code_rcl_digest`**: Generates a high-level architecture skeleton and public API index with Core Architecture Hubs (strips function bodies to save 80–90% prompt tokens).
-2. **`code_rcl_search`**: Instant symbol & declaration lookup across the codebase from the SQLite cache (0–5ms, no grep overhead).
+2. **`code_rcl_search`**: Instant symbol & declaration lookup across the codebase from the bkndb cache (0–5ms, no grep overhead).
 3. **`code_rcl_impact`**: Analyzes reverse caller hierarchy and modification blast radius before editing symbols, with risk flags (supports optional `precise: true`, and `diff: true` to analyze uncommitted changes without naming a symbol).
 4. **`code_rcl_path`**: Shortest call/import chain between two symbols.
 5. **`code_rcl_explain`**: One-call summary of a symbol (signature, docs, members, direct callers/callees).

@@ -33,7 +33,7 @@ pub enum Command {
     Explain(ExplainArgs),
     /// Architecture report: core hubs, subsystems (communities), bridges, suggested questions
     Report(ReportArgs),
-    /// Search symbols, functions, types, and string literals in the SQLite cache
+    /// Search symbols, functions, types, and string literals in the bkndb cache
     Search(SearchArgs),
     /// Generate an architecture outline and public API digest of the codebase
     Digest(DigestArgs),
@@ -122,7 +122,7 @@ pub struct SyncArgs {
 pub struct PreciseArgs {
     /// Resolve references through the real language server for each language
     /// (rust-analyzer, pyright, jdtls, typescript-language-server, and for
-    /// Kotlin JetBrains' kotlin-lsp by default or fwcd's kotlin-language-server
+    /// Kotlin JetBrains' intellij-server by default or fwcd's kotlin-language-server
     /// when `[precise.kotlin] server` in .code-rcl/config.toml says so) instead
     /// of guessing from the AST. Needs those servers installed; any that are
     /// missing are reported and their language keeps its heuristic edges.
@@ -386,7 +386,7 @@ pub struct ReportArgs {
 
 #[derive(Parser, Debug)]
 #[command(
-    about = "Search symbols, functions, types, and string literals in the SQLite cache",
+    about = "Search symbols, functions, types, and string literals in the bkndb cache",
     after_help = "Examples:\n  code-rcl search CacheDb\n  code-rcl search build_graph --kind function\n  code-rcl search --strings get_bool\n  code-rcl search handle_request --json"
 )]
 pub struct SearchArgs {
