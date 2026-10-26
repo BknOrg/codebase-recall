@@ -1,0 +1,520 @@
+{
+  "schema_version": 1,
+  "corpus_sha256": "77f2fd269a0dffd5410a0c1a3982b53d6da0818d4787a1bd50fe3f1619617dab",
+  "split_policy": "12 tuning and 4 held-out tasks, each paired English/Indonesian; no task paraphrases cross splits",
+  "judgments": "graded seed judgments; unlisted candidates remain unjudged rather than proven irrelevant",
+  "queries": [
+    {
+      "id": "container-01-en",
+      "task": "container-01",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "en",
+      "query": "index configuration with metric, graph links, and construction effort defaults",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/mod.rs",
+          "name": "VectorIndexOptions",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-01-id",
+      "task": "container-01",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "id",
+      "query": "konfigurasi indeks berisi metrik, jumlah link graf dan default usaha konstruksi",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/mod.rs",
+          "name": "VectorIndexOptions",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-02-en",
+      "task": "container-02",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "en",
+      "query": "record describing a vector index column, dimensions and indexed vector count",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/mod.rs",
+          "name": "VectorIndexInfo",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-02-id",
+      "task": "container-02",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "id",
+      "query": "record deskripsi kolom indeks vector, dimensi dan jumlah vector terindeks",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/mod.rs",
+          "name": "VectorIndexInfo",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-03-en",
+      "task": "container-03",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "en",
+      "query": "query options that force exact vector search or set ef_search",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/mod.rs",
+          "name": "VectorSearchOptions",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-03-id",
+      "task": "container-03",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "id",
+      "query": "opsi query untuk memaksa pencarian vector exact atau mengatur ef_search",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/mod.rs",
+          "name": "VectorSearchOptions",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-04-en",
+      "task": "container-04",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "en",
+      "query": "transaction independent query description with filters ordering offset limit and projection",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/query/mod.rs",
+          "name": "Query",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-04-id",
+      "task": "container-04",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "id",
+      "query": "deskripsi query bebas transaksi dengan filter pengurutan offset limit dan proyeksi",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/query/mod.rs",
+          "name": "Query",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-05-en",
+      "task": "container-05",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "en",
+      "query": "builder responsible for columns primary key automatic increments and indexes before schema validation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/schema/builder.rs",
+          "name": "TableSchemaBuilder",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-05-id",
+      "task": "container-05",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "id",
+      "query": "builder pengelola kolom primary key auto increment dan indeks sebelum validasi skema",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/schema/builder.rs",
+          "name": "TableSchemaBuilder",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-06-en",
+      "task": "container-06",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "en",
+      "query": "enum of column kinds with methods to classify values and identify keyable kinds",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/schema/mod.rs",
+          "name": "ColumnKind",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-06-id",
+      "task": "container-06",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "id",
+      "query": "enum jenis kolom dengan metode klasifikasi nilai serta jenis yang dapat menjadi key",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/schema/mod.rs",
+          "name": "ColumnKind",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-07-en",
+      "task": "container-07",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "en",
+      "query": "Python column declaration with nullable true and unique false defaults plus optional default value",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_tables.py",
+          "name": "Column",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-07-id",
+      "task": "container-07",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "id",
+      "query": "deklarasi kolom Python dengan default nullable true unique false dan nilai default opsional",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_tables.py",
+          "name": "Column",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-08-en",
+      "task": "container-08",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "en",
+      "query": "Python table schema record with column list primary key auto increment and indexes",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_tables.py",
+          "name": "TableSchema",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-08-id",
+      "task": "container-08",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "id",
+      "query": "record skema tabel Python dengan daftar kolom primary key auto increment dan indeks",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_tables.py",
+          "name": "TableSchema",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-09-en",
+      "task": "container-09",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "en",
+      "query": "Python direction enum for outgoing incoming or both edges and conversion to FFI",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_records.py",
+          "name": "Direction",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-09-id",
+      "task": "container-09",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "id",
+      "query": "enum arah Python untuk edge keluar masuk atau keduanya serta konversi ke FFI",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_records.py",
+          "name": "Direction",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-10-en",
+      "task": "container-10",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "en",
+      "query": "Python path record retaining node IDs edge IDs and traversal steps",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_records.py",
+          "name": "Path",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-10-id",
+      "task": "container-10",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "id",
+      "query": "record jalur Python yang menyimpan ID node ID edge dan langkah traversal",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_records.py",
+          "name": "Path",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-11-en",
+      "task": "container-11",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "en",
+      "query": "Python database container constructed from an engine and location with open and in_memory factories",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/database.py",
+          "name": "Database",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-11-id",
+      "task": "container-11",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "id",
+      "query": "container database Python dengan constructor engine dan lokasi serta factory open dan in_memory",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/database.py",
+          "name": "Database",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-12-en",
+      "task": "container-12",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "en",
+      "query": "Kotlin owned Rust buffer structure with zero capacity length null pointer and nested ByValue ByReference types",
+      "labels": [
+        {
+          "path": "bindings/uniffi/bkndb_ffi/bkndb_ffi.kt",
+          "name": "RustBuffer",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-12-id",
+      "task": "container-12",
+      "split": "tuning",
+      "kind": "container",
+      "query_language": "id",
+      "query": "struktur buffer Rust milik Kotlin dengan kapasitas panjang nol pointer null serta tipe bersarang ByValue ByReference",
+      "labels": [
+        {
+          "path": "bindings/uniffi/bkndb_ffi/bkndb_ffi.kt",
+          "name": "RustBuffer",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-13-en",
+      "task": "container-13",
+      "split": "evaluation",
+      "kind": "container",
+      "query_language": "en",
+      "query": "Python boolean filter base class with and or inversion operators and no boolean truth value",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/query.py",
+          "name": "Expr",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-13-id",
+      "task": "container-13",
+      "split": "evaluation",
+      "kind": "container",
+      "query_language": "id",
+      "query": "kelas dasar filter boolean Python dengan operator and or inversi dan tanpa nilai kebenaran boolean",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/query.py",
+          "name": "Expr",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-14-en",
+      "task": "container-14",
+      "split": "evaluation",
+      "kind": "container",
+      "query_language": "en",
+      "query": "Kotlin borrowed byte structure with zero length null data pointer and nested by value representation",
+      "labels": [
+        {
+          "path": "bindings/uniffi/bkndb_ffi/bkndb_ffi.kt",
+          "name": "ForeignBytes",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-14-id",
+      "task": "container-14",
+      "split": "evaluation",
+      "kind": "container",
+      "query_language": "id",
+      "query": "struktur byte pinjaman Kotlin dengan panjang nol pointer data null serta representasi by value bersarang",
+      "labels": [
+        {
+          "path": "bindings/uniffi/bkndb_ffi/bkndb_ffi.kt",
+          "name": "ForeignBytes",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-15-en",
+      "task": "container-15",
+      "split": "evaluation",
+      "kind": "container",
+      "query_language": "en",
+      "query": "transaction worker type holding a command sender and optional join handle for an owned write batch",
+      "labels": [
+        {
+          "path": "crates/bkndb-ffi/src/transaction.rs",
+          "name": "Worker",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-15-id",
+      "task": "container-15",
+      "split": "evaluation",
+      "kind": "container",
+      "query_language": "id",
+      "query": "tipe worker transaksi yang menyimpan pengirim perintah dan join handle opsional untuk write batch miliknya",
+      "labels": [
+        {
+          "path": "crates/bkndb-ffi/src/transaction.rs",
+          "name": "Worker",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-16-en",
+      "task": "container-16",
+      "split": "evaluation",
+      "kind": "container",
+      "query_language": "en",
+      "query": "Go platform driver interface covering engine lifetime graph operations vector search and transactions",
+      "labels": [
+        {
+          "path": "bindings/go/bkndb/driver.go",
+          "name": "driver",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    },
+    {
+      "id": "container-16-id",
+      "task": "container-16",
+      "split": "evaluation",
+      "kind": "container",
+      "query_language": "id",
+      "query": "interface driver platform Go untuk lifecycle engine operasi graf pencarian vector dan transaksi",
+      "labels": [
+        {
+          "path": "bindings/go/bkndb/driver.go",
+          "name": "driver",
+          "grade": 3,
+          "reason": "container declaration, members and defaults inspected in the pinned corpus"
+        }
+      ]
+    }
+  ]
+}

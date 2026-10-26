@@ -1,7 +1,9 @@
 use serde::Serialize;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ImpactReport {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub change_kind: Option<String>,
     pub target_symbol: String,
     pub target_id: String,
     pub target_kind: String,
@@ -22,7 +24,7 @@ pub struct ImpactReport {
     pub max_depth_reached: u32,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ImpactItem {
     pub id: String,
     pub label: String,

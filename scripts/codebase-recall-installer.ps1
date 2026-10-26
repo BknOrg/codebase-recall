@@ -42,3 +42,4 @@ if ([string]::IsNullOrWhiteSpace($UserPath)) {
 }
 
 Write-Host "`nSelesai! Buka terminal baru dan jalankan: $BinName --help"
+Write-Host "Model setup is separate: code-rcl embeddings setup; code-rcl embeddings sync"

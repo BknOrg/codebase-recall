@@ -8,8 +8,8 @@
 
 use tree_sitter::{Node, Parser};
 
-use crate::analysis::scope::{self, ScopeStack};
 use crate::analysis::ParsedFile;
+use crate::analysis::scope::{self, ScopeStack};
 use crate::cache::models::{NewImport, NewRef, NewSymbol};
 
 pub fn parse(source: &str) -> ParsedFile {
@@ -18,14 +18,25 @@ pub fn parse(source: &str) -> ParsedFile {
     if parser.set_language(&language).is_err() {
         return ParsedFile::default();
     }
-    let Some(tree) = parser.parse(source, None) else {
+    let Some(mut tree) = parser.parse(source, None) else {
         return ParsedFile::default();
     };
+
+    if tree.root_node().has_error() {
+        let masked = super::kotlin_comments::mask(source);
+        if masked != source
+            && let Some(reparsed) = parser.parse(&masked, None)
+            && !reparsed.root_node().has_error()
+        {
+            tree = reparsed;
+        }
+    }
 
     let mut walker = Walker {
         src: source.as_bytes(),
         out: ParsedFile {
             parse_ok: !tree.root_node().has_error(),
+            diagnostics: crate::analysis::diagnostics(tree.root_node()),
             ..ParsedFile::default()
         },
         stack: Vec::new(),
@@ -66,7 +77,11 @@ impl<'a> Walker<'a> {
                 self.enter_symbol(node, kind);
             }
             "function_declaration" => {
-                let kind = if self.parent_is_type() { "method" } else { "function" };
+                let kind = if self.parent_is_type() {
+                    "method"
+                } else {
+                    "function"
+                };
                 self.enter_symbol(node, kind);
             }
             "property_declaration" => {
@@ -105,13 +120,21 @@ impl<'a> Walker<'a> {
                 let s = &self.out.symbols[i];
                 (s.name.clone(), s.kind.clone())
             };
-            let scope_kind = if real_kind == "method" { "method" } else { "class" };
+            let scope_kind = if real_kind == "method" {
+                "method"
+            } else {
+                "class"
+            };
             if real_kind != "method" {
                 self.sc.bind(&name, "symbol", Some(i), None, None);
             }
             self.stack.push(i);
-            self.sc
-                .push(scope_kind, Some(i), node.start_byte() as i64, node.end_byte() as i64);
+            self.sc.push(
+                scope_kind,
+                Some(i),
+                node.start_byte() as i64,
+                node.end_byte() as i64,
+            );
 
             match real_kind.as_str() {
                 "method" | "function" => self.bind_params(node),
@@ -146,9 +169,9 @@ impl<'a> Walker<'a> {
             if name.is_empty() {
                 continue;
             }
-            let ty = p.named_children(&mut p.walk()).find_map(|c| {
-                (c.kind() != "identifier").then(|| simple_type_name(self.text(c)))
-            });
+            let ty = p
+                .named_children(&mut p.walk())
+                .find_map(|c| (c.kind() != "identifier").then(|| simple_type_name(self.text(c))));
             self.sc.bind(&name, "param", None, None, ty);
         }
     }
@@ -178,13 +201,19 @@ impl<'a> Walker<'a> {
             // A plain constructor param (no val/var) is still worth a param binding.
             let is_field = {
                 let mut c = p.walk();
-                p.children(&mut c).any(|x| matches!(x.kind(), "val" | "var"))
+                p.children(&mut c)
+                    .any(|x| matches!(x.kind(), "val" | "var"))
             };
-            let ty = p.named_children(&mut p.walk()).find_map(|c| {
-                (c.kind() != "identifier").then(|| simple_type_name(self.text(c)))
-            });
-            self.sc
-                .bind(&name, if is_field { "field" } else { "param" }, None, None, ty);
+            let ty = p
+                .named_children(&mut p.walk())
+                .find_map(|c| (c.kind() != "identifier").then(|| simple_type_name(self.text(c))));
+            self.sc.bind(
+                &name,
+                if is_field { "field" } else { "param" },
+                None,
+                None,
+                ty,
+            );
         }
     }
 
@@ -238,7 +267,7 @@ impl<'a> Walker<'a> {
             end_line: node.end_position().row as i64 + 1,
             start_byte: node.start_byte() as i64,
             end_byte: node.end_byte() as i64,
-            signature: None,
+            signature: crate::analysis::node_signature(node, self.src),
             param_count,
             type_name,
         });
@@ -279,7 +308,7 @@ impl<'a> Walker<'a> {
                 end_line: node.end_position().row as i64 + 1,
                 start_byte: node.start_byte() as i64,
                 end_byte: node.end_byte() as i64,
-                signature: None,
+                signature: crate::analysis::node_signature(node, self.src),
                 param_count: None,
                 type_name: None,
             });
@@ -300,7 +329,10 @@ impl<'a> Walker<'a> {
             return None;
         }
         let t = self.text(callee);
-        t.chars().next().is_some_and(|c| c.is_uppercase()).then(|| t.to_string())
+        t.chars()
+            .next()
+            .is_some_and(|c| c.is_uppercase())
+            .then(|| t.to_string())
     }
 
     fn collect_import(&mut self, node: Node) {
@@ -368,7 +400,9 @@ impl<'a> Walker<'a> {
             }
             _ => return,
         };
-        let name = name_node.map(|n| self.text(n).to_string()).unwrap_or_default();
+        let name = name_node
+            .map(|n| self.text(n).to_string())
+            .unwrap_or_default();
         if name.is_empty() {
             return;
         }
@@ -456,11 +490,17 @@ val TOP = 42
 
         let spec = |s: &str| p.imports.iter().find(|i| i.raw_specifier == s);
         assert_eq!(
-            spec("com.example.util.Greeter").unwrap().imported_name.as_deref(),
+            spec("com.example.util.Greeter")
+                .unwrap()
+                .imported_name
+                .as_deref(),
             Some("Greeter")
         );
         assert_eq!(
-            spec("com.example.util.Helpers.log").unwrap().alias.as_deref(),
+            spec("com.example.util.Helpers.log")
+                .unwrap()
+                .alias
+                .as_deref(),
             Some("logIt")
         );
         assert!(spec("com.example.data").unwrap().imported_name.is_none());
@@ -490,5 +530,35 @@ val TOP = 42
         let greet = p.refs.iter().find(|r| r.name == "greet").unwrap();
         assert_eq!(greet.receiver.as_deref(), Some("g"));
         assert_eq!(greet.receiver_kind, "value");
+    }
+}
+
+#[cfg(test)]
+mod grammar_regressions {
+    #[test]
+    fn generated_uniffi_block_comments_keep_original_symbol_locations() {
+        let source = include_str!("../../tests/fixtures/kotlin/uniffi-transaction.kt");
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_kotlin_ng::LANGUAGE.into())
+            .unwrap();
+        assert!(
+            parser.parse(source, None).unwrap().root_node().has_error(),
+            "fixture must reproduce upstream grammar failure"
+        );
+        let parsed = super::parse(source);
+        assert!(parsed.parse_ok, "{:?}", parsed.diagnostics);
+        let symbol = parsed
+            .symbols
+            .iter()
+            .find(|s| s.name.trim_matches('`') == "neighbors")
+            .unwrap();
+        let start = symbol.start_byte as usize;
+        assert!(source[start..].starts_with("@Throws"));
+        assert_eq!(
+            symbol.start_line as usize,
+            source[..start].bytes().filter(|b| *b == b'\n').count() + 1
+        );
+        assert!(!super::parse("fun broken( { /* valid comment */").parse_ok);
     }
 }

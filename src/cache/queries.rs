@@ -31,9 +31,11 @@ impl CacheDb {
     }
 
     pub fn meta_get(&self, key: &str) -> Result<Option<String>> {
-        let row = self
-            .db
-            .read_tx(|r| r.relational().table(self.tables.meta.clone()).get(&PropValue::from(key)))?;
+        let row = self.db.read_tx(|r| {
+            r.relational()
+                .table(self.tables.meta.clone())
+                .get(&PropValue::from(key))
+        })?;
         Ok(row.and_then(|r| match r.values.get("value") {
             Some(PropValue::Str(v)) => Some(v.clone()),
             _ => None,
@@ -44,8 +46,12 @@ impl CacheDb {
     pub fn totals(&self) -> Result<(usize, usize)> {
         let (symbols, imports) = self.db.read_tx(|r| {
             let rel = r.relational();
-            let symbols = rel.table(self.tables.symbols.clone()).count(&Query::new())?;
-            let imports = rel.table(self.tables.imports.clone()).count(&Query::new())?;
+            let symbols = rel
+                .table(self.tables.symbols.clone())
+                .count(&Query::new())?;
+            let imports = rel
+                .table(self.tables.imports.clone())
+                .count(&Query::new())?;
             Ok((symbols, imports))
         })?;
         Ok((symbols, imports))
@@ -58,6 +64,12 @@ impl CacheDb {
 
     pub fn all_symbols(&self) -> Result<Vec<SymbolRow>> {
         let rows = self.rows(&self.tables.symbols, &Query::new())?;
+        Ok(rows.iter().map(symbol_row).collect())
+    }
+
+    /// Retrieve all symbols belonging to a specific file.
+    pub fn symbols_for_file(&self, file_id: i64) -> Result<Vec<SymbolRow>> {
+        let rows = self.rows_where_file(&self.tables.symbols, file_id)?;
         Ok(rows.iter().map(symbol_row).collect())
     }
 
@@ -92,19 +104,38 @@ impl CacheDb {
     pub fn search_symbols(
         &self,
         query: &str,
+        match_mode: &str,
         kind_filter: Option<&str>,
         exported_only: bool,
         limit: usize,
     ) -> Result<Vec<(SymbolRow, String)>> {
         let needle = query.to_ascii_lowercase();
-        let paths: HashMap<i64, String> = self.all_files()?.into_iter().map(|f| (f.id, f.path)).collect();
-
-        let mut hits: Vec<SymbolRow> = self
-            .all_symbols()?
+        let paths: HashMap<i64, String> = self
+            .all_files()?
             .into_iter()
+            .map(|f| (f.id, f.path))
+            .collect();
+
+        let indexed = match match_mode {
+            "exact" => self.rows(
+                &self.tables.symbols,
+                &Query::new().where_eq("name_lower", needle.as_str()),
+            )?,
+            "prefix" => self.rows(
+                &self.tables.symbols,
+                &Query::new().where_prefix("name_lower", &needle),
+            )?,
+            "substring" => self.rows(&self.tables.symbols, &Query::new())?,
+            _ => anyhow::bail!("invalid match_mode: {match_mode}"),
+        };
+        let mut hits: Vec<SymbolRow> = indexed
+            .iter()
+            .map(symbol_row)
             .filter(|s| {
                 (contains_ci(&s.name, &needle)
-                    || s.signature.as_deref().is_some_and(|sig| contains_ci(sig, &needle)))
+                    || s.signature
+                        .as_deref()
+                        .is_some_and(|sig| contains_ci(sig, &needle)))
                     && kind_filter.is_none_or(|k| s.kind == k)
                     && (!exported_only || s.is_exported)
                     && paths.contains_key(&s.file_id)
@@ -113,8 +144,20 @@ impl CacheDb {
 
         // Exact name first, then shortest name, then alphabetical.
         hits.sort_by(|a, b| {
-            (a.name != query, a.name.chars().count(), &a.name)
-                .cmp(&(b.name != query, b.name.chars().count(), &b.name))
+            (
+                a.name.to_ascii_lowercase() != needle,
+                a.name.chars().count(),
+                &a.name,
+                paths.get(&a.file_id),
+                a.start_line,
+            )
+                .cmp(&(
+                    b.name.to_ascii_lowercase() != needle,
+                    b.name.chars().count(),
+                    &b.name,
+                    paths.get(&b.file_id),
+                    b.start_line,
+                ))
         });
         hits.truncate(limit);
         Ok(hits
@@ -133,7 +176,11 @@ impl CacheDb {
         limit: usize,
     ) -> Result<Vec<(StringLiteralRow, String)>> {
         let needle = query.to_ascii_lowercase();
-        let paths: HashMap<i64, String> = self.all_files()?.into_iter().map(|f| (f.id, f.path)).collect();
+        let paths: HashMap<i64, String> = self
+            .all_files()?
+            .into_iter()
+            .map(|f| (f.id, f.path))
+            .collect();
 
         let rows = self.rows(&self.tables.string_literals, &Query::new())?;
         let mut hits: Vec<StringLiteralRow> = rows
@@ -142,7 +189,14 @@ impl CacheDb {
             .filter(|sl| contains_ci(&sl.value, &needle) && paths.contains_key(&sl.file_id))
             .collect();
 
-        hits.sort_by_key(|sl| (sl.value != query, sl.value.chars().count()));
+        hits.sort_by_key(|sl| {
+            (
+                sl.value != query,
+                sl.value.chars().count(),
+                sl.file_id,
+                sl.line,
+            )
+        });
         hits.truncate(limit);
         Ok(hits
             .into_iter()
@@ -164,19 +218,32 @@ impl CacheDb {
         let file_map: HashMap<i64, String> = files.into_iter().map(|f| (f.id, f.path)).collect();
 
         let q_lower = query.to_ascii_lowercase();
+        let query_chars = q_lower.chars().count();
         let mut scored: Vec<(SymbolRow, String, usize)> = Vec::new();
 
         for s in all {
             let s_lower = s.name.to_ascii_lowercase();
-            let dist = levenshtein(&q_lower, &s_lower);
             let max_len = q_lower.len().max(s_lower.len());
-            if dist <= 3 || (max_len > 4 && dist <= (max_len * 2 / 5)) || s_lower.contains(&q_lower) {
+            // Edit distance cannot be smaller than the difference in character
+            // counts. Preserve substring matches and the existing acceptance
+            // threshold, but avoid quadratic work for impossible candidates.
+            let threshold = 3.max(if max_len > 4 { max_len * 2 / 5 } else { 0 });
+            if query_chars.abs_diff(s_lower.chars().count()) > threshold
+                && !s_lower.contains(&q_lower)
+            {
+                continue;
+            }
+            let dist = levenshtein(&q_lower, &s_lower);
+            if dist <= 3 || (max_len > 4 && dist <= (max_len * 2 / 5)) || s_lower.contains(&q_lower)
+            {
                 let path = file_map.get(&s.file_id).cloned().unwrap_or_default();
                 scored.push((s, path, dist));
             }
         }
 
-        scored.sort_by_key(|(_, _, dist)| *dist);
+        scored.sort_by(|(a, ap, ad), (b, bp, bd)| {
+            (ad, &a.name, ap, a.start_line).cmp(&(bd, &b.name, bp, b.start_line))
+        });
         scored.truncate(limit);
         Ok(scored)
     }

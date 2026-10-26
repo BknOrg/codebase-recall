@@ -19,7 +19,7 @@ pub fn levenshtein(a: &str, b: &str) -> usize {
     for i in 1..=m {
         curr[0] = i;
         for j in 1..=n {
-            let cost = if a_chars[i - 1].to_ascii_lowercase() == b_chars[j - 1].to_ascii_lowercase() {
+            let cost = if a_chars[i - 1].eq_ignore_ascii_case(&b_chars[j - 1]) {
                 0
             } else {
                 1

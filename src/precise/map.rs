@@ -13,6 +13,25 @@ pub struct PositionMap {
 }
 
 impl PositionMap {
+    pub fn byte_offset(&self, line: u32, character: u32) -> Option<usize> {
+        let start = *self.line_starts.get(line as usize)?;
+        let end = self
+            .line_starts
+            .get(line as usize + 1)
+            .copied()
+            .unwrap_or(self.text.len());
+        let mut units = 0;
+        for (offset, ch) in self.text[start..end].char_indices() {
+            if units == character {
+                return Some(start + offset);
+            }
+            units += ch.len_utf16() as u32;
+            if units > character {
+                return None;
+            }
+        }
+        (units == character).then_some(end)
+    }
     pub fn new(text: String) -> Self {
         let mut line_starts = vec![0usize];
         for (i, b) in text.bytes().enumerate() {
@@ -131,6 +150,7 @@ fn percent_decode(s: &str) -> String {
 /// A definition lands on the line a symbol is declared on, so symbols starting
 /// exactly there win over merely enclosing ones — that is what separates
 /// `fn bar` from the `impl` block around it.
+#[cfg(test)]
 pub fn symbol_at_line<'a>(syms: &[&'a SymbolRow], line: i64) -> Option<&'a SymbolRow> {
     let mut best: Option<(bool, i64, &SymbolRow)> = None;
     for s in syms {
@@ -148,9 +168,30 @@ pub fn symbol_at_line<'a>(syms: &[&'a SymbolRow], line: i64) -> Option<&'a Symbo
     best.map(|(_, _, s)| s)
 }
 
+pub fn symbol_at_byte<'a>(syms: &[&'a SymbolRow], byte: i64) -> Option<&'a SymbolRow> {
+    syms.iter()
+        .copied()
+        .filter(|s| {
+            s.start_byte
+                .zip(s.end_byte)
+                .is_some_and(|(start, end)| start <= byte && byte < end)
+        })
+        .min_by_key(|s| s.end_byte.unwrap() - s.start_byte.unwrap())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn utf16_reverse_mapping_rejects_surrogate_midpoints() {
+        let text = "// 🐈é\nfn next() {}";
+        let map = PositionMap::new(text.into());
+        assert_eq!(map.byte_offset(0, 3), Some(3));
+        assert_eq!(map.byte_offset(0, 4), None);
+        assert_eq!(map.byte_offset(0, 5), Some(7));
+        assert_eq!(map.position(map.byte_offset(1, 3).unwrap()), Some((1, 3)));
+    }
 
     fn sym(id: i64, start: i64, end: i64) -> SymbolRow {
         SymbolRow {
@@ -211,7 +252,10 @@ mod tests {
         let uri = path_to_uri(win);
         assert_eq!(uri, "file:///C:/proj/src/my%20file.rs");
         assert_eq!(
-            uri_to_path(&uri).unwrap().to_string_lossy().replace('\\', "/"),
+            uri_to_path(&uri)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/"),
             "C:/proj/src/my file.rs"
         );
 

@@ -1,0 +1,98 @@
+[
+  {
+    "path": "src/precise/map.rs",
+    "name": "byte_offset",
+    "id": "Mengubah posisi baris dan kolom UTF-16 menjadi offset byte, serta menolak posisi di tengah surrogate pair.",
+    "en": "Convert a line and UTF-16 column to a byte offset while rejecting the middle of a surrogate pair."
+  },
+  {
+    "path": "src/precise/map.rs",
+    "name": "symbol_at_byte",
+    "id": "Memilih deklarasi dengan rentang terkecil yang mencakup suatu posisi byte.",
+    "en": "Choose the narrowest declaration range containing a byte position."
+  },
+  {
+    "path": "src/precise/map.rs",
+    "name": "path_to_uri",
+    "id": "Mengubah path filesystem menjadi URI file dan melakukan encoding karakter khusus.",
+    "en": "Turn a filesystem path into a file URI with special characters encoded."
+  },
+  {
+    "path": "src/precise/map.rs",
+    "name": "uri_to_path",
+    "id": "Mengubah URI file dari language server kembali menjadi path lokal.",
+    "en": "Convert a language server file URI back into a local filesystem path."
+  },
+  {
+    "path": "src/server/mod.rs",
+    "name": "write_project_file",
+    "id": "Menyimpan hasil ekspor hanya di dalam proyek dan menolak menimpa file yang sudah ada.",
+    "en": "Save an export within the project directory and refuse to overwrite an existing file."
+  },
+  {
+    "path": "src/server/mod.rs",
+    "name": "percent_decode",
+    "id": "Menerjemahkan escape persen pada parameter URL dan tanda tambah menjadi spasi.",
+    "en": "Decode percent escapes in a URL parameter and turn plus signs into spaces."
+  },
+  {
+    "path": "src/server/mod.rs",
+    "name": "unique_name",
+    "id": "Membuat nama file hasil ekspor dengan akhiran acak dari sistem operasi.",
+    "en": "Generate an export filename with an operating-system random suffix."
+  },
+  {
+    "path": "src/commands/search.rs",
+    "name": "perform_grep_fallback",
+    "id": "Mencari teks tanpa membedakan huruf besar kecil di baris file ketika pencarian simbol tidak cukup.",
+    "en": "Search file lines for case-insensitive text when declaration lookup is insufficient."
+  },
+  {
+    "path": "src/cache/mutations.rs",
+    "name": "invalidate_precise_generation",
+    "id": "Membatalkan seluruh relasi language server dan menaikkan generasi cache sebelum ID simbol diganti.",
+    "en": "Invalidate language-server relationships across the project and advance the cache generation before symbol IDs change."
+  },
+  {
+    "path": "src/cache/mutations.rs",
+    "name": "delete_file",
+    "id": "Menghapus catatan sebuah file beserta simbol, impor, referensi, scope dan binding dari database.",
+    "en": "Delete a file record together with its symbols, imports, references, scopes and bindings from the database."
+  },
+  {
+    "path": "src/cache/mod.rs",
+    "name": "ensure_schema",
+    "id": "Membangun ulang tabel cache ketika versi schema tersimpan berbeda dari versi yang diperlukan.",
+    "en": "Rebuild cache tables when the persisted schema version differs from the required version."
+  },
+  {
+    "path": "src/commands/mcp/handlers.rs",
+    "name": "bound_output",
+    "id": "Mengecilkan respons terstruktur sampai sesuai batas byte dengan membuang item utuh dan mencatat pemangkasan.",
+    "en": "Shrink a structured response to a byte budget by removing whole items and recording truncation."
+  },
+  {
+    "path": "src/commands/mcp/inputs.rs",
+    "name": "validate",
+    "id": "Memeriksa argumen tool, batas angka, teks kosong, serta pilihan eksklusif simbol atau diff.",
+    "en": "Validate tool arguments, numeric limits, empty strings and the exclusive choice between a symbol and a diff."
+  },
+  {
+    "path": "src/precise/client.rs",
+    "name": "wait_until_ready",
+    "id": "Menunggu language server selesai indexing dengan memantau progress, masa tenang, timeout dan pembatalan.",
+    "en": "Wait for language-server indexing by observing progress, a quiet period, timeout and cancellation."
+  },
+  {
+    "path": "src/precise/client.rs",
+    "name": "drop",
+    "id": "Memastikan proses anak language server dibunuh dan ditunggu saat objek client dihancurkan.",
+    "en": "Ensure the language-server child process is killed and reaped when its client is destroyed."
+  },
+  {
+    "path": "src/precise/mod.rs",
+    "name": "definition_targets",
+    "id": "Menyeragamkan respons definisi language server yang dapat berupa array atau satu lokasi menjadi daftar target.",
+    "en": "Normalize a language-server definition response containing either an array or a single location into a target list."
+  }
+]

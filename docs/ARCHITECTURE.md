@@ -1,4 +1,3 @@
-<!-- generated-by: gsd-doc-writer -->
 # Architecture
 
 ## System overview
@@ -30,7 +29,7 @@ graph TD
 3. `graph::resolve` reads the cache and resolves references (imports, scope, types, optional precise LSP data) into edges, producing a `CodeGraph`.
 4. The command renders the result: markdown digest, impact tree, path/explain output, graph (dot/html/json), or dump bundle.
 
-`serve` builds the graph, then `server/mod.rs` serves embedded assets on 127.0.0.1 using `tiny_http`; a `/live` event stream keeps the server alive and it exits when the browser tab closes, on `/quit`, or on Ctrl-C.
+`serve` builds the graph, then `server/mod.rs` serves embedded assets on 127.0.0.1 using `tiny_http`; a `/live` event stream keeps the server alive and it exits when the browser tab closes, on an authenticated POST to `/quit`, or on Ctrl-C. API requests use a per-session token, and output file access is confined to the project with filesystem capabilities.
 
 Persistent state lives only in `<project>/.code-rcl/cache.bkndb` (plus a generated `REPORT.md`). bkndb locks that file exclusively, so one `code-rcl` process opens a project's cache at a time; code that needs the graph again while it holds a `CacheDb` (for example `sync` building its report) drops the handle first.
 
@@ -42,10 +41,10 @@ Persistent state lives only in `<project>/.code-rcl/cache.bkndb` (plus a generat
 | `Language` | `src/analysis/lang.rs` | Supported language detection |
 | `CodeGraph` / `Node` / `Edge` | `src/graph/mod.rs` | Resolved dependency graph with communities |
 | `GraphQuery`, `SyncArgs`, `PreciseArgs` | `src/cli.rs` | Shared CLI argument groups |
-| `CacheDb` | `src/cache/mod.rs` | bkndb access; table definitions in `src/cache/schema.rs`. A `SCHEMA_VERSION` change drops and rebuilds every table, and the next sync re-analyzes the tree |
+| `CacheDb` | `src/cache/mod.rs` | bkndb access; table definitions in `src/cache/schema.rs`. Schemas 10/11 upgrade additively to 12; other incompatible layouts are rebuilt |
 | service helpers | `src/service.rs` | Shared auto-sync and `GraphQuery` builders; use these rather than rebuilding setup in each command |
 
-Languages analyzed: Rust, Python (including notebooks), JavaScript/TypeScript (including single-file components), Java, Kotlin, Go, and TOML config keys.
+Languages analyzed: Rust, Python, JavaScript/TypeScript (including single-file components), Java, Kotlin, Go, and TOML config keys. Notebook cleanup is a dump feature; `.ipynb` is not an AST-indexed language.
 
 ## Directory structure rationale
 
@@ -68,6 +67,95 @@ skills/             code-rcl agent skill
 
 ## Constraints
 
-- Mostly synchronous; `serve` uses threads and atomics.
-- Edges are heuristic from the AST; `--precise` LSP data overrides them when available, and missing language servers are skipped with install hints.
+- Analysis is serialized within MCP, while its reader/writer handle ping and cooperative cancellation independently. `serve` uses threads and atomics.
+- Edges start as AST heuristics; valid cached LSP answers override them. Requested precise failures are errors unless partial heuristic fallback is explicit. Any analysis change invalidates the project-wide precise generation.
 - Errors propagate as `anyhow::Result` to `main`.
+
+## 0.9.0 interfaces
+
+output.rs supplies the shared JSON result envelope; operation.rs holds per-request
+warnings, truncation counts, partial status, and cooperative cancellation state.
+CLI text rendering remains separate. MCP schemas derive from typed inputs;
+structured results and their serialized text carry the same versioned envelope.
+
+Impact diff reconstructs tracked HEAD files in a temporary workspace and uses
+baseline/current graphs to retain deleted definitions and callers. Historical
+build scripts are not run; the baseline is heuristic. The user checkout and
+index are not modified by this comparison.
+
+See [MCP.md](MCP.md), [USAGE.md](USAGE.md), and [MIGRATION-0.9.md](MIGRATION-0.9.md)
+for the public behavior and migration contract.
+
+## Embedding retrieval
+
+An optional-at-build, default-enabled local FastEmbed service owns lazily loaded
+CPU models. Only explicit setup performs network I/O. Explicit embedding sync
+uses parser source ranges and model tokenizer offsets to produce bounded
+chunks. Each file commits its vector set and completion marker atomically after
+rechecking source hash and configuration. Source mutations invalidate embeddings
+in their own analysis transaction. Model/pipeline/dimension keys are independent
+of transient symbol IDs and of precise graph generations.
+
+Source sync stores each supported, in-scope file's original bytes and content hash
+in `source_snapshots`, keyed by stable file ID. The snapshot and analysis rows are
+committed in the same per-file transaction. Unchanged sync verifies and repairs
+missing/corrupt snapshots without replacing symbols or invalidating valid vectors.
+Chunking in both schedulers reads the cached snapshot, validates its identity,
+hash and UTF-8, and retains the existing header/tokenization pipeline. Repo reads
+before processing and commit remain freshness checks; they do not supply chunk
+text. Source sync requires no embedding runtime or tokenizer. Delete removes the
+file's snapshot; existing scope/ignore/size rules remain authoritative.
+
+Schemas 10/11 to 12 add missing snapshot and content-index tables and change the
+version atomically. Graph and vector tables are preserved; the next source sync
+backfills original bytes and content postings. Older executables may rebuild a
+schema-12 cache, so rollback requires care.
+`source_snapshot_read` and `source_snapshot_fill` use existing operation timings.
+
+Chunks and float32 vectors share cache.bkndb with the AST tables. Semantic search
+filters valid chunks by cached source hashes/configuration/scope and ranks exact
+cosine matches; hybrid fuses declaration and semantic ranks with RRF. Per-request
+metadata separates source/embedding freshness and graph resolution. The reader
+continues to handle MCP ping/cancellation while the single worker runs batches.
+
+Embedding operations have a shared observer with an atomic sidecar snapshot and
+OS ownership lock independent of the cache lock. A heartbeat thread can report
+native inference liveness; file transactions remain the unit of index visibility.
+Parser diagnostics and analyzer revisions persist as cache metadata. Atomic
+per-file embedding counters make status independent of vector decoding.
+Explicit scope selection is shared by lexical/semantic/hybrid search and reports.
+
+Length batching separates streaming chunk production, scheduling and file commits.
+Up to eight staged files feed a bounded queue; length buckets schedule one native
+batch, with an oldest-bucket turn every sixteenth batch. Identical pending inputs
+share inference, while each logical chunk retains source metadata. Staged results
+stream into a single file transaction in stable symbol/chunk order. Recovery of
+owned interrupted staging runs under the operation lock, including after changing
+back to file batching. Batching is operational configuration and is absent from
+the embedding identity; full input text and hashes remain compatible.
+
+The experimental compact pipeline reparses AST body ranges without changing AST
+cache tables. Only bodies of independently chunked children may be delegated.
+Ambiguous mappings retain the full container and report fallbacks. Optional cache
+provenance marks generated container input while returned snippets remain literal
+source. Profile changes require explicit rebuilding of the derived index.
+
+## Agent integration lifecycle and CPU budget
+
+Setup and uninstall share native target/scope resolution for Codex, Claude
+Code, and Antigravity/Gemini. A version-one ownership manifest under the scope's
+`.code-rcl/` tracks managed resources and shared consumers. Parsing and marker
+validation happen during preflight; per-file atomic replacements preserve
+unrelated settings. Uninstall retains resources needed by other owners and
+unknown legacy shared consumers, and never recursively deletes user skill files.
+
+The embedding runtime resolves `threads=0` to available logical CPUs (fallback
+one) and caches sessions by model directory and effective CPU budget. The same
+budget applies to indexing and queries. It does not become part of chunk/vector
+identity, and does not change source freshness or commit/cancellation rules.
+
+The canvas renderer shares one active node for hover/selection, preserves kind
+and subsystem colors, and dims unrelated nodes to grey. Red outgoing and blue
+incoming edges keep source-to-target arrow direction. Reciprocal edges use
+separate lanes shared with hit-testing; node layout and backend graph data stay
+unchanged. Inline HTML and the server use the same assets.

@@ -78,21 +78,21 @@ pub fn extract_docs_and_diagram(
         let mut in_docstring = false;
         let mut quote_marker = "";
         let check_limit = (start_idx + 15).min(end_idx + 1).min(lines.len());
-        for i in start_idx..check_limit {
-            let line = lines[i].trim();
+        for line in &lines[start_idx..check_limit] {
+            let line = line.trim();
             if !in_docstring {
-                if line.starts_with("\"\"\"") {
+                if let Some(rest) = line.strip_prefix("\"\"\"") {
                     quote_marker = "\"\"\"";
                     in_docstring = true;
                     raw_lines.push(line);
-                    if line.len() > 3 && line[3..].contains("\"\"\"") {
+                    if rest.contains("\"\"\"") {
                         break;
                     }
-                } else if line.starts_with("'''") {
+                } else if let Some(rest) = line.strip_prefix("'''") {
                     quote_marker = "'''";
                     in_docstring = true;
                     raw_lines.push(line);
-                    if line.len() > 3 && line[3..].contains("'''") {
+                    if rest.contains("'''") {
                         break;
                     }
                 }
@@ -144,8 +144,8 @@ pub fn extract_docs_and_diagram(
 
         if collected_rev.is_empty() {
             let end_check = (start_idx + 5).min(lines.len());
-            for i in start_idx..end_check {
-                let trimmed = lines[i].trim();
+            for line in &lines[start_idx..end_check] {
+                let trimmed = line.trim();
                 if trimmed.starts_with("///") || trimmed.starts_with("/**") {
                     collected_rev.push(trimmed);
                 } else if !collected_rev.is_empty() {
@@ -165,8 +165,8 @@ pub fn extract_docs_and_diagram(
     let mut narrative_lines = Vec::new();
     let mut in_fence = false;
 
-    for line in raw_lines {
-        if is_fence_delimiter(&line) {
+    for line in &raw_lines {
+        if is_fence_delimiter(line) {
             in_fence = !in_fence;
             continue;
         }
@@ -174,7 +174,7 @@ pub fn extract_docs_and_diagram(
             continue;
         }
 
-        let cleaned = strip_doc_prefix(&line);
+        let cleaned = strip_doc_prefix(line);
         if !cleaned.is_empty() {
             narrative_lines.push(cleaned.to_string());
             if narrative_lines.len() >= max_doc_lines {

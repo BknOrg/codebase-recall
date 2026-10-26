@@ -13,7 +13,7 @@
     query: "",
     isolate: false,
     dumpDepth: 2,
-    dumpName: "codebase-context.md",
+    dumpName: "",
     leftTab: "tree",
     activeFile: null,
     activeLine: null,

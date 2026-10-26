@@ -13,10 +13,6 @@ const DEFAULT_CONFIG: &str = r#"# code-rcl project configuration
 # Every key is optional; a missing key uses the built-in default shown here.
 schema_version = 1
 
-[storage]
-# Storage engine for .code-rcl/cache.bkndb. "bkndb" is the only supported value.
-backend = "bkndb"
-
 [sync]
 # Skip source files larger than this many KB.
 max_file_kb = 512
@@ -36,6 +32,17 @@ max_nodes = 4000
 depth = 2
 # Edge kinds to include.
 kinds = ["imports", "calls", "contains", "implements"]
+
+[embeddings]
+# Model download and indexing are explicit: embeddings setup; embeddings sync.
+model = "embeddinggemma-300m-q4"
+dimensions = 768
+batch_size = 4
+# 0 uses all logical CPUs available to this process; 1..64 is a manual override.
+threads = 0
+batching = "file"
+chunk_profile = "full"
+# model_dir = "/absolute/models/embeddinggemma-1"
 
 [precise]
 # true acts like passing --precise for sync, graph and serve.
@@ -83,12 +90,39 @@ pub fn run(args: InitArgs) -> Result<()> {
     Ok(())
 }
 
+/// Resolves the actual git directory (supporting standard repos, worktrees, and submodules).
+fn resolve_git_dir(project: &Path) -> Option<std::path::PathBuf> {
+    let git = project.join(".git");
+    if !git.exists() {
+        return None;
+    }
+    if git.is_dir() {
+        return Some(git);
+    }
+    if git.is_file() {
+        let content = fs::read_to_string(&git).ok()?;
+        for line in content.lines() {
+            if let Some(rest) = line.trim().strip_prefix("gitdir:") {
+                let gitdir_path = std::path::PathBuf::from(rest.trim());
+                let actual = if gitdir_path.is_absolute() {
+                    gitdir_path
+                } else {
+                    project.join(gitdir_path)
+                };
+                if actual.exists() {
+                    return Some(actual);
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Make sure the project's `.git/info/exclude` ignores `.code-rcl/`.
 fn ensure_git_excluded(project: &Path) -> Result<()> {
-    let git_dir = project.join(".git");
-    if !git_dir.exists() {
+    let Some(git_dir) = resolve_git_dir(project) else {
         return Ok(());
-    }
+    };
 
     let exclude_dir = git_dir.join("info");
     if !exclude_dir.exists() {
@@ -117,7 +151,7 @@ fn ensure_git_excluded(project: &Path) -> Result<()> {
         .append(true)
         .open(&exclude_file)
         .with_context(|| format!("opening {}", exclude_file.display()))?;
-    write!(f, "{prefix}{entry}\n")?;
+    writeln!(f, "{prefix}{entry}")?;
     Ok(())
 }
 

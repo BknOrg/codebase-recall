@@ -232,11 +232,11 @@ impl<'a> Walker<'a> {
         let recv = node.child_by_field_name("receiver")?;
         let mut cursor = recv.walk();
         for child in recv.children(&mut cursor) {
-            if child.kind() == "parameter_declaration" {
-                if let Some(t) = child.child_by_field_name("type") {
-                    let txt = self.text(t).trim_start_matches('*').trim();
-                    return Some(txt.to_string());
-                }
+            if child.kind() == "parameter_declaration"
+                && let Some(t) = child.child_by_field_name("type")
+            {
+                let txt = self.text(t).trim_start_matches('*').trim();
+                return Some(txt.to_string());
             }
         }
         None
@@ -319,18 +319,18 @@ impl<'a> Walker<'a> {
     fn collect_interface_methods(&mut self, iface_node: Node) {
         let mut cursor = iface_node.walk();
         for child in iface_node.children(&mut cursor) {
-            if child.kind() == "method_elem" || child.kind() == "method_spec" {
-                if let Some(name_node) = child.child_by_field_name("name") {
-                    let mname = self.text(name_node);
-                    let sig = self.signature_of(child);
-                    let param_count = child.child_by_field_name("parameters").map(|p| {
-                        let mut c = p.walk();
-                        p.children(&mut c)
-                            .filter(|ch| ch.kind() == "parameter_declaration")
-                            .count() as i64
-                    });
-                    self.push_symbol_raw(child, mname, "method", sig, param_count, None);
-                }
+            if (child.kind() == "method_elem" || child.kind() == "method_spec")
+                && let Some(name_node) = child.child_by_field_name("name")
+            {
+                let mname = self.text(name_node);
+                let sig = self.signature_of(child);
+                let param_count = child.child_by_field_name("parameters").map(|p| {
+                    let mut c = p.walk();
+                    p.children(&mut c)
+                        .filter(|ch| ch.kind() == "parameter_declaration")
+                        .count() as i64
+                });
+                self.push_symbol_raw(child, mname, "method", sig, param_count, None);
             }
         }
     }
@@ -464,29 +464,14 @@ impl<'a> Walker<'a> {
     }
 
     fn signature_of(&self, node: Node) -> Option<String> {
-        let start = node.start_byte();
-        let end = if let Some(body) = node.child_by_field_name("body") {
-            body.start_byte()
-        } else {
-            node.end_byte()
-        };
-        if end > start && end <= self.src.len() {
-            let s = std::str::from_utf8(&self.src[start..end]).ok()?;
-            Some(s.trim().to_string())
-        } else {
-            None
-        }
+        crate::analysis::node_signature(node, self.src)
     }
 }
 
 fn first_child_of_kind<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
     let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == kind {
-            return Some(child);
-        }
-    }
-    None
+    node.children(&mut cursor)
+        .find(|child| child.kind() == kind)
 }
 
 #[cfg(test)]

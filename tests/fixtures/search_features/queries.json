@@ -1,0 +1,16 @@
+{
+  "judgments": "Supplemental source-inspected cross-file fixtures; validation only, never tuning the frozen corpus model profile.",
+  "distractors": [
+    {"path":"js/runner.js","names":["executeJobWrapper","testExecuteJobRollback"]},
+    {"path":"ts/coordinator.ts","names":["runRequestWrapper","testCoordinatorRollback"]},
+    {"path":"java/TransactionJob.java","names":["executeWrapper","testExecuteRollback"]}
+  ],
+  "queries": [
+    {"query":"Execute a JavaScript job and roll back staged writes when the job fails","labels":[{"path":"js/runner.js","name":"executeJob","grade":3},{"path":"js/journal.js","name":"rollbackWrite","grade":2}]},
+    {"query":"Jalankan job JavaScript dan batalkan perubahan tertunda jika job gagal","labels":[{"path":"js/runner.js","name":"executeJob","grade":3},{"path":"js/journal.js","name":"rollbackWrite","grade":2}]},
+    {"query":"TypeScript coordinator owning storage and committing or rolling back a request's writes","labels":[{"path":"ts/coordinator.ts","name":"RequestCoordinator","grade":3},{"path":"ts/coordinator.ts","name":"run","grade":2}]},
+    {"query":"Koordinator TypeScript yang memiliki storage dan melakukan commit atau rollback perubahan request","labels":[{"path":"ts/coordinator.ts","name":"RequestCoordinator","grade":3},{"path":"ts/coordinator.ts","name":"run","grade":2}]},
+    {"query":"Execute a Java callable and undo journal changes when the task throws an exception","labels":[{"path":"java/TransactionJob.java","name":"execute","grade":3},{"path":"java/WriteJournal.java","name":"undo","grade":2}]},
+    {"query":"Jalankan callable Java dan batalkan perubahan journal ketika tugas melempar exception","labels":[{"path":"java/TransactionJob.java","name":"execute","grade":3},{"path":"java/WriteJournal.java","name":"undo","grade":2}]}
+  ]
+}

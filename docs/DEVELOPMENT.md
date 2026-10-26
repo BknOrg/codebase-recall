@@ -1,4 +1,3 @@
-<!-- generated-by: gsd-doc-writer -->
 # Development
 
 This guide covers working on `codebase-recall` (binary: `code-rcl`) itself. For module layout see [ARCHITECTURE.md](ARCHITECTURE.md); for settings see [CONFIGURATION.md](CONFIGURATION.md).
@@ -55,11 +54,11 @@ The project uses standard Cargo commands; there is no Makefile. The `scripts/` d
 
 - **rustfmt** for formatting: `cargo fmt`. No `rustfmt.toml` is present, so defaults apply.
 - **Clippy** for linting: `cargo clippy`. No `clippy.toml` is present.
-- The release workflow (`.github/workflows/release.yml`) only builds binaries on `v*` tags; it does not run lint or format checks, so run both locally before opening a PR.
+- CI runs format, Clippy, tests and no-viewer builds across Windows, Linux and macOS. The release workflow waits for the reusable CI checks before packaging binaries.
 
 ## Testing
 
-Integration tests are in `tests/` (for example `digest_cli.rs`, `graph_cli.rs`, `impact_cli.rs`, `resolve_accuracy.rs`) with sample projects in `tests/fixtures/`. Run everything with `cargo test`, or one file with `cargo test --test digest_cli`.
+Integration tests are in `tests/` (for example `digest_cli.rs`, `graph_cli.rs`, `impact_cli.rs`, `resolve_accuracy.rs`) with sample projects in `tests/fixtures/`. Run everything with `cargo test --all-targets`, or one file with `cargo test --test digest_cli`. Run the no-default-features configuration too; see [TESTING.md](TESTING.md). The native mock LSP is mandatory, while real-LSP tests are opt-in.
 
 ## Branch conventions
 
@@ -74,3 +73,39 @@ No PR template exists in the repository; see [CONTRIBUTING.md](../CONTRIBUTING.m
 - Add or update tests in `tests/` for behavior changes.
 - Update `README.md` when adding or changing CLI flags or subcommands.
 - Releases are produced by pushing a `v*` tag, which triggers the Release workflow.
+
+## Changing the skill or MCP contract
+
+The maintained skill is skills/code-rcl/SKILL.md, with conditional references
+under references/. Setup embeds and installs that entire bundle. Check example
+commands against the current CLI and tool arguments against tools/list; the
+input schemas are generated from the MCP input types.
+
+Do not verify source changes using an older installed binary. Use cargo run or
+the integration tests' CARGO_BIN_EXE_code-rcl. Editing source does not update
+installed skills, binaries, or client processes. Follow [USAGE.md](USAGE.md#update-an-installed-skill-or-mcp-server)
+when intentionally updating an installation.
+
+Document public contract changes in [MIGRATION-0.9.md](MIGRATION-0.9.md). JSON CLI
+results and MCP structuredContent share the envelope in output.rs. Keep stdout
+free of user-facing diagnostics in functions reachable from MCP; use stderr or
+structured metadata instead.
+
+## Portable compiler configuration
+
+The tracked Cargo configuration uses host toolchain discovery. On Windows,
+install Visual Studio C++ Build Tools and a Windows SDK; a Developer PowerShell
+session can provide LIB/INCLUDE when needed. Keep absolute machine paths in an
+untracked local config and opt in explicitly:
+
+```powershell
+cargo --config .cargo/config.windows-local.toml build
+```
+
+The previous development-machine settings are preserved locally at that path;
+they are not shipped to other machines or used by CI.
+
+Use [operations](OPERATIONS.md) for the shared progress/cancellation contract.
+Do not weaken freshness checks for benchmarks; use isolated frozen fixtures.
+New retrieval experiments remain offline until held-out regressions and costs
+are reviewed; see [evaluation](RETRIEVAL-EVALUATION.md).

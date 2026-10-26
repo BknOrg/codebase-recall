@@ -1,0 +1,11 @@
+{
+  "promoted": false,
+  "context_tokens": 128,
+  "ranking": {
+    "function_body_weight": 0.75,
+    "container_body_weight": 0.75,
+    "query_view_weight": 0.5,
+    "purpose_query_view_weight": 0.5
+  },
+  "weak_threshold": 0.42544461783833143
+}

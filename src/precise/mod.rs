@@ -32,7 +32,7 @@ use crate::cache::CacheDb;
 use crate::cache::models::{FileRow, PreciseStatus, SymbolRow};
 use backend::Backend;
 use client::{LspClient, Readiness};
-use map::{PositionMap, path_to_uri, symbol_at_line, uri_to_path};
+use map::{PositionMap, path_to_uri, symbol_at_byte, uri_to_path};
 
 pub struct PreciseOptions {
     /// Re-ask about every file, not just the ones with no answers yet.
@@ -123,7 +123,7 @@ pub fn run_precise_pass(
     if selected.is_empty() {
         let mut present: Vec<&str> = by_language.keys().copied().collect();
         present.sort_unstable();
-        stats.warnings.push(format!(
+        stats.errors.push(format!(
             "no file in this project belongs to a language `--precise` can resolve.\n  \
              Supported: {}.\n  \
              Found here: {}.",
@@ -150,7 +150,7 @@ pub fn run_precise_pass(
         let launcher = match backend.locate() {
             Ok(l) => l,
             Err(why) => {
-                stats.warnings.push(format!(
+                stats.errors.push(format!(
                     "skipping {} — {why}\n  \
                      The heuristic edges for {} are kept as they are.",
                     backend.lang_group, backend.lang_group
@@ -202,6 +202,20 @@ pub fn run_precise_pass(
         }
     }
 
+    if !stats.errors.is_empty() {
+        let ids = db.all_files()?.iter().map(|f| f.id).collect::<Vec<_>>();
+        db.clear_precise(&ids)?;
+        db.meta_set("precise_generation", "invalid")?;
+    }
+    if stats.errors.is_empty() {
+        db.meta_set(
+            "precise_generation",
+            &db.meta_get("generation")?.unwrap_or_else(|| "0".into()),
+        )?;
+    }
+    for message in stats.warnings.iter().chain(&stats.errors) {
+        crate::operation::warning(message.clone());
+    }
     Ok(stats)
 }
 
@@ -251,7 +265,7 @@ impl Resolver<'_> {
         };
 
         let mut client = LspClient::start(launcher, self.project)?;
-        client.initialize(self.project, Duration::from_secs(60))?;
+        client.initialize(self.project, self.opts.request_timeout)?;
 
         eprintln!(
             "precise[{}]: {} indexing {} file(s)...",
@@ -260,19 +274,23 @@ impl Resolver<'_> {
             files.len()
         );
         let indexing_started = Instant::now();
-        let readiness = client.wait_until_ready(Duration::from_secs(backend.index_timeout_secs));
+        let indexing_budget =
+            Duration::from_secs(backend.index_timeout_secs).min(self.opts.request_timeout);
+        let readiness = client.wait_until_ready(indexing_budget);
         eprintln!(
-            "precise[{}]: {} ready after {:.1}s",
+            "precise[{}]: {} indexing wait ended after {:.1}s",
             backend.lang_group,
             client.name(),
             indexing_started.elapsed().as_secs_f32()
         );
         if readiness == Readiness::TimedOut {
-            warnings.push(format!(
+            anyhow::bail!(
                 "{}: {} was still indexing after {}s, so some answers may be incomplete. \
                  Re-run `code-rcl sync --precise` once it has warmed up.",
-                backend.lang_group, launcher.name, backend.index_timeout_secs
-            ));
+                backend.lang_group,
+                launcher.name,
+                indexing_budget.as_secs()
+            );
         }
 
         let result = self.resolve_files(&mut client, backend, files, &mut outcome, &mut warnings);
@@ -288,35 +306,27 @@ impl Resolver<'_> {
         backend: &Backend,
         files: &[&FileRow],
         outcome: &mut LanguageOutcome,
-        warnings: &mut Vec<String>,
+        _warnings: &mut Vec<String>,
     ) -> Result<()> {
         let show_progress = std::io::stderr().is_terminal();
 
         for (i, file) in files.iter().enumerate() {
+            crate::operation::check()?;
             let absolute = self.project.join(&file.path);
             let text = match fs::read(&absolute) {
                 Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
-                Err(e) => {
-                    warnings.push(format!(
-                        "{}: could not read `{}` ({e}); its references keep their heuristic edges.",
-                        backend.lang_group, file.path
-                    ));
-                    continue;
-                }
+                Err(e) => anyhow::bail!("cannot read {}: {e}", file.path),
             };
 
             // The stored byte offsets describe the text as it was at sync time.
             // If the file moved on since, pointing the server at those offsets
             // would resolve the wrong tokens, so leave it for the next sync.
             let hash = blake3::hash(text.as_bytes()).to_hex().to_string();
-            if hash != file.content_hash {
-                warnings.push(format!(
-                    "{}: `{}` changed since it was analyzed; skipping it. \
-                     Re-run `code-rcl sync --precise` to pick it up.",
-                    backend.lang_group, file.path
-                ));
-                continue;
-            }
+            anyhow::ensure!(
+                hash == file.content_hash,
+                "{} changed during precise resolution; sync again",
+                file.path
+            );
 
             let refs = self.db.refs_in_file(file.id)?;
             if refs.is_empty() {
@@ -344,8 +354,7 @@ impl Resolver<'_> {
                 file_positions.push(position);
             }
 
-            let answers =
-                client.definitions(&uri, &file_positions, self.opts.request_timeout)?;
+            let answers = client.definitions(&uri, &file_positions, self.opts.request_timeout)?;
             let mut results = Vec::with_capacity(answers.len());
             for (ref_id, answer) in queried_refs.into_iter().zip(&answers) {
                 let (status, symbol_id, confidence) = self.classify(answer);
@@ -388,11 +397,17 @@ impl Resolver<'_> {
 
         let mut hits: Vec<i64> = Vec::new();
         let mut saw_outside = false;
-        for (uri, line) in &targets {
+        for (uri, line, column) in &targets {
             match self.file_id_for_uri(uri) {
                 Some(file_id) => {
                     let symbols = self.symbols_by_file.get(&file_id);
-                    if let Some(symbol) = symbols.and_then(|s| symbol_at_line(s, *line))
+                    let offset = uri_to_path(uri)
+                        .and_then(|path| fs::read_to_string(path).ok())
+                        .and_then(|text| {
+                            PositionMap::new(text).byte_offset((*line - 1) as u32, *column)
+                        });
+                    if let Some(symbol) = offset
+                        .and_then(|offset| symbols.and_then(|s| symbol_at_byte(s, offset as i64)))
                         && !hits.contains(&symbol.id)
                     {
                         hits.push(symbol.id);
@@ -442,7 +457,7 @@ fn normalize_separators(path: &Path) -> String {
 
 /// `(uri, 1-based line)` for every definition in an LSP answer, which may be a
 /// single `Location`, a `Location[]`, or a `LocationLink[]`.
-fn definition_targets(answer: &Value) -> Vec<(String, i64)> {
+fn definition_targets(answer: &Value) -> Vec<(String, i64, u32)> {
     match answer {
         Value::Array(items) => items.iter().filter_map(single_target).collect(),
         Value::Object(_) => single_target(answer).into_iter().collect(),
@@ -450,20 +465,28 @@ fn definition_targets(answer: &Value) -> Vec<(String, i64)> {
     }
 }
 
-fn single_target(item: &Value) -> Option<(String, i64)> {
+fn single_target(item: &Value) -> Option<(String, i64, u32)> {
     // A LocationLink points at the definition's name range, which is more
     // precise than the whole definition body a plain Location carries.
     if let Some(uri) = item.get("targetUri").and_then(Value::as_str) {
         let range = item
             .get("targetSelectionRange")
             .or_else(|| item.get("targetRange"))?;
-        return Some((uri.to_string(), line_of(range)?));
+        return Some((uri.to_string(), line_of(range)?, column_of(range)?));
     }
     let uri = item.get("uri").and_then(Value::as_str)?;
-    Some((uri.to_string(), line_of(item.get("range")?)?))
+    Some((
+        uri.to_string(),
+        line_of(item.get("range")?)?,
+        column_of(item.get("range")?)?,
+    ))
 }
 
 /// LSP lines are 0-based; symbol rows are 1-based.
+fn column_of(range: &Value) -> Option<u32> {
+    u32::try_from(range.get("start")?.get("character")?.as_u64()?).ok()
+}
+
 fn line_of(range: &Value) -> Option<i64> {
     range
         .get("start")
@@ -486,7 +509,7 @@ mod tests {
         });
         assert_eq!(
             definition_targets(&location),
-            vec![("file:///p/src/util.rs".to_string(), 10)]
+            vec![("file:///p/src/util.rs".to_string(), 10, 3)]
         );
 
         // A link's selection range (the name) wins over its full range.
@@ -499,7 +522,7 @@ mod tests {
         }]);
         assert_eq!(
             definition_targets(&link),
-            vec![("file:///p/src/util.rs".to_string(), 6)]
+            vec![("file:///p/src/util.rs".to_string(), 6, 7)]
         );
 
         assert!(definition_targets(&Value::Null).is_empty());

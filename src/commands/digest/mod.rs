@@ -98,7 +98,7 @@ pub fn run(args: DigestArgs) -> Result<()> {
     let report = generate_digest(&args)?;
 
     let content = if args.json {
-        serde_json::to_string_pretty(&report)?
+        crate::output::json(&resolve_root(&args).0, args.no_sync, &report)?
     } else {
         format_markdown_digest(&report)
     };
@@ -128,7 +128,6 @@ fn compute_hubs(project_root: &Path, no_sync: bool) -> Vec<HubItem> {
         PreciseArgs::default(),
     );
 
-
     let Ok(graph) = build_graph(&query) else {
         return Vec::new();
     };
@@ -138,8 +137,30 @@ fn compute_hubs(project_root: &Path, no_sync: bool) -> Vec<HubItem> {
 /// Accessors and trait plumbing that every type has; their degree says how often
 /// a name is reused, not where the architecture centres.
 const TRIVIAL_HUB_NAMES: &[&str] = &[
-    "as_str", "as_ref", "as_mut", "new", "default", "fmt", "from", "into", "clone", "eq", "hash",
-    "drop", "len", "is_empty", "get", "set", "iter", "next", "to_string", "text", "line", "push", "pop", "name",
+    "as_str",
+    "as_ref",
+    "as_mut",
+    "new",
+    "default",
+    "fmt",
+    "from",
+    "into",
+    "clone",
+    "eq",
+    "hash",
+    "drop",
+    "len",
+    "is_empty",
+    "get",
+    "set",
+    "iter",
+    "next",
+    "to_string",
+    "text",
+    "line",
+    "push",
+    "pop",
+    "name",
 ];
 
 fn is_trivial_hub(n: &crate::graph::Node) -> bool {
@@ -231,7 +252,14 @@ pub fn generate_digest(args: &DigestArgs) -> Result<DigestReport> {
             // whatever the `--all` filter hides from the listing below.
             if matches!(
                 s.kind.as_str(),
-                "struct" | "enum" | "class" | "interface" | "trait" | "type" | "method" | "function"
+                "struct"
+                    | "enum"
+                    | "class"
+                    | "interface"
+                    | "trait"
+                    | "type"
+                    | "method"
+                    | "function"
             ) {
                 total_symbols += 1;
                 if s.is_exported {
@@ -319,11 +347,11 @@ pub fn generate_digest(args: &DigestArgs) -> Result<DigestReport> {
                 has_diagram,
             };
 
-            if let Some(tname) = &m.type_name {
-                if let Some(td) = types_map.get_mut(tname) {
-                    td.methods.push(item);
-                    continue;
-                }
+            if let Some(tname) = &m.type_name
+                && let Some(td) = types_map.get_mut(tname)
+            {
+                td.methods.push(item);
+                continue;
             }
             standalone_functions.push(item);
         }
@@ -401,7 +429,10 @@ mod tests {
 
     #[test]
     fn hubs_skip_trivial_accessor_methods() {
-        let mut nodes = vec![node("as_str", "method", "as_str"), node("build", "function", "build")];
+        let mut nodes = vec![
+            node("as_str", "method", "as_str"),
+            node("build", "function", "build"),
+        ];
         let mut edges = Vec::new();
         for i in 0..4 {
             let caller = format!("c{i}");
@@ -417,7 +448,10 @@ mod tests {
             edges,
             communities: Vec::new(),
         };
-        let labels: Vec<_> = hubs_from_graph(&graph).into_iter().map(|h| h.label).collect();
+        let labels: Vec<_> = hubs_from_graph(&graph)
+            .into_iter()
+            .map(|h| h.label)
+            .collect();
         assert_eq!(labels, vec!["build"]);
     }
 }

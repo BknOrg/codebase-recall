@@ -38,7 +38,7 @@
       showStatus(kind === "dump" ? "generating dump…" : "running impact…");
       const params = new URLSearchParams({ target, depth: String(depth), dir });
       if (kind === "impact") params.set("format", format);
-      fetch((kind === "dump" ? "/dump" : "/impact") + "?" + params.toString(), { method: "POST" })
+      fetch((kind === "dump" ? "/dump" : "/impact") + "?" + params.toString(), { method: "POST", headers: apiHeaders() })
         .then((r) => r.json())
         .then((d) => {
           if (d && d.ok) showStatus("✓ wrote → " + d.path, 8000);

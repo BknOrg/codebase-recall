@@ -5,7 +5,9 @@ use std::collections::BTreeMap;
 pub fn render(graph: &CodeGraph) -> String {
     let mut out = String::from("digraph code {\n");
     out.push_str("  graph [rankdir=LR, fontname=\"sans-serif\", compound=true];\n");
-    out.push_str("  node  [fontname=\"sans-serif\", fontsize=10, style=filled, fillcolor=\"#f5f5f5\"];\n");
+    out.push_str(
+        "  node  [fontname=\"sans-serif\", fontsize=10, style=filled, fillcolor=\"#f5f5f5\"];\n",
+    );
     out.push_str("  edge  [fontname=\"sans-serif\", fontsize=8, color=\"#888888\"];\n\n");
 
     // Group symbol nodes by their file path; file/dir/external nodes stand alone.

@@ -95,13 +95,13 @@
     const target =
       n.kind === "file" ? n.path || n.label : isSymId(selected) ? n.label : n.path || n.label;
     const depth = state.dumpDepth || 2;
-    const name = (state.dumpName || "").trim() || "codebase-context.md";
+    const name = (state.dumpName || "").trim();
 
     if (location.protocol.startsWith("http")) {
       say("generating…", "");
       fetch(
-        "/dump?target=" + encodeURIComponent(target) + "&depth=" + depth + "&name=" + encodeURIComponent(name),
-        { method: "POST" }
+        "/dump?target=" + encodeURIComponent(target) + "&depth=" + depth + (name ? "&name=" + encodeURIComponent(name) : ""),
+        { method: "POST", headers: apiHeaders() }
       )
         .then((r) => r.json())
         .then((d) => {
@@ -237,7 +237,7 @@
 
     if (location.protocol.startsWith("http")) {
       codeContentEl.innerHTML = `<div style="padding: 10px; color: var(--muted); font-size: 11px;">loading ${esc(filePath)}…</div>`;
-      fetch("/source?path=" + encodeURIComponent(filePath))
+      fetch("/source?path=" + encodeURIComponent(filePath), { headers: apiHeaders() })
         .then((r) => r.json())
         .then((d) => {
           if (d && d.ok && d.content != null) {

@@ -80,7 +80,7 @@ fn graph_json(work: &Path, precise: bool) -> Value {
     if precise {
         print!("{stderr}");
     }
-    serde_json::from_slice(&std::fs::read(&out).unwrap()).unwrap()
+    support::from_slice(&std::fs::read(&out).unwrap()).unwrap()
 }
 
 /// `(from_path, from_name, to_path, to_name, confidence)` for every `calls` edge.
@@ -178,7 +178,7 @@ fn check_accuracy(name: &str, precise: bool) {
     for q in &must_have {
         assert!(present(q), "[{mode}] missing required call edge: {q:?}");
     }
-    for q in &violations {
+    if let Some(q) = violations.first() {
         panic!("[{mode}] forbidden call edge present: {q:?}");
     }
 }
@@ -353,3 +353,5 @@ fn external_recv_app_accuracy() {
 fn same_type_name_app_accuracy() {
     check_accuracy("same_type_name_app", false);
 }
+
+mod support;

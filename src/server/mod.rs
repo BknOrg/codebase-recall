@@ -47,7 +47,17 @@ pub fn serve(graph: &CodeGraph, opts: ServeOptions) -> Result<()> {
         graph.nodes.len(),
         graph.edges.len()
     );
-    let page = Arc::new(assets::graph_page(&data, &stat, Delivery::Server));
+    let mut token_bytes = [0u8; 32];
+    getrandom::fill(&mut token_bytes).map_err(|e| anyhow!("creating session token: {e}"))?;
+    let token = token_bytes
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
+    let page = Arc::new(assets::graph_page(&data, &stat, Delivery::Server).replace(
+        "</head>",
+        &format!("<meta name=\"code-rcl-token\" content=\"{token}\"></head>"),
+    ));
+    let token = Arc::new(token);
 
     let server = Server::http(("127.0.0.1", opts.port))
         .map_err(|e| anyhow!("cannot bind 127.0.0.1:{}: {e}", opts.port))?;
@@ -89,8 +99,9 @@ pub fn serve(graph: &CodeGraph, opts: ServeOptions) -> Result<()> {
         let live = live.clone();
         let page = page.clone();
         let project = project.clone();
+        let token = token.clone();
         workers.push(thread::spawn(move || {
-            worker_loop(&server, &shutdown, &live, &page, &project);
+            worker_loop(&server, &shutdown, &live, &page, &project, &token);
         }));
     }
     for w in workers {
@@ -136,6 +147,7 @@ fn worker_loop(
     live: &Arc<AtomicUsize>,
     page: &str,
     project: &Path,
+    token: &str,
 ) {
     while !shutdown.load(Ordering::SeqCst) {
         let req = match server.recv_timeout(Duration::from_millis(200)) {
@@ -148,6 +160,38 @@ fn worker_loop(
         let url = req.url().to_owned();
         let path = url.split('?').next().unwrap_or("/").to_owned();
 
+        let authority = server
+            .server_addr()
+            .to_ip()
+            .expect("TCP address")
+            .to_string();
+        let origin = format!("http://{authority}");
+        let field = |name: &'static str| {
+            req.headers()
+                .iter()
+                .find(|h| h.field.equiv(name))
+                .map(|h| h.value.as_str())
+        };
+        if field("Host") != Some(authority.as_str()) || field("Origin").is_some_and(|o| o != origin)
+        {
+            let _ = req.respond(text(403, "access denied"));
+            continue;
+        }
+        if matches!(path.as_str(), "/dump" | "/impact" | "/quit") && *req.method() != Method::Post {
+            let _ = req.respond(text(405, "POST required"));
+            continue;
+        }
+        let api = matches!(
+            path.as_str(),
+            "/dump" | "/impact" | "/quit" | "/source" | "/live"
+        );
+        if api
+            && field("X-Code-Rcl-Token") != Some(token)
+            && !(path == "/live" && query_param(&url, "token").as_deref() == Some(token))
+        {
+            let _ = req.respond(text(403, "invalid session token"));
+            continue;
+        }
         match (is_get, path.as_str()) {
             (_, "/dump") => {
                 let body = run_dump(project, &url);
@@ -156,7 +200,7 @@ fn worker_loop(
                         if body.contains("\"ok\":true") {
                             200
                         } else {
-                            500
+                            if body.contains("[409]") { 409 } else { 500 }
                         },
                         &body,
                     ),
@@ -170,7 +214,7 @@ fn worker_loop(
                         if body.contains("\"ok\":true") {
                             200
                         } else {
-                            500
+                            if body.contains("[409]") { 409 } else { 500 }
                         },
                         &body,
                     ),
@@ -307,13 +351,7 @@ fn resolve_output_dir(project: &Path, dir_param: Option<String>) -> Result<PathB
     {
         return Err("access denied".to_string());
     }
-    let target = project.join(dir_path);
-    if let (Ok(cp), Ok(ct)) = (project.canonicalize(), target.canonicalize()) {
-        if !ct.starts_with(&cp) {
-            return Err("access denied".to_string());
-        }
-    }
-    Ok(target)
+    Ok(project.join(dir_path))
 }
 
 /// Runs `dump -r` for `?target=…&depth=…&dir=…` and returns a small JSON
@@ -326,14 +364,18 @@ fn run_dump(project: &Path, url: &str) -> String {
         .and_then(|d| d.parse::<u32>().ok())
         .unwrap_or(2)
         .clamp(1, 5);
-    let name = sanitize_name(query_param(url, "name"), "codebase-context.md");
+    let name = sanitize_name(query_param(url, "name"), &unique_name("context", "md"));
     let dir = match resolve_output_dir(project, query_param(url, "dir")) {
         Ok(d) => d,
         Err(e) => return serde_json::json!({"ok": false, "error": e}).to_string(),
     };
     let output = dir.join(&name);
 
-    match crate::commands::dump::relation_bundle(project, &target, depth, 50, false, &output) {
+    match crate::commands::dump::generate_relation_bundle(project, &target, depth, 50, false)
+        .and_then(|(body, n)| {
+            write_project_file(project, &output, &body)?;
+            Ok((output.clone(), n))
+        }) {
         Ok((path, n)) => serde_json::json!({
             "ok": true,
             "path": path.display().to_string(),
@@ -363,8 +405,8 @@ fn run_impact(project: &Path, url: &str) -> String {
         .map(|k| k.split(',').map(|s| s.trim().to_string()).collect())
         .unwrap_or_else(|| vec!["calls".to_string(), "imports".to_string()]);
     let as_json = query_param(url, "format").as_deref() == Some("json");
-    let default_name = if as_json { "impact.json" } else { "impact.md" };
-    let name = sanitize_name(query_param(url, "name"), default_name);
+    let default_name = unique_name("impact", if as_json { "json" } else { "md" });
+    let name = sanitize_name(query_param(url, "name"), &default_name);
     let dir = match resolve_output_dir(project, query_param(url, "dir")) {
         Ok(d) => d,
         Err(e) => return serde_json::json!({"ok": false, "error": e}).to_string(),
@@ -391,7 +433,7 @@ fn run_impact(project: &Path, url: &str) -> String {
         } else {
             crate::commands::impact::render_ascii(&reports)
         };
-        std::fs::write(&output, body)?;
+        write_project_file(project, &output, &body)?;
         Ok(reports.len())
     });
 
@@ -429,22 +471,9 @@ fn run_source(project: &Path, url: &str) -> (u16, String) {
             serde_json::json!({"ok": false, "error": "access denied"}).to_string(),
         );
     }
-    let target = project.join(rel_path);
-    if let (Ok(cp), Ok(ct)) = (project.canonicalize(), target.canonicalize()) {
-        if !ct.starts_with(&cp) {
-            return (
-                403,
-                serde_json::json!({"ok": false, "error": "access denied"}).to_string(),
-            );
-        }
-    }
-    if !target.exists() || !target.is_file() {
-        return (
-            404,
-            serde_json::json!({"ok": false, "error": "file not found"}).to_string(),
-        );
-    }
-    match std::fs::read_to_string(&target) {
+    let content = cap_std::fs::Dir::open_ambient_dir(project, cap_std::ambient_authority())
+        .and_then(|root| root.read_to_string(rel_path));
+    match content {
         Ok(content) => (
             200,
             serde_json::json!({
@@ -455,7 +484,11 @@ fn run_source(project: &Path, url: &str) -> (u16, String) {
             .to_string(),
         ),
         Err(e) => (
-            500,
+            if e.kind() == io::ErrorKind::NotFound {
+                404
+            } else {
+                403
+            },
             serde_json::json!({
                 "ok": false,
                 "error": e.to_string(),
@@ -501,7 +534,6 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-
 // --- small response helpers ------------------------------------------------
 
 fn header(name: &str, value: &str) -> Header {
@@ -519,4 +551,83 @@ fn with_type(mut r: Response<io::Cursor<Vec<u8>>>, ct: &str) -> Response<io::Cur
 
 fn js(src: &str) -> Response<io::Cursor<Vec<u8>>> {
     with_type(text(200, src), "application/javascript; charset=utf-8")
+}
+
+fn unique_name(stem: &str, extension: &str) -> String {
+    let mut bytes = [0; 12];
+    getrandom::fill(&mut bytes).expect("OS randomness unavailable");
+    format!(
+        "{stem}-{}.{extension}",
+        bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()
+    )
+}
+
+fn write_project_file(project: &Path, path: &Path, body: &str) -> Result<()> {
+    let relative = path.strip_prefix(project)?;
+    anyhow::ensure!(
+        relative
+            .components()
+            .all(|c| matches!(c, std::path::Component::Normal(_))),
+        "access denied"
+    );
+    let root = cap_std::fs::Dir::open_ambient_dir(project, cap_std::ambient_authority())?;
+    if let Some(parent) = relative.parent() {
+        root.create_dir_all(parent)?;
+    }
+    let mut options = cap_std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    let mut file = root.open_with(relative, &options).map_err(|e| {
+        if e.kind() == io::ErrorKind::AlreadyExists {
+            anyhow!("[409] output already exists; choose another name")
+        } else {
+            anyhow!(e)
+        }
+    })?;
+    file.write_all(body.as_bytes())?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+    #[test]
+    fn exclusive_outputs_never_overwrite_existing_files() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("nested/result.md");
+        write_project_file(root.path(), &path, "original").unwrap();
+        assert!(
+            write_project_file(root.path(), &path, "replacement")
+                .unwrap_err()
+                .to_string()
+                .contains("[409]")
+        );
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "original");
+        assert!(resolve_output_dir(root.path(), Some("../outside".into())).is_err());
+    }
+    #[test]
+    fn capability_operations_reject_directory_link_escape() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let link = root.path().join("escape");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(outside.path(), &link).unwrap();
+        #[cfg(windows)]
+        assert!(
+            std::process::Command::new("cmd")
+                .args(["/C", "mklink", "/J"])
+                .arg(&link)
+                .arg(outside.path())
+                .output()
+                .unwrap()
+                .status
+                .success()
+        );
+        assert!(write_project_file(root.path(), &link.join("new/output.md"), "escape").is_err());
+        assert!(!outside.path().join("new").exists());
+        std::fs::write(outside.path().join("secret.txt"), "secret").unwrap();
+        assert_ne!(
+            run_source(root.path(), "/source?path=escape/secret.txt").0,
+            200
+        );
+    }
 }

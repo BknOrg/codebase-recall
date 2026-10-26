@@ -1,0 +1,5 @@
+# Keep repository builds portable: Cargo/cc discover the host toolchain.
+# Machine-specific compiler paths belong in an untracked config file.
+# On this development machine, the previous settings were preserved in
+# .cargo/config.windows-local.toml. Opt in with:
+# cargo --config .cargo/config.windows-local.toml build

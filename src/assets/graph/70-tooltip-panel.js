@@ -14,8 +14,13 @@
     return s;
   }
   // ids to keep bright, or null = everything bright
+  function activeNodeId() {
+    return hovered && nodeIsRendered(hovered)
+      ? hovered
+      : selected && nodeIsRendered(selected) ? selected : null;
+  }
   function highlightSet() {
-    const target = hovered || (selected && nodeIsRendered(selected) ? selected : null);
+    const target = activeNodeId();
     if (target) return neighbours1(target);
     if (state.query && !state.isolate) {
       const s = new Set();
@@ -118,7 +123,7 @@
         `<div class="sp-group">context bundle · code-rcl dump -r</div>` +
         `<div class="sp-dump">` +
         `<label>depth <input type="number" id="spDepth" min="1" max="5" value="${state.dumpDepth}"></label>` +
-        `<label>file <input type="text" id="spOut" value="${esc(state.dumpName)}"></label>` +
+        `<label>file <input type="text" id="spOut" placeholder="automatic unique name" value="${esc(state.dumpName)}"></label>` +
         `<button class="sp-btn" id="spDumpGo">generate</button>` +
         `<div class="sp-dump-result" id="spDumpResult"></div>` +
         `</div>`;

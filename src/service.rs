@@ -14,6 +14,7 @@ use crate::commands::sync::{self, SyncStats};
 /// heuristic edges only, no report refresh.
 pub fn auto_sync(db: &mut CacheDb, project: &Path) -> Result<SyncStats> {
     let args = SyncArgs {
+        json: false,
         project: project.to_path_buf(),
         max_file_kb: None,
         language: Vec::new(),

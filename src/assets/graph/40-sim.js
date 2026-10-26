@@ -169,6 +169,9 @@
 
     nodes = simList;
     links = vlinks;
+    const directions = new Set(vlinks.filter(l => l.kind !== "contains").map(l => JSON.stringify([l.source, l.target])));
+    for (const l of vlinks)
+      l.reciprocal = l.kind !== "contains" && l.source !== l.target && directions.has(JSON.stringify([l.target, l.source]));
 
     const regimeChanged = lastRegime !== inFileRegime;
     lastRegime = inFileRegime;

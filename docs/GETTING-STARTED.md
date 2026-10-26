@@ -1,92 +1,99 @@
-<!-- generated-by: gsd-doc-writer -->
-# Getting Started
+# Getting started with code-rcl 0.10.0
 
-This guide takes you from a fresh machine to a working `code-rcl` (codebase-recall) run.
+Use [the usage guide](USAGE.md) for everyday CLI commands and
+[the MCP guide](MCP.md) for agent integration. Existing integrations should read
+[the migration guide](MIGRATION-0.9.md) before upgrading.
 
-## Prerequisites
+## Install the version you intend to use
 
-- **Rust toolchain >= 1.85** (the crate uses `edition = "2024"`). Only needed for `cargo install` or building from source. Install via [rustup](https://rustup.rs).
-- **Git** to clone the repository (and for `code-rcl impact --diff`).
-- Optional, for `--precise` mode only: language servers for your languages (e.g. `rust-analyzer`, `pyright`, `typescript-language-server`, `gopls`). See the README for the full list.
+Prebuilt releases need no Rust toolchain. Building this checkout requires a
+current stable Rust toolchain and a C compiler for tree-sitter grammars. Git is
+needed for cloning and `impact --diff`. Language servers are optional until you
+request precise resolution.
 
-Prebuilt binaries need no Rust toolchain.
+To install the implementation in this checkout:
 
-## Installation
-
-### Option A: Prebuilt binary
-
-macOS / Linux:
-
-```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/BknOrg/codebase-recall/releases/latest/download/codebase-recall-installer.sh | sh
+```sh
+cargo install --path . --locked
+code-rcl --version
 ```
 
-Windows (PowerShell):
+Check that the reported version is `0.10.0`. To run directly from source without
+replacing an installed binary:
 
-```powershell
-irm https://github.com/BknOrg/codebase-recall/releases/latest/download/codebase-recall-installer.ps1 | iex
+```sh
+cargo run -- --version
+cargo run -- report --project /absolute/path/to/project
 ```
 
-### Option B: From crates.io
+For published releases, use `cargo install codebase-recall` or the release
+installers linked from the [README](../README.md#installation). Those install
+published artifacts; they do not include unpublished working-tree changes.
 
-```bash
-cargo install codebase-recall
+## First analysis
+
+Run these commands from the project you want to inspect:
+
+```sh
+code-rcl init
+code-rcl report
+code-rcl search CacheDb --match-mode exact
+code-rcl explain CacheDb
+code-rcl impact CacheDb --depth 2
 ```
 
-### Option C: From source
+Replace `CacheDb` with a symbol from your project. `init` creates configuration
+and cache state and excludes `.code-rcl/` locally in Git. Analysis commands can
+create the cache themselves if needed. Normal sync hashes eligible files and
+parses changed contents; `--no-sync` explicitly uses unverified cached data.
 
-1. Clone the repository:
+## Export or view results
 
-   ```bash
-   git clone https://github.com/BknOrg/codebase-recall.git
-   ```
-
-2. Enter the project directory:
-
-   ```bash
-   cd codebase-recall
-   ```
-
-3. Build and install:
-
-   ```bash
-   cargo build --release
-   cargo install --path .
-   ```
-
-The installed binary is named `code-rcl`. Verify with:
-
-```bash
-code-rcl --help
+```sh
+code-rcl graph --format json -o graph.json
+code-rcl dump -r CacheDb --depth 2 -o context.md
+code-rcl serve
 ```
 
-## First Run
+`serve` opens the browser viewer. Closing its connected tab stops the server.
+`--no-open` prints a URL you can open yourself; the server times out if no tab
+connects. Viewer exports create new files and do not overwrite existing ones.
 
-From the root of any project you want to analyze:
+## Install the agent skill and configure MCP
 
-```bash
-cd path/to/your/project
-code-rcl init     # creates .code-rcl/ (cache.bkndb, config.toml) and adds it to .git/info/exclude
-code-rcl serve    # syncs, then opens the interactive graph in your browser
+After installing the new binary, run from the target project:
+
+```sh
+code-rcl setup --workspace
 ```
 
-Closing the browser tab stops the server automatically. To produce output without a browser:
+This installs `.agents/skills/code-rcl/SKILL.md` and its `references/` bundle.
+Built-in MCP configuration targets are Claude and Gemini/Antigravity; other
+clients need their own MCP configuration format. See [MCP setup](MCP.md#setup).
+Restart or reconnect your client after updating its binary/configuration.
+An installed global skill is a separate copy and is not updated merely by
+editing this repository.
 
-```bash
-code-rcl dump . -o context.md   # Markdown bundle of the codebase for an LLM
-code-rcl digest                 # architecture outline to stdout
-```
+## Troubleshooting
 
-## Common Setup Issues
+- **Old behavior after updating source:** check `code-rcl --version` and the
+  resolved executable (`Get-Command code-rcl` on PowerShell, `command -v
+  code-rcl` on Unix). Install this checkout or use `cargo run -- ...`.
+- **Precise fails:** install/configure the reported language server and use a
+  valid project manifest. Fallback is opt-in through
+  `--precise --allow-heuristic-fallback`; inspect warnings and partial status.
+- **Files are absent:** check ignore rules, supported extensions, language
+  filters, and size limits. Dump defaults to 50 KiB per file.
+- **Cache is locked:** finish the other process using that project and retry.
+- **MCP rejects `json`:** remove that parameter. MCP always returns structured
+  results in 0.10.0.
+- **MCP requires a project:** configure the server with `--project` or supply
+  `project` in the tool call.
 
-1. **`code-rcl: command not found` after `cargo install`.** Cargo's bin directory (`~/.cargo/bin`, or `%USERPROFILE%\.cargo\bin` on Windows) is not on your `PATH`. Add it and restart the shell.
-2. **Build fails with an edition or unstable-feature error.** Your Rust toolchain is too old for edition 2024. Run `rustup update stable`.
-3. **`--precise` reports a missing language server.** Nothing is bundled; install the server for that language (the error message includes the install command). Without it, that language keeps its heuristic edges.
-4. **Graph or dump seems stale.** Commands auto-sync by default; if you passed `--no-sync`, run `code-rcl sync` to refresh the cache in `.code-rcl/cache.bkndb`.
-5. **Files missing from a dump.** Files matched by `.gitignore`, binaries, lockfiles, `.env*` files, and files over the size limit (default 50 KB for `dump`) are skipped. Raise it with `--max-size-kb`.
+See [configuration](CONFIGURATION.md), [testing](TESTING.md), and
+[architecture](ARCHITECTURE.md) for more detail.
 
-## Next Steps
+## Semantic and hybrid retrieval
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) - how the parser, resolver, cache, and commands fit together.
-- [CONFIGURATION.md](CONFIGURATION.md) - `.code-rcl/config.toml` and environment variables.
-- [README.md](../README.md) - full command reference (`impact`, `path`, `explain`, `report`, `mcp`, `setup`).
+See the [embedding usage guide](EMBEDDINGS.md) for explicit model setup, indexing,
+semantic/hybrid search, partial results, build variants and troubleshooting.

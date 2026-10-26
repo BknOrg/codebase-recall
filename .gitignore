@@ -1,3 +1,7 @@
 /target
 .agents/
 .mcp.json
+
+/.cargo/config.windows-local.toml
+
+/scripts/__pycache__/

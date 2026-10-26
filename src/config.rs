@@ -38,20 +38,27 @@ const ALL_LANGUAGES: [Language; 10] = [
 #[serde(default, deny_unknown_fields)]
 pub struct ProjectConfig {
     pub schema_version: u32,
-    pub storage: StorageConfig,
+    #[serde(default)]
+    pub storage: Option<StorageConfig>,
     pub sync: SyncConfig,
     pub graph: GraphConfig,
     pub precise: PreciseConfig,
+    pub embeddings: EmbeddingsConfig,
+    pub scope: ScopeConfig,
+    pub search: SearchConfig,
 }
 
 impl Default for ProjectConfig {
     fn default() -> Self {
         Self {
             schema_version: 1,
-            storage: StorageConfig::default(),
+            storage: None,
             sync: SyncConfig::default(),
             graph: GraphConfig::default(),
             precise: PreciseConfig::default(),
+            embeddings: EmbeddingsConfig::default(),
+            scope: ScopeConfig::default(),
+            search: SearchConfig::default(),
         }
     }
 }
@@ -175,7 +182,31 @@ impl ProjectConfig {
 
 fn validate(cfg: &ProjectConfig, source: &Path) -> Result<()> {
     let file = source.display();
+    let e = &cfg.embeddings;
+    anyhow::ensure!(
+        e.model == "embeddinggemma-300m-q4",
+        "{file}: unsupported embedding model"
+    );
+    anyhow::ensure!(
+        [256, 768].contains(&e.dimensions),
+        "{file}: embedding dimensions must be 256 or 768"
+    );
+    anyhow::ensure!(
+        (1..=32).contains(&e.batch_size),
+        "{file}: embedding batch_size must be 1..=32"
+    );
+    anyhow::ensure!(
+        e.threads <= 64,
+        "{file}: embedding threads must be 0 (auto) or 1..=64"
+    );
 
+    for (name, globs) in &cfg.scope.categories {
+        anyhow::ensure!(
+            !name.trim().is_empty() && !globs.is_empty(),
+            "scope category names and globs must not be empty"
+        );
+        crate::selection::globs(globs)?;
+    }
     let c = cfg.graph.min_confidence;
     if !(0.0..=1.0).contains(&c) {
         anyhow::bail!("{file}: [graph] min_confidence = {c} is out of range (expected 0.0 to 1.0)");
@@ -192,12 +223,14 @@ fn validate(cfg: &ProjectConfig, source: &Path) -> Result<()> {
             "{file}: [precise] timeout_secs = {t} is out of range (expected 1 to 86400 seconds)"
         );
     }
-    let backend = cfg.storage.backend.as_str();
-    if !STORAGE_BACKENDS.contains(&backend) {
-        anyhow::bail!(
-            "{file}: [storage] backend = \"{backend}\" is not valid (expected one of: {})",
-            STORAGE_BACKENDS.join(", ")
-        );
+    if let Some(ref storage) = cfg.storage {
+        let backend = storage.backend.as_str();
+        if !STORAGE_BACKENDS.contains(&backend) {
+            anyhow::bail!(
+                "{file}: [storage] backend = \"{backend}\" is not valid (expected one of: {})",
+                STORAGE_BACKENDS.join(", ")
+            );
+        }
     }
     let server = cfg.precise.kotlin.server.as_str();
     if !KOTLIN_SERVERS.contains(&server) {
@@ -297,9 +330,13 @@ mod tests {
 
     #[test]
     fn unknown_storage_backend_is_rejected() {
-        let err = parse("[storage]
+        let err = parse(
+            "[storage]
 backend = \"sqlite\"
-").unwrap_err().to_string();
+",
+        )
+        .unwrap_err()
+        .to_string();
         assert!(err.contains("[storage] backend = \"sqlite\""), "{err}");
         assert!(err.contains("expected one of: bkndb"), "{err}");
     }
@@ -505,4 +542,89 @@ include_external = false
         assert_eq!(resolve_graph(&query(&[]), &cfg).depth, 5);
         assert_eq!(resolve_graph(&query(&["--depth", "1"]), &cfg).depth, 1);
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct EmbeddingsConfig {
+    pub model: String,
+    pub model_dir: Option<std::path::PathBuf>,
+    pub dimensions: usize,
+    pub batch_size: usize,
+    pub threads: usize,
+    pub batching: EmbeddingBatching,
+    pub chunk_profile: EmbeddingChunkProfile,
+}
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EmbeddingChunkProfile {
+    #[default]
+    Full,
+    Compact,
+}
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EmbeddingBatching {
+    #[default]
+    File,
+    Length,
+}
+impl Default for EmbeddingsConfig {
+    fn default() -> Self {
+        Self {
+            model: "embeddinggemma-300m-q4".into(),
+            model_dir: None,
+            dimensions: 768,
+            batch_size: 4,
+            threads: 0,
+            batching: EmbeddingBatching::File,
+            chunk_profile: EmbeddingChunkProfile::Full,
+        }
+    }
+}
+
+impl EmbeddingsConfig {
+    /// Resolve the CPU budget without changing the persisted configuration.
+    pub fn effective_threads(&self) -> usize {
+        self.resolve_threads(std::thread::available_parallelism().map(usize::from).ok())
+    }
+
+    fn resolve_threads(&self, available: Option<usize>) -> usize {
+        if self.threads == 0 {
+            available.unwrap_or(1).max(1)
+        } else {
+            self.threads
+        }
+    }
+}
+
+#[cfg(test)]
+mod thread_tests {
+    use super::*;
+
+    #[test]
+    fn automatic_threads_respect_available_capacity_and_manual_override() {
+        let mut cfg = EmbeddingsConfig::default();
+        assert_eq!(cfg.threads, 0);
+        assert_eq!(cfg.resolve_threads(None), 1);
+        assert_eq!(cfg.resolve_threads(Some(0)), 1);
+        assert_eq!(cfg.resolve_threads(Some(12)), 12);
+        assert_eq!(cfg.resolve_threads(Some(128)), 128);
+        cfg.threads = 4;
+        assert_eq!(cfg.resolve_threads(Some(12)), 4);
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ScopeConfig {
+    pub categories: std::collections::BTreeMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct SearchConfig {
+    /// Accepted for old local configurations; search uses EmbeddingGemma only.
+    #[serde(rename = "ranking_model_dir")]
+    pub _legacy_ranking_model_dir: Option<std::path::PathBuf>,
 }

@@ -45,17 +45,16 @@ pub(super) struct ResolveCtx<'a> {
     pub imports_files: &'a HashMap<i64, HashSet<i64>>,
 }
 
-pub(super) fn resolve_ref(
-    rf: &RefRow,
-    importer: &FileRow,
-    ctx: &ResolveCtx,
-) -> Option<(i64, f32)> {
+pub(super) fn resolve_ref(rf: &RefRow, importer: &FileRow, ctx: &ResolveCtx) -> Option<(i64, f32)> {
     // ---- L0: ground truth from a language server ---------------------------
     // Deliberately ahead of `local_only`: the server's answer outranks every
     // heuristic, including the analyzer's own same-file scope walk.
     match rf.precise_status.as_deref() {
         Some("hit") => {
-            if let Some(id) = rf.precise_symbol_id {
+            if let Some(id) = rf
+                .precise_symbol_id
+                .filter(|id| ctx.sym_by_id.contains_key(id))
+            {
                 return Some((id, rf.precise_confidence.unwrap_or(1.0) as f32));
             }
             // The target file was re-analyzed after the precise pass ran, so the
@@ -153,10 +152,18 @@ pub(super) fn resolve_ref(
 
     let reachable = ctx.imports_files.get(&rf.file_id);
 
-    // `set.insert(x)` / `Default::default()` on a receiver we could not type is
-    // almost always the standard library's method, not the one project function
-    // that happens to share the name — and no import ties this file to it.
-    if matches!(rk, "value" | "path")
+    // `set.insert(x)` / `k.as_str()` / `x.clone()` / `Default::default()` on a receiver
+    // we could not type is almost always the standard library's method, not an arbitrary
+    // project method that happens to share that name in an imported module.
+    if matches!(rk, "value" | "none") && STD_METHOD_NAMES.contains(&rf.name.as_str()) {
+        let has_matching_type = inferred
+            .as_ref()
+            .map(|(ty, _)| cands.iter().any(|c| belongs_to_receiver(ctx, c, ty)))
+            .unwrap_or(false);
+        if !has_matching_type {
+            return None;
+        }
+    } else if matches!(rk, "path")
         && STD_METHOD_NAMES.contains(&rf.name.as_str())
         && !cands
             .iter()
@@ -240,7 +247,11 @@ fn method_of_type(ctx: &ResolveCtx, ty: &str, rf: &RefRow, importer: &FileRow) -
     if let [only] = ids.as_slice() {
         return Some(*only);
     }
-    let file_of = |id: &i64| ctx.sym_by_id.get(id).and_then(|s| ctx.file_by_id.get(&s.file_id));
+    let file_of = |id: &i64| {
+        ctx.sym_by_id
+            .get(id)
+            .and_then(|s| ctx.file_by_id.get(&s.file_id))
+    };
     let importer_dir = dir_of(&importer.path);
     ids.iter()
         .find(|id| file_of(id).is_some_and(|f| f.id == importer.id))
@@ -295,18 +306,114 @@ fn names_foreign_type(rf: &RefRow, ctx: &ResolveCtx) -> bool {
 /// own. A same-named project type is only credible when an import connects the
 /// two files.
 const STD_TYPE_NAMES: &[&str] = &[
-    "Command", "Error", "Result", "Option", "Path", "PathBuf", "Duration", "File", "Entry",
-    "Builder", "Handle", "Sender", "Receiver", "Config", "Context", "State", "Instant", "Range",
-    "Output", "Child", "Args", "Event", "Message", "Request", "Response", "Value", "Node",
-    "Parser", "Formatter", "Writer", "Reader", "Iter", "Item", "Key", "Id", "Name", "Type",
+    "Command",
+    "Error",
+    "Result",
+    "Option",
+    "Path",
+    "PathBuf",
+    "Duration",
+    "File",
+    "Entry",
+    "Builder",
+    "Handle",
+    "Sender",
+    "Receiver",
+    "Config",
+    "Context",
+    "State",
+    "Instant",
+    "Range",
+    "Output",
+    "Child",
+    "Args",
+    "Event",
+    "Message",
+    "Request",
+    "Response",
+    "Value",
+    "Node",
+    "Parser",
+    "Formatter",
+    "Writer",
+    "Reader",
+    "Iter",
+    "Item",
+    "Key",
+    "Id",
+    "Name",
+    "Type",
 ];
 
 /// Method names the standard library (and every collection type) already owns.
 /// A same-named project method is only credible when the file imports it.
 const STD_METHOD_NAMES: &[&str] = &[
-    "insert", "push", "pop", "get", "remove", "contains", "extend", "default", "new", "len",
-    "iter", "next", "clone", "into", "from", "map", "join", "trim", "split", "parse", "read",
-    "write", "open", "close", "add", "set", "clear", "first", "last", "find", "filter",
+    "insert",
+    "push",
+    "pop",
+    "get",
+    "remove",
+    "contains",
+    "extend",
+    "default",
+    "new",
+    "len",
+    "iter",
+    "next",
+    "clone",
+    "into",
+    "from",
+    "map",
+    "join",
+    "trim",
+    "split",
+    "parse",
+    "read",
+    "write",
+    "open",
+    "close",
+    "add",
+    "set",
+    "clear",
+    "first",
+    "last",
+    "find",
+    "filter",
+    "as_str",
+    "to_string",
+    "is_empty",
+    "as_ref",
+    "as_mut",
+    "as_bytes",
+    "as_slice",
+    "fmt",
+    "unwrap",
+    "expect",
+    "ok",
+    "err",
+    "to_owned",
+    "to_vec",
+    "flatten",
+    "zip",
+    "enumerate",
+    "collect",
+    "take",
+    "skip",
+    "any",
+    "all",
+    "count",
+    "sum",
+    "min",
+    "max",
+    "lines",
+    "chars",
+    "bytes",
+    "display",
+    "status",
+    "execute",
+    "run",
+    "send",
+    "recv",
 ];
 
 fn exported_in(ctx: &ResolveCtx, file_id: i64, name: &str) -> Option<i64> {
@@ -393,7 +500,7 @@ fn is_type_kind(kind: &str) -> bool {
 }
 
 fn dir_of(path: &str) -> &str {
-    path.rfind('/').map(|i| &path[..i]).unwrap_or("")
+    path.rfind(['/', '\\']).map(|i| &path[..i]).unwrap_or("")
 }
 
 fn languages_compatible(a: &str, b: &str) -> bool {

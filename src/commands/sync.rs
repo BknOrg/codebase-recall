@@ -26,23 +26,25 @@ pub fn run(mut args: SyncArgs) -> Result<()> {
     let stats = sync_cache(&mut db, &args)?;
     let (total_symbols, total_imports) = db.totals()?;
 
-    println!(
-        "sync: {} source files (+{} ~{} ={} -{}), {} symbols ({} re-parsed), {} imports ({} re-parsed)",
-        stats.scanned,
-        stats.added,
-        stats.changed,
-        stats.unchanged,
-        stats.removed,
-        total_symbols,
-        stats.symbols,
-        total_imports,
-        stats.imports,
-    );
-    if stats.unsupported > 0 {
+    if !args.json {
         println!(
-            "note: {} files recorded without analysis (analyzer not implemented yet)",
-            stats.unsupported
+            "sync: {} source files (+{} ~{} ={} -{}), {} symbols ({} re-parsed), {} imports ({} re-parsed)",
+            stats.scanned,
+            stats.added,
+            stats.changed,
+            stats.unchanged,
+            stats.removed,
+            total_symbols,
+            stats.symbols,
+            total_imports,
+            stats.imports,
         );
+        if stats.unsupported > 0 {
+            println!(
+                "note: {} files recorded without analysis (analyzer not implemented yet)",
+                stats.unsupported
+            );
+        }
     }
 
     if args.precise.precise {
@@ -52,6 +54,9 @@ pub fn run(mut args: SyncArgs) -> Result<()> {
         // that broke down must not pass for success — the heuristic edges that
         // remain are not what was asked for.
         if !precise.errors.is_empty() {
+            crate::operation::partial();
+        }
+        if !precise.errors.is_empty() && !args.precise.allow_heuristic_fallback {
             bail!("`--precise` did not finish for every language (see the errors above)");
         }
     }
@@ -63,10 +68,14 @@ pub fn run(mut args: SyncArgs) -> Result<()> {
     if !args.no_report {
         // A stale or missing report must never fail a sync that itself succeeded.
         match crate::commands::report::refresh_after_sync(&project, &stats, args.precise.precise) {
-            Ok(Some(path)) => println!("report: refreshed {}", path.display()),
+            Ok(Some(path)) if !args.json => println!("report: refreshed {}", path.display()),
+            Ok(Some(_)) => {}
             Ok(None) => {}
             Err(e) => eprintln!("warning: could not refresh the code report: {e:#}"),
         }
+    }
+    if args.json {
+        println!("{}", crate::output::json(&project, false, &stats)?);
     }
     Ok(())
 }
@@ -120,7 +129,7 @@ pub fn report_precise(stats: &PreciseStats) {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, serde::Serialize)]
 pub struct SyncStats {
     pub scanned: usize,
     pub added: usize,
@@ -130,11 +139,13 @@ pub struct SyncStats {
     pub symbols: usize,
     pub imports: usize,
     pub unsupported: usize,
+    pub content_backfilled: usize,
 }
 
 /// Incrementally bring the cache in line with the source tree. Reused by
 /// `graph`'s auto-sync.
 pub fn sync_cache(db: &mut CacheDb, args: &SyncArgs) -> Result<SyncStats> {
+    let _time = crate::operation::time("source_sync");
     let project = &args.project;
     let cfg = ProjectConfig::load(project)?;
     let settings = config::resolve_sync(args, &cfg);
@@ -145,6 +156,7 @@ pub fn sync_cache(db: &mut CacheDb, args: &SyncArgs) -> Result<SyncStats> {
     let mut on_disk: Vec<DiskFile> = Vec::new();
     let mut out_of_scope: HashSet<String> = HashSet::new();
     for abs in walker::collect_source_files(project)? {
+        crate::operation::check()?;
         let Some(language) = Language::from_path(&abs) else {
             continue;
         };
@@ -163,10 +175,12 @@ pub fn sync_cache(db: &mut CacheDb, args: &SyncArgs) -> Result<SyncStats> {
             out_of_scope.insert(rel.to_string_lossy().replace('\\', "/"));
             continue;
         }
-        let Ok(meta) = fs::metadata(&abs) else {
-            continue;
-        };
+        let meta = fs::metadata(&abs)
+            .with_context(|| format!("reading metadata for {}", abs.display()))?;
         if meta.len() > max_bytes {
+            crate::operation::warning(format!("skipped oversized file: {}", abs.display()));
+            let rel = abs.strip_prefix(project).unwrap_or(&abs);
+            out_of_scope.insert(rel.to_string_lossy().replace('\\', "/"));
             continue;
         }
         let rel = abs.strip_prefix(project).unwrap_or(&abs);
@@ -197,35 +211,83 @@ pub fn sync_cache(db: &mut CacheDb, args: &SyncArgs) -> Result<SyncStats> {
         ..SyncStats::default()
     };
 
+    for path in &out_of_scope {
+        db.invalidate_embedding_file(path)?;
+    }
+    let mut generation_invalidated = false;
     // Drop files that no longer exist.
     for path in cached.keys() {
         if !disk_paths.contains(path.as_str()) && !out_of_scope.contains(path.as_str()) {
+            if !generation_invalidated {
+                db.invalidate_precise_generation()?;
+                generation_invalidated = true;
+            }
             db.delete_file(path)?;
             stats.removed += 1;
         }
     }
 
-    for file in &on_disk {
-        let Ok(bytes) = fs::read(&file.abs) else {
-            continue;
-        };
-        let hash = blake3::hash(&bytes).to_hex().to_string();
-
+    crate::progress::update(|s| s["source_files_total"] = serde_json::json!(on_disk.len()));
+    for (position, file) in on_disk.iter().enumerate() {
+        crate::progress::phase("source_hashing");
+        crate::progress::update(|s| {
+            s["file"] = serde_json::json!(file.rel);
+            s["source_files_done"] = serde_json::json!(position);
+        });
+        crate::operation::check()?;
         let existing = cached.get(&file.rel);
-        if existing.is_some_and(|f| f.content_hash == hash) {
+        let hash_timer = crate::operation::time("source_read_hash");
+        let bytes =
+            fs::read(&file.abs).with_context(|| format!("reading {}", file.abs.display()))?;
+        let hash = blake3::hash(&bytes).to_hex().to_string();
+        drop(hash_timer);
+        let scope_key = format!("embedding_excluded:{}", file.rel);
+        if db.meta_get(&scope_key)?.as_deref() == Some("true") {
+            db.meta_set(&scope_key, "false")?;
+        }
+
+        let analyzer = crate::health::revision(file.language);
+        let analyzer_key = format!("analyzer:{}", file.rel);
+        if existing.is_some_and(|f| f.content_hash == hash)
+            && db.meta_get(&analyzer_key)?.as_deref() == Some(analyzer.as_str())
+        {
+            if file.language.is_supported() {
+                db.ensure_source_snapshot(existing.unwrap(), &bytes)?;
+                if db.ensure_content_index(existing.unwrap(), &bytes)? {
+                    stats.content_backfilled += 1;
+                }
+            }
+            db.update_file_metadata(existing.unwrap().id, file.mtime, Some(file.size))?;
             stats.unchanged += 1;
+            crate::health::warn(db, existing.unwrap())?;
+            crate::progress::completed();
             continue;
         }
         let is_new = existing.is_none();
 
+        if !generation_invalidated {
+            db.invalidate_precise_generation()?;
+            generation_invalidated = true;
+        }
+
         let source = String::from_utf8_lossy(&bytes);
+        crate::progress::phase("parsing");
+        let parse_timer = crate::operation::time("parsing");
         let parsed = analysis::parse_file(file.language, &source);
+        drop(parse_timer);
         stats.symbols += parsed.symbols.len();
         stats.imports += parsed.imports.len();
+        if !parsed.parse_ok {
+            crate::operation::warning(format!("parser reported errors in {}", file.rel));
+            crate::operation::analysis_partial();
+            crate::operation::reason("parser_error", serde_json::json!({"path":file.rel}));
+        }
         if !file.language.is_supported() {
             stats.unsupported += 1;
         }
 
+        crate::progress::phase("source_commit");
+        let commit_timer = crate::operation::time("source_commit");
         db.replace_file_analysis(
             &file.rel,
             file.language.group(),
@@ -239,8 +301,14 @@ pub fn sync_cache(db: &mut CacheDb, args: &SyncArgs) -> Result<SyncStats> {
             &parsed.scopes,
             &parsed.bindings,
             &parsed.string_literals,
+            file.language.is_supported().then_some(bytes.as_slice()),
         )
         .with_context(|| format!("caching analysis for {}", file.rel))?;
+
+        drop(commit_timer);
+        crate::progress::completed();
+        db.meta_set(&analyzer_key, &analyzer)?;
+        db.meta_set(&format!("diagnostics:{}",file.rel), &serde_json::json!({"source_hash":hash,"analyzer":analyzer,"parse_ok":parsed.parse_ok,"errors":parsed.diagnostics}).to_string())?;
 
         if is_new {
             stats.added += 1;
@@ -249,11 +317,23 @@ pub fn sync_cache(db: &mut CacheDb, args: &SyncArgs) -> Result<SyncStats> {
         }
     }
 
+    crate::progress::update(|s| s["source_files_done"] = s["source_files_total"].clone());
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
+    crate::operation::check()?;
     db.meta_set("last_sync", &now.to_string())?;
+    if stats.content_backfilled > 0 {
+        crate::operation::reason(
+            "content_index_updated",
+            serde_json::json!({
+                "version": crate::cache::content::VERSION,
+                "backfilled_files": stats.content_backfilled,
+                "embedding_rebuild_required": false,
+            }),
+        );
+    }
 
     Ok(stats)
 }

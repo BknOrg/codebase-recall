@@ -2,8 +2,8 @@
 
 use tree_sitter::{Node, Parser};
 
-use crate::analysis::scope::{self, ScopeStack};
 use crate::analysis::ParsedFile;
+use crate::analysis::scope::{self, ScopeStack};
 use crate::cache::models::{NewImport, NewRef, NewSymbol};
 
 pub fn parse(source: &str) -> ParsedFile {
@@ -104,8 +104,12 @@ impl<'a> Walker<'a> {
                 self.sc.bind(&name, "symbol", Some(i), None, None);
             }
             self.stack.push(i);
-            self.sc
-                .push(scope_kind, Some(i), node.start_byte() as i64, node.end_byte() as i64);
+            self.sc.push(
+                scope_kind,
+                Some(i),
+                node.start_byte() as i64,
+                node.end_byte() as i64,
+            );
 
             match real_kind.as_str() {
                 "function" | "method" => self.bind_params(node),
@@ -183,8 +187,13 @@ impl<'a> Walker<'a> {
                 continue;
             }
             let name = self.text(lhs).to_string();
-            self.sc
-                .bind(&name, "field", None, None, Some(simple_type_name(self.text(ty))));
+            self.sc.bind(
+                &name,
+                "field",
+                None,
+                None,
+                Some(simple_type_name(self.text(ty))),
+            );
         }
     }
 
@@ -195,10 +204,9 @@ impl<'a> Walker<'a> {
     }
 
     fn enclosing_class_name(&self) -> Option<String> {
-        self.stack
-            .iter()
-            .rev()
-            .find_map(|&i| (self.out.symbols[i].kind == "class").then(|| self.out.symbols[i].name.clone()))
+        self.stack.iter().rev().find_map(|&i| {
+            (self.out.symbols[i].kind == "class").then(|| self.out.symbols[i].name.clone())
+        })
     }
 
     fn push_symbol(&mut self, node: Node, kind: &str) -> Option<usize> {
@@ -226,7 +234,7 @@ impl<'a> Walker<'a> {
             end_line: node.end_position().row as i64 + 1,
             start_byte: node.start_byte() as i64,
             end_byte: node.end_byte() as i64,
-            signature: None,
+            signature: crate::analysis::node_signature(node, self.src),
             param_count,
             type_name,
         });
@@ -259,7 +267,7 @@ impl<'a> Walker<'a> {
             end_line: node.end_position().row as i64 + 1,
             start_byte: node.start_byte() as i64,
             end_byte: node.end_byte() as i64,
-            signature: None,
+            signature: crate::analysis::node_signature(node, self.src),
             param_count: None,
             type_name: None,
         });
@@ -306,9 +314,11 @@ impl<'a> Walker<'a> {
 
         // `from X import a, b as c` / `from . import x` / `from .pkg import *`
         let module_node = node.child_by_field_name("module_name");
-        let module = module_node.map(|n| self.text(n).to_string()).unwrap_or_default();
-        let is_relative = module.starts_with('.')
-            || module_node.is_some_and(|n| n.kind() == "relative_import");
+        let module = module_node
+            .map(|n| self.text(n).to_string())
+            .unwrap_or_default();
+        let is_relative =
+            module.starts_with('.') || module_node.is_some_and(|n| n.kind() == "relative_import");
 
         let names: Vec<Node> = {
             let mut c = node.walk();
@@ -322,7 +332,14 @@ impl<'a> Walker<'a> {
             match child.kind() {
                 "dotted_name" | "identifier" => {
                     let n = self.text(child).to_string();
-                    self.push_import(module.clone(), Some(&n), None, is_relative, line, Some("import"));
+                    self.push_import(
+                        module.clone(),
+                        Some(&n),
+                        None,
+                        is_relative,
+                        line,
+                        Some("import"),
+                    );
                     any = true;
                 }
                 "aliased_import" => {
@@ -333,7 +350,14 @@ impl<'a> Walker<'a> {
                     let alias = child
                         .child_by_field_name("alias")
                         .map(|x| self.text(x).to_string());
-                    self.push_import(module.clone(), Some(&n), alias, is_relative, line, Some("import"));
+                    self.push_import(
+                        module.clone(),
+                        Some(&n),
+                        alias,
+                        is_relative,
+                        line,
+                        Some("import"),
+                    );
                     any = true;
                 }
                 "wildcard_import" => {
@@ -388,7 +412,9 @@ impl<'a> Walker<'a> {
             }
             _ => (None, None),
         };
-        let name = name_node.map(|n| self.text(n).to_string()).unwrap_or_default();
+        let name = name_node
+            .map(|n| self.text(n).to_string())
+            .unwrap_or_default();
         if name.is_empty() {
             return;
         }
@@ -470,10 +496,11 @@ def run():
         assert!(spec(".cache", "CacheDb").unwrap().is_relative);
         assert!(spec("..util", "helper").unwrap().is_relative);
         assert_eq!(spec("..util", "other").unwrap().alias.as_deref(), Some("o"));
-        assert!(p
-            .imports
-            .iter()
-            .any(|i| i.raw_specifier == "numpy" && i.alias.as_deref() == Some("np")));
+        assert!(
+            p.imports
+                .iter()
+                .any(|i| i.raw_specifier == "numpy" && i.alias.as_deref() == Some("np"))
+        );
 
         let calls: Vec<&str> = p.refs.iter().map(|r| r.name.as_str()).collect();
         assert!(calls.contains(&"helper"));

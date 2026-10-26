@@ -47,7 +47,7 @@ fn graph_json(name: &str) -> Value {
         .status()
         .expect("run code-ctx graph");
     assert!(status.success(), "graph command failed for {name}");
-    serde_json::from_slice(&std::fs::read(&out).unwrap()).unwrap()
+    support::from_slice(&std::fs::read(&out).unwrap()).unwrap()
 }
 
 fn node_ids(g: &Value) -> Vec<String> {
@@ -260,9 +260,13 @@ fn vue_fixture_graph() {
     assert!(ids.contains(&"file:HeaderBar.vue".to_string()));
 
     // Edge from App.vue to HeaderBar.vue
-    assert!(has_edge(&g, "file:App.vue", "file:HeaderBar.vue", "imports"));
+    assert!(has_edge(
+        &g,
+        "file:App.vue",
+        "file:HeaderBar.vue",
+        "imports"
+    ));
 }
-
 
 #[test]
 fn communities_split_two_clusters_and_symbols_inherit() {
@@ -307,14 +311,22 @@ fn communities_are_omitted_when_no_files_are_linked() {
     let work = Path::new(env!("CARGO_TARGET_TMPDIR")).join("unlinked__graph");
     let _ = std::fs::remove_dir_all(&work);
     std::fs::create_dir_all(&work).unwrap();
-    std::fs::write(work.join("one.rs"), "pub fn alpha() -> u32 {
+    std::fs::write(
+        work.join("one.rs"),
+        "pub fn alpha() -> u32 {
     1
 }
-").unwrap();
-    std::fs::write(work.join("two.rs"), "pub fn beta() -> u32 {
+",
+    )
+    .unwrap();
+    std::fs::write(
+        work.join("two.rs"),
+        "pub fn beta() -> u32 {
     2
 }
-").unwrap();
+",
+    )
+    .unwrap();
 
     let out = work.join("graph.json");
     let status = Command::new(BIN)
@@ -326,8 +338,20 @@ fn communities_are_omitted_when_no_files_are_linked() {
         .status()
         .expect("run graph");
     assert!(status.success());
-    let g: Value = serde_json::from_slice(&std::fs::read(&out).unwrap()).unwrap();
+    let g: Value = support::from_slice(&std::fs::read(&out).unwrap()).unwrap();
 
-    assert!(g.get("communities").is_none(), "unexpected communities: {}", g["communities"]);
-    assert!(g["nodes"].as_array().unwrap().iter().all(|n| n.get("community").is_none()));
+    assert!(
+        g.get("communities").is_none(),
+        "unexpected communities: {}",
+        g["communities"]
+    );
+    assert!(
+        g["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|n| n.get("community").is_none())
+    );
 }
+
+mod support;

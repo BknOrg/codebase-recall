@@ -1,0 +1,841 @@
+{
+  "documents": [
+    {
+      "line": 16,
+      "name": "byte_offset",
+      "path": "src/precise/map.rs",
+      "snippet_truncated": false,
+      "source_chars": 648,
+      "text": "src/precise/map.rs\npub fn byte_offset(&self, line: u32, character: u32) -> Option<usize> {\n        let start = *self.line_starts.get(line as usize)?;\n        let end = self\n            .line_starts\n            .get(line as usize + 1)\n            .copied()\n            .unwrap_or(self.text.len());\n        let mut units = 0;\n        for (offset, ch) in self.text[start..end].char_indices() {\n            if units == character {\n                return Some(start + offset);\n            }\n            units += ch.len_utf16() as u32;\n            if units > character {\n                return None;\n            }\n        }\n        (units == character).then_some(end)\n    }"
+    },
+    {
+      "line": 171,
+      "name": "symbol_at_byte",
+      "path": "src/precise/map.rs",
+      "snippet_truncated": false,
+      "source_chars": 356,
+      "text": "src/precise/map.rs\npub fn symbol_at_byte<'a>(syms: &[&'a SymbolRow], byte: i64) -> Option<&'a SymbolRow> {\n    syms.iter()\n        .copied()\n        .filter(|s| {\n            s.start_byte\n                .zip(s.end_byte)\n                .is_some_and(|(start, end)| start <= byte && byte < end)\n        })\n        .min_by_key(|s| s.end_byte.unwrap() - s.start_byte.unwrap())\n}"
+    },
+    {
+      "line": 89,
+      "name": "path_to_uri",
+      "path": "src/precise/map.rs",
+      "snippet_truncated": false,
+      "source_chars": 645,
+      "text": "src/precise/map.rs\npub fn path_to_uri(path: &Path) -> String {\n    let text = path.to_string_lossy().replace('\\\\', \"/\");\n    let mut out = String::from(\"file://\");\n    if !text.starts_with('/') {\n        out.push('/'); // Windows drive paths need the extra root slash.\n    }\n    for ch in text.chars() {\n        match ch {\n            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '.' | '_' | '~' | '/' | ':' => out.push(ch),\n            other => {\n                let mut buf = [0u8; 4];\n                for b in other.encode_utf8(&mut buf).as_bytes() {\n                    out.push_str(&format!(\"%{b:02X}\"));\n                }\n            }\n        }\n    }\n    out\n}"
+    },
+    {
+      "line": 111,
+      "name": "uri_to_path",
+      "path": "src/precise/map.rs",
+      "snippet_truncated": false,
+      "source_chars": 510,
+      "text": "src/precise/map.rs\npub fn uri_to_path(uri: &str) -> Option<PathBuf> {\n    let rest = uri.strip_prefix(\"file://\")?;\n    // `file:///C:/x` and `file://localhost/C:/x` both mean the local machine.\n    let rest = rest.strip_prefix(\"localhost\").unwrap_or(rest);\n    let decoded = percent_decode(rest);\n    // Strip the root slash in front of a Windows drive letter (`/C:/x`).\n    let trimmed = decoded\n        .strip_prefix('/')\n        .filter(|r| is_windows_drive(r))\n        .unwrap_or(&decoded);\n    Some(PathBuf::from(trimmed))\n}"
+    },
+    {
+      "line": 565,
+      "name": "write_project_file",
+      "path": "src/server/mod.rs",
+      "snippet_truncated": false,
+      "source_chars": 871,
+      "text": "src/server/mod.rs\nfn write_project_file(project: &Path, path: &Path, body: &str) -> Result<()> {\n    let relative = path.strip_prefix(project)?;\n    anyhow::ensure!(\n        relative\n            .components()\n            .all(|c| matches!(c, std::path::Component::Normal(_))),\n        \"access denied\"\n    );\n    let root = cap_std::fs::Dir::open_ambient_dir(project, cap_std::ambient_authority())?;\n    if let Some(parent) = relative.parent() {\n        root.create_dir_all(parent)?;\n    }\n    let mut options = cap_std::fs::OpenOptions::new();\n    options.write(true).create_new(true);\n    let mut file = root.open_with(relative, &options).map_err(|e| {\n        if e.kind() == io::ErrorKind::AlreadyExists {\n            anyhow!(\"[409] output already exists; choose another name\")\n        } else {\n            anyhow!(e)\n        }\n    })?;\n    file.write_all(body.as_bytes())?;\n    Ok(())\n}"
+    },
+    {
+      "line": 513,
+      "name": "percent_decode",
+      "path": "src/server/mod.rs",
+      "snippet_truncated": false,
+      "source_chars": 703,
+      "text": "src/server/mod.rs\nfn percent_decode(s: &str) -> String {\n    let b = s.as_bytes();\n    let mut out = Vec::with_capacity(b.len());\n    let mut i = 0;\n    while i < b.len() {\n        match b[i] {\n            b'+' => out.push(b' '),\n            b'%' if i + 2 < b.len() => {\n                let hex = |c: u8| (c as char).to_digit(16);\n                match (hex(b[i + 1]), hex(b[i + 2])) {\n                    (Some(h), Some(l)) => {\n                        out.push((h * 16 + l) as u8);\n                        i += 2;\n                    }\n                    _ => out.push(b'%'),\n                }\n            }\n            c => out.push(c),\n        }\n        i += 1;\n    }\n    String::from_utf8_lossy(&out).into_owned()\n}"
+    },
+    {
+      "line": 556,
+      "name": "unique_name",
+      "path": "src/server/mod.rs",
+      "snippet_truncated": false,
+      "source_chars": 276,
+      "text": "src/server/mod.rs\nfn unique_name(stem: &str, extension: &str) -> String {\n    let mut bytes = [0; 12];\n    getrandom::fill(&mut bytes).expect(\"OS randomness unavailable\");\n    format!(\n        \"{stem}-{}.{extension}\",\n        bytes.iter().map(|b| format!(\"{b:02x}\")).collect::<String>()\n    )\n}"
+    },
+    {
+      "line": 185,
+      "name": "perform_grep_fallback",
+      "path": "src/commands/search.rs",
+      "snippet_truncated": false,
+      "source_chars": 888,
+      "text": "src/commands/search.rs\nfn perform_grep_fallback(\n    project_root: &Path,\n    db: &CacheDb,\n    query: &str,\n    limit: usize,\n) -> Result<Vec<GrepSearchItem>> {\n    let files = db.all_files()?;\n    let q_lower = query.to_ascii_lowercase();\n    let mut matches = Vec::new();\n\n    for f in files {\n        let abs_path = project_root.join(&f.path);\n        let Ok(content) = fs::read_to_string(&abs_path) else {\n            continue;\n        };\n\n        for (idx, line) in content.lines().enumerate() {\n            if line.to_ascii_lowercase().contains(&q_lower) {\n                matches.push(GrepSearchItem {\n                    path: f.path.clone(),\n                    line: idx + 1,\n                    snippet: line.trim().to_string(),\n                });\n                if matches.len() >= limit {\n                    return Ok(matches);\n                }\n            }\n        }\n    }\n\n    Ok(matches)\n}"
+    },
+    {
+      "line": 47,
+      "name": "invalidate_precise_generation",
+      "path": "src/cache/mutations.rs",
+      "snippet_truncated": false,
+      "source_chars": 516,
+      "text": "src/cache/mutations.rs\npub fn invalidate_precise_generation(&mut self) -> Result<()> {\n        let generation = self\n            .meta_get(\"generation\")?\n            .and_then(|v| v.parse::<u64>().ok())\n            .unwrap_or(0)\n            + 1;\n        let ids = self\n            .all_files()?\n            .into_iter()\n            .map(|f| f.id)\n            .collect::<Vec<_>>();\n        self.clear_precise(&ids)?;\n        self.meta_set(\"precise_generation\", \"invalid\")?;\n        self.meta_set(\"generation\", &generation.to_string())\n    }"
+    },
+    {
+      "line": 74,
+      "name": "delete_file",
+      "path": "src/cache/mutations.rs",
+      "snippet_truncated": false,
+      "source_chars": 888,
+      "text": "src/cache/mutations.rs\npub fn delete_file(&self, path: &str) -> Result<()> {\n        let t = &self.tables;\n        self.db.write_tx(|b| {\n            let mut rel = b.relational();\n            let rows = rel\n                .table(t.files.clone())\n                .select_eq(\"path\", &PropValue::from(path))?;\n            for row in rows {\n                let file_id = PropValue::Int(int_pk(row.pk.clone())?);\n                for child in [\n                    &t.symbols,\n                    &t.imports,\n                    &t.refs,\n                    &t.scopes,\n                    &t.bindings,\n                    &t.string_literals,\n                ] {\n                    rel.table(child.clone())\n                        .delete_where_eq(\"file_id\", &file_id)?;\n                }\n                rel.table(t.files.clone()).delete(&row.pk)?;\n            }\n            Ok(())\n        })?;\n        Ok(())\n    }"
+    },
+    {
+      "line": 98,
+      "name": "ensure_schema",
+      "path": "src/cache/mod.rs",
+      "snippet_truncated": false,
+      "source_chars": 1502,
+      "text": "src/cache/mod.rs\nfn ensure_schema(&self) -> Result<()> {\n        let want = schema::SCHEMA_VERSION.to_string();\n\n        let current = self\n            .db\n            .read_tx(|r| {\n                let rel = r.relational();\n                if rel.table_schema(schema::META)?.is_none() {\n                    return Ok(None);\n                }\n                let row = rel\n                    .table_named(schema::META)?\n                    .get(&PropValue::from(schema::SCHEMA_VERSION_KEY))?;\n                Ok(row.and_then(|r| match r.values.get(\"value\") {\n                    Some(PropValue::Str(v)) => Some(v.clone()),\n                    _ => None,\n                }))\n            })\n            .context(\"reading cache schema version\")?;\n        if current.as_deref() == Some(want.as_str()) {\n            return Ok(());\n        }\n\n        self.db\n            .write_tx(|b| {\n                let mut rel = b.relational();\n                for t in rel.list_tables()? {\n                    rel.drop_table(t.name())?;\n                }\n                for s in self.tables.all() {\n                    rel.create_table(s.clone())?;\n                }\n                let mut row = Properties::new();\n                row.insert(\"key\".into(), schema::SCHEMA_VERSION_KEY.into());\n                row.insert(\"value\".into(), want.clone().into());\n                rel.table(self.tables.meta.clone()).upsert(row)?;\n                Ok(())\n            })\n            .context(\"initializing cache schema\")?;\n        Ok(())\n    }"
+    },
+    {
+      "line": 547,
+      "name": "bound_output",
+      "path": "src/commands/mcp/handlers.rs",
+      "snippet_truncated": false,
+      "source_chars": 1643,
+      "text": "src/commands/mcp/handlers.rs\nfn bound_output(value: &mut Value, budget: usize) -> Result<()> {\n    while serde_json::to_vec(&json!({\"structuredContent\":value,\"content\":[{\"type\":\"text\",\"text\":value.to_string()}],\"isError\":false}))?.len() > budget {\n        let mut removed = false;\n        if let Some(data) = value.get_mut(\"data\") {\n            if let Some(items) = data.as_array_mut() { removed = items.pop().is_some(); }\n            else if let Some(object) = data.as_object_mut() {\n                let key = object.iter().filter_map(|(k,v)| v.as_array().filter(|a| !a.is_empty()).map(|a| (k.clone(),a.len()))).max_by_key(|(_,len)| *len).map(|(k,_)| k);\n                if let Some(key) = key {\n                    let item = object[&key].as_array_mut().unwrap().pop(); removed = item.is_some();\n                    if key == \"nodes\" {\n                        let id = item.as_ref().and_then(|i| i.get(\"id\")).cloned();\n                        if let Some(edges) = object.get_mut(\"edges\").and_then(Value::as_array_mut) { edges.retain(|e| Some(&e[\"source\"]) != id.as_ref() && Some(&e[\"target\"]) != id.as_ref()); }\n                    }\n                } else if object.get(\"content\").and_then(Value::as_str).is_some_and(|s| !s.is_empty()) {\n                    object.insert(\"content\".into(), json!(\"\")); removed = true;\n                }\n            }\n        }\n        anyhow::ensure!(removed, \"response metadata exceeds max_output_kb; increase the budget\");\n        value[\"metadata\"][\"truncated\"] = json!(true);\n        let count = value[\"metadata\"][\"omitted_count\"].as_u64().unwrap_or(0)+1;\n        value[\"metadata\"][\"omitted_count\"] = json!(count);\n    }\n    Ok(())\n}"
+    },
+    {
+      "line": 212,
+      "name": "validate",
+      "path": "src/commands/mcp/inputs.rs",
+      "snippet_truncated": true,
+      "source_chars": 3302,
+      "text": "src/commands/mcp/inputs.rs\npub fn validate(name: &str, args: &Value) -> Result<Value> {\n    let value = select!(name, decode, args)?;\n    for (key, max) in [\n        (\"depth\", if name == \"code_rcl_impact\" { 8 } else { 5 }),\n        (\"max_depth\", 20),\n        (\"limit\", 100),\n        (\"max_nodes\", 100000),\n        (\"max_size_kb\", 10240),\n        (\"max_output_kb\", 2048),\n    ] {\n        if let Some(number) = value.get(key).and_then(Value::as_u64) {\n            ensure!((1..=max).contains(&number), \"{key} must be in 1..={max}\");\n        }\n    }\n    for key in [\"symbol\", \"from\", \"to\", \"query\", \"target\", \"project\"] {\n        if let Some(text) = value.get(key).and_then(Value::as_str) {\n            ensure!(!text.trim().is_empty(), \"{key} must not be empty\");\n        }\n    }\n    if name == \"code_rcl_search\" {\n        ensure!(\n            [\"exact\", \"prefix\", \"substring\"].contains(&value[\"match_mode\"].as_str().unwrap_or(\"\")),\n            \"invalid match_mode\"\n        );\n    }\n    if name == \"code_rcl_impact\" {\n        ensure!(\n            value[\"symbol\"].is_string() != value[\"diff\"].as_bool().unwrap_or(false),\n            \"supply exactly one of symbol or diff=true\"\n        );\n    }\n    if let Some(direction) = value.get(\"direction\").and_then(Value::as_str) {\n        let choices: &[&str] = if name == \"code_rcl_path\" {\n            &[\"forward\", \"reverse\", \"any\"]\n        } else {\n            &[\"both\", \"forward\", \"reverse\"]\n        };\n        ensure!(\n            choices.contains(&direction),\n            \"invalid direction: {direction}\"\n        );\n    }\n    if let Some(scope) = value.get(\"scope\").and_then(Value::as_str) {\n        ensure!([\"file\", \"symbol\", \"both\"].contains(&scope), \"invalid scope\");\n    }\n    if let Some(kinds) = value.get(\"kinds\").and_then(Value::as_array) {\n        ensure!(\n            !kinds.is"
+    },
+    {
+      "line": 174,
+      "name": "wait_until_ready",
+      "path": "src/precise/client.rs",
+      "snippet_truncated": false,
+      "source_chars": 1374,
+      "text": "src/precise/client.rs\npub fn wait_until_ready(&mut self, max: Duration) -> Readiness {\n        let start = Instant::now();\n        // Servers that never report progress at all shouldn't be waited on for\n        // the full budget, so give progress a short window to show up.\n        let grace = Duration::from_secs(3);\n        let settle = Duration::from_millis(400);\n        let mut saw_progress = false;\n        let mut idle_since: Option<Instant> = None;\n\n        while start.elapsed() < max {\n            if crate::operation::cancelled() {\n                return Readiness::TimedOut;\n            }\n            if self.quiescent {\n                return Readiness::Ready;\n            }\n            if !self.outstanding_progress.is_empty() {\n                saw_progress = true;\n                idle_since = None;\n            } else if saw_progress {\n                match idle_since {\n                    Some(t) if t.elapsed() >= settle => return Readiness::Ready,\n                    Some(_) => {}\n                    None => idle_since = Some(Instant::now()),\n                }\n            } else if start.elapsed() >= grace {\n                return Readiness::Ready;\n            }\n            // Drives the message loop; anything but a response is handled inline.\n            let _ = self.pump(None, Instant::now() + Duration::from_millis(200));\n        }\n        Readiness::TimedOut\n    }"
+    },
+    {
+      "line": 56,
+      "name": "drop",
+      "path": "src/precise/client.rs",
+      "snippet_truncated": false,
+      "source_chars": 96,
+      "text": "src/precise/client.rs\nfn drop(&mut self) {\n        let _ = self.child.kill();\n        let _ = self.child.wait();\n    }"
+    },
+    {
+      "line": 460,
+      "name": "definition_targets",
+      "path": "src/precise/mod.rs",
+      "snippet_truncated": false,
+      "source_chars": 272,
+      "text": "src/precise/mod.rs\nfn definition_targets(answer: &Value) -> Vec<(String, i64, u32)> {\n    match answer {\n        Value::Array(items) => items.iter().filter_map(single_target).collect(),\n        Value::Object(_) => single_target(answer).into_iter().collect(),\n        _ => Vec::new(),\n    }\n}"
+    },
+    {
+      "line": 114,
+      "name": "resolve_locals",
+      "path": "src/analysis/scope.rs",
+      "snippet_truncated": false,
+      "source_chars": 1761,
+      "text": "src/analysis/scope.rs\npub fn resolve_locals(parsed: &mut ParsedFile) {\r\n    if parsed.scopes.is_empty() {\r\n        return;\r\n    }\r\n    for ri in 0..parsed.refs.len() {\r\n        if parsed.refs[ri].receiver.is_some() {\r\n            continue; // only bare calls resolve to locals\r\n        }\r\n        let at = parsed.refs[ri].start_byte;\r\n        let name = parsed.refs[ri].name.clone();\r\n        let is_type = parsed.refs[ri].ref_kind == \"type\";\r\n\r\n        // innermost (narrowest) scope containing `at`\r\n        let mut best: Option<(i64, usize)> = None;\r\n        for (i, sc) in parsed.scopes.iter().enumerate() {\r\n            if at >= sc.start_byte && at < sc.end_byte {\r\n                let w = sc.end_byte - sc.start_byte;\r\n                if best.is_none_or(|(bw, _)| w < bw) {\r\n                    best = Some((w, i));\r\n                }\r\n            }\r\n        }\r\n        let Some((_, mut scope_idx)) = best else {\r\n            continue;\r\n        };\r\n\r\n        loop {\r\n            let hit = parsed.bindings.iter().find(|b| {\r\n                b.scope_index == scope_idx\r\n                    && b.name == name\r\n                    && b.binding_kind != \"field\"\r\n                    && !(is_type && matches!(b.binding_kind.as_str(), \"local\" | \"param\"))\r\n            });\r\n            if let Some(b) = hit {\r\n                match b.binding_kind.as_str() {\r\n                    \"local\" | \"param\" => parsed.refs[ri].local_only = true,\r\n                    \"symbol\" => parsed.refs[ri].resolved_local_symbol_index = b.symbol_index,\r\n                    _ => {}\r\n                }\r\n                break;\r\n            }\r\n            match parsed.scopes[scope_idx].parent_index {\r\n                Some(p) => scope_idx = p,\r\n                None => break,\r\n            }\r\n        }\r\n    }\r\n}"
+    },
+    {
+      "line": 40,
+      "name": "cleaning_ipynb",
+      "path": "src/dump/ipynb.rs",
+      "snippet_truncated": false,
+      "source_chars": 900,
+      "text": "src/dump/ipynb.rs\npub fn cleaning_ipynb(raw_json: &str) -> Option<String> {\n    let notebook: Notebook = serde_json::from_str(raw_json).ok()?;\n    let mut out = String::new();\n\n    for (i, cell) in notebook.cells.iter().enumerate() {\n        let text = cell.source.to_string();\n        let trimmed = text.trim();\n        if trimmed.is_empty() {\n            continue;\n        }\n\n        match cell.cell_type.as_str() {\n            \"markdown\" => {\n                out.push_str(trimmed);\n                out.push_str(\"\\n\\n\");\n            }\n            \"code\" => {\n                let fence = calculate_fence(trimmed);\n                out.push_str(&format!(\"<!-- Notebook Cell [{}] -->\\n\", i + 1));\n                out.push_str(&format!(\"{fence}python\\n\"));\n                out.push_str(trimmed);\n                out.push_str(&format!(\"\\n{}\\n\\n\", fence));\n            }\n            _ => {}\n        }\n    }\n\n    Some(out)\n}"
+    },
+    {
+      "line": 33,
+      "name": "resolve_target",
+      "path": "src/commands/digest/mod.rs",
+      "snippet_truncated": false,
+      "source_chars": 1601,
+      "text": "src/commands/digest/mod.rs\nfn resolve_target(path: &Path) -> (PathBuf, String) {\n    if path.is_file() {\n        let parent = path.parent().unwrap_or_else(|| Path::new(\".\"));\n        let mut current = parent;\n        let mut root = parent.to_path_buf();\n        loop {\n            if current.join(\".code-rcl\").exists()\n                || current.join(\"Cargo.toml\").exists()\n                || current.join(\"package.json\").exists()\n                || current.join(\"pyproject.toml\").exists()\n            {\n                root = current.to_path_buf();\n                break;\n            }\n            match current.parent() {\n                Some(p) if p != current => current = p,\n                _ => break,\n            }\n        }\n        let sub = path\n            .strip_prefix(&root)\n            .unwrap_or(path)\n            .to_string_lossy()\n            .replace('\\\\', \"/\");\n        (root, sub)\n    } else if path == Path::new(\".\") && !Path::new(\".code-rcl\").exists() {\n        if let Ok(abs_current) = std::env::current_dir() {\n            let mut p = abs_current.as_path();\n            while let Some(parent) = p.parent() {\n                if parent.join(\".code-rcl\").exists() {\n                    let sub = abs_current\n                        .strip_prefix(parent)\n                        .map(|r| r.to_string_lossy().replace('\\\\', \"/\"))\n                        .unwrap_or_default();\n                    return (parent.to_path_buf(), sub);\n                }\n                p = parent;\n            }\n        }\n        (PathBuf::from(\".\"), String::new())\n    } else {\n        (path.to_path_buf(), String::new())\n    }\n}"
+    },
+    {
+      "line": 55,
+      "name": "normalize_path",
+      "path": "src/dump/formatter.rs",
+      "snippet_truncated": false,
+      "source_chars": 92,
+      "text": "src/dump/formatter.rs\nfn normalize_path(path: &Path) -> String {\r\n    path.to_string_lossy().replace('\\\\', \"/\")\r\n}"
+    },
+    {
+      "line": 238,
+      "name": "push_symbol",
+      "path": "src/analysis/kotlin.rs",
+      "snippet_truncated": false,
+      "source_chars": 975,
+      "text": "src/analysis/kotlin.rs\nfn push_symbol(&mut self, node: Node, kind: &str) -> Option<usize> {\n        let name = node\n            .child_by_field_name(\"name\")\n            .map(|n| self.text(n).to_string())\n            .filter(|s| !s.is_empty())?;\n\n        let (param_count, type_name) = if kind == \"method\" {\n            (self.param_count(node), self.enclosing_type_name())\n        } else {\n            (None, None)\n        };\n\n        self.out.symbols.push(NewSymbol {\n            name,\n            kind: kind.to_string(),\n            parent_index: self.stack.last().copied(),\n            is_exported: self.is_exported(node),\n            start_line: self.line(node),\n            end_line: node.end_position().row as i64 + 1,\n            start_byte: node.start_byte() as i64,\n            end_byte: node.end_byte() as i64,\n            signature: crate::analysis::node_signature(node, self.src),\n            param_count,\n            type_name,\n        });\n        Some(self.out.symbols.len() - 1)\n    }"
+    },
+    {
+      "line": 245,
+      "name": "method_of_type",
+      "path": "src/graph/resolve/refs.rs",
+      "snippet_truncated": false,
+      "source_chars": 690,
+      "text": "src/graph/resolve/refs.rs\nfn method_of_type(ctx: &ResolveCtx, ty: &str, rf: &RefRow, importer: &FileRow) -> Option<i64> {\n    let ids = ctx.type_methods.get(ty)?.get(&rf.name)?;\n    if let [only] = ids.as_slice() {\n        return Some(*only);\n    }\n    let file_of = |id: &i64| {\n        ctx.sym_by_id\n            .get(id)\n            .and_then(|s| ctx.file_by_id.get(&s.file_id))\n    };\n    let importer_dir = dir_of(&importer.path);\n    ids.iter()\n        .find(|id| file_of(id).is_some_and(|f| f.id == importer.id))\n        .or_else(|| {\n            ids.iter()\n                .find(|id| file_of(id).is_some_and(|f| dir_of(&f.path) == importer_dir))\n        })\n        .or_else(|| ids.first())\n        .copied()\n}"
+    },
+    {
+      "line": 91,
+      "name": "detect",
+      "path": "src/graph/community.rs",
+      "snippet_truncated": false,
+      "source_chars": 840,
+      "text": "src/graph/community.rs\npub fn detect(nodes: &[Node], edges: &[Edge]) -> Communities {\n    let links = file_graph(nodes, edges);\n    if links.is_empty() {\n        return Communities::default();\n    }\n\n    let ids: Vec<String> = links\n        .keys()\n        .flat_map(|(a, b)| [a.clone(), b.clone()])\n        .collect::<BTreeSet<_>>()\n        .into_iter()\n        .collect();\n    let index: HashMap<&str, usize> = ids\n        .iter()\n        .enumerate()\n        .map(|(i, s)| (s.as_str(), i))\n        .collect();\n\n    let mut adj: Vec<BTreeMap<usize, f64>> = vec![BTreeMap::new(); ids.len()];\n    for ((a, b), w) in &links {\n        let (i, j) = (index[a.as_str()], index[b.as_str()]);\n        *adj[i].entry(j).or_insert(0.0) += *w as f64;\n        *adj[j].entry(i).or_insert(0.0) += *w as f64;\n    }\n\n    let raw = louvain(adj);\n    finalize(&ids, &raw, &links)\n}"
+    },
+    {
+      "line": 7,
+      "name": "budget",
+      "path": "src/commands/mcp/inputs.rs",
+      "snippet_truncated": false,
+      "source_chars": 30,
+      "text": "src/commands/mcp/inputs.rs\nfn budget() -> u32 {\n    256\n}"
+    },
+    {
+      "line": 177,
+      "name": "send_response",
+      "path": "src/commands/mcp/mod.rs",
+      "snippet_truncated": false,
+      "source_chars": 238,
+      "text": "src/commands/mcp/mod.rs\npub fn send_response(stdout: &mut std::io::Stdout, resp: &JsonRpcResponse) -> Result<()> {\n    let serialized = serde_json::to_vec(resp)?;\n    stdout.write_all(&serialized)?;\n    stdout.write_all(b\"\\n\")?;\n    stdout.flush()?;\n    Ok(())\n}"
+    },
+    {
+      "line": 29,
+      "name": "get_snippet",
+      "path": "src/commands/impact/traversal.rs",
+      "snippet_truncated": false,
+      "source_chars": 643,
+      "text": "src/commands/impact/traversal.rs\npub fn get_snippet(\n    project_root: &Path,\n    file_lines_cache: &mut HashMap<String, Vec<String>>,\n    rel_path: Option<&str>,\n    line: Option<i64>,\n) -> Option<String> {\n    let p = rel_path?;\n    let l = line?;\n    if l <= 0 {\n        return None;\n    }\n    let lines = file_lines_cache.entry(p.to_string()).or_insert_with(|| {\n        let abs = project_root.join(p);\n        fs::read_to_string(&abs)\n            .map(|c| c.lines().map(String::from).collect())\n            .unwrap_or_default()\n    });\n    let idx = (l - 1) as usize;\n    lines\n        .get(idx)\n        .map(|s| s.trim().to_string())\n        .filter(|s| !s.is_empty())\n}"
+    },
+    {
+      "line": 48,
+      "name": "text",
+      "path": "src/analysis/kotlin.rs",
+      "snippet_truncated": false,
+      "source_chars": 92,
+      "text": "src/analysis/kotlin.rs\nfn text(&self, node: Node) -> &'a str {\n        node.utf8_text(self.src).unwrap_or(\"\")\n    }"
+    },
+    {
+      "line": 99,
+      "name": "collect_imports",
+      "path": "src/analysis/go.rs",
+      "snippet_truncated": false,
+      "source_chars": 581,
+      "text": "src/analysis/go.rs\nfn collect_imports(&mut self, node: Node) {\n        let mut cursor = node.walk();\n        for child in node.children(&mut cursor) {\n            if child.kind() == \"import_spec\" {\n                self.record_import_spec(child);\n            } else if child.kind() == \"import_spec_list\" {\n                let mut inner_cursor = child.walk();\n                for spec in child.children(&mut inner_cursor) {\n                    if spec.kind() == \"import_spec\" {\n                        self.record_import_spec(spec);\n                    }\n                }\n            }\n        }\n    }"
+    },
+    {
+      "line": 92,
+      "name": "upsert_marked_block",
+      "path": "src/commands/setup_integrations.rs",
+      "snippet_truncated": false,
+      "source_chars": 1342,
+      "text": "src/commands/setup_integrations.rs\npub fn upsert_marked_block(path: &Path, begin: &str, end: &str, body: &str) -> Result<Change> {\n    let existed = path.exists();\n    let content = if existed {\n        fs::read_to_string(path).with_context(|| format!(\"failed to read {}\", path.display()))?\n    } else {\n        String::new()\n    };\n\n    let nl = newline_of(&content);\n    let block = format!(\"{begin}{nl}{}{nl}{end}\", body.replace('\\n', nl));\n\n    let new_content = match find_block(path, &content, begin, end)? {\n        Some((b, e)) => format!(\"{}{block}{}\", &content[..b], &content[e..]),\n        None if content.trim().is_empty() => format!(\"{block}{nl}\"),\n        None => {\n            let mut out = content.clone();\n            if !out.ends_with('\\n') {\n                out.push_str(nl);\n            }\n            out.push_str(nl);\n            out.push_str(&block);\n            out.push_str(nl);\n            out\n        }\n    };\n\n    if existed && new_content == content {\n        return Ok(Change::Unchanged);\n    }\n\n    if let Some(parent) = path.parent() {\n        fs::create_dir_all(parent)\n            .with_context(|| format!(\"failed to create {}\", parent.display()))?;\n    }\n    fs::write(path, &new_content).with_context(|| format!(\"failed to write {}\", path.display()))?;\n    Ok(if existed {\n        Change::Updated\n    } else {\n        Change::Created\n    })\n}"
+    },
+    {
+      "line": 17,
+      "name": "int_pk",
+      "path": "src/cache/mutations.rs",
+      "snippet_truncated": false,
+      "source_chars": 243,
+      "text": "src/cache/mutations.rs\nfn int_pk(pk: PropValue) -> std::result::Result<i64, BknError> {\n    match pk {\n        PropValue::Int(v) => Ok(v),\n        other => Err(BknError::Encoding(format!(\n            \"expected integer primary key, got {other:?}\"\n        ))),\n    }\n}"
+    },
+    {
+      "line": 19,
+      "name": "render",
+      "path": "src/dump/formatter.rs",
+      "snippet_truncated": false,
+      "source_chars": 577,
+      "text": "src/dump/formatter.rs\nfn render(&self, output: &mut String, prefix: &str) {\r\n        let total = self.children.len();\r\n        for (i, (name, node)) in self.children.iter().enumerate() {\r\n            let is_last = i + 1 == total;\r\n            let branch = if is_last { \"└── \" } else { \"├── \" };\r\n            let next_prefix = if is_last { \"    \" } else { \"│   \" };\r\n\r\n            output.push_str(prefix);\r\n            output.push_str(branch);\r\n            output.push_str(name);\r\n            output.push('\\n');\r\n\r\n            node.render(output, &format!(\"{prefix}{next_prefix}\"));\r\n        }\r\n    }"
+    },
+    {
+      "line": 25,
+      "name": "collect_use",
+      "path": "src/analysis/rust/use_decl.rs",
+      "snippet_truncated": false,
+      "source_chars": 1580,
+      "text": "src/analysis/rust/use_decl.rs\npub fn collect_use(&mut self, node: Node) {\n        let Some(arg) = node.child_by_field_name(\"argument\") else {\n            return;\n        };\n        let line = node.start_position().row as i64 + 1;\n        let mut paths: Vec<UsePath> = Vec::new();\n        self.flatten_use(arg, \"\", &mut paths);\n\n        for UsePath {\n            path,\n            alias,\n            wildcard,\n        } in paths\n        {\n            if path.is_empty() {\n                continue;\n            }\n            let is_relative = [\"self\", \"super\", \"crate\"]\n                .iter()\n                .any(|p| path == *p || path.starts_with(&format!(\"{p}::\")));\n            let imported_name = if wildcard {\n                None\n            } else {\n                path.rsplit(\"::\").next().map(str::to_string)\n            };\n            let import_index = self.out.imports.len();\n            // Bind the locally visible name so refs resolve to this import.\n            let local = alias.clone().or_else(|| imported_name.clone());\n            if wildcard {\n                let ns = path.rsplit(\"::\").next().unwrap_or(&path).to_string();\n                self.sc\n                    .bind(&ns, \"namespace\", None, Some(import_index), None);\n            } else if let Some(l) = &local {\n                self.sc.bind(l, \"import\", None, Some(import_index), None);\n            }\n            self.out.imports.push(NewImport {\n                raw_specifier: path,\n                imported_name,\n                alias,\n                is_relative,\n                start_line: line,\n            });\n        }\n    }"
+    },
+    {
+      "line": 87,
+      "name": "external_id",
+      "path": "src/graph/mod.rs",
+      "snippet_truncated": false,
+      "source_chars": 82,
+      "text": "src/graph/mod.rs\npub fn external_id(specifier: &str) -> String {\r\n    format!(\"ext:{specifier}\")\r\n}"
+    },
+    {
+      "line": 217,
+      "name": "shell_path",
+      "path": "src/commands/setup_integrations.rs",
+      "snippet_truncated": false,
+      "source_chars": 67,
+      "text": "src/commands/setup_integrations.rs\nfn shell_path(path: &str) -> String {\n    path.replace('\\\\', \"/\")\n}"
+    },
+    {
+      "line": 35,
+      "name": "innermost_symbol",
+      "path": "src/cache/utils.rs",
+      "snippet_truncated": false,
+      "source_chars": 458,
+      "text": "src/cache/utils.rs\npub fn innermost_symbol(symbols: &[NewSymbol], ids: &[i64], byte: i64) -> Option<i64> {\n    let mut best: Option<(i64, i64)> = None; // (width, id)\n    for (i, s) in symbols.iter().enumerate() {\n        if byte >= s.start_byte && byte < s.end_byte {\n            let width = s.end_byte - s.start_byte;\n            if best.is_none_or(|(w, _)| width < w) {\n                best = Some((width, ids[i]));\n            }\n        }\n    }\n    best.map(|(_, id)| id)\n}"
+    },
+    {
+      "line": 37,
+      "name": "json",
+      "path": "src/output.rs",
+      "snippet_truncated": false,
+      "source_chars": 175,
+      "text": "src/output.rs\npub fn json(project: &Path, no_sync: bool, data: impl Serialize) -> Result<String> {\n    Ok(serde_json::to_string_pretty(&envelope(\n        project, no_sync, data,\n    )?)?)\n}"
+    },
+    {
+      "line": 265,
+      "name": "all_bindings",
+      "path": "src/cache/queries.rs",
+      "snippet_truncated": false,
+      "source_chars": 181,
+      "text": "src/cache/queries.rs\npub fn all_bindings(&self) -> Result<Vec<BindingRow>> {\n        let rows = self.rows(&self.tables.bindings, &Query::new())?;\n        Ok(rows.iter().map(binding_row).collect())\n    }"
+    },
+    {
+      "line": 325,
+      "name": "collect_new",
+      "path": "src/analysis/java.rs",
+      "snippet_truncated": false,
+      "source_chars": 831,
+      "text": "src/analysis/java.rs\nfn collect_new(&mut self, node: Node) {\n        let Some(ty) = node.child_by_field_name(\"type\") else {\n            return;\n        };\n        let name = simple_type_name(self.text(ty));\n        if name.is_empty() {\n            return;\n        }\n        let arg_count = node.child_by_field_name(\"arguments\").map(|a| {\n            let mut c = a.walk();\n            a.named_children(&mut c).count() as i64\n        });\n        self.out.refs.push(NewRef {\n            name,\n            ref_kind: \"call\".to_string(),\n            receiver: None,\n            start_line: self.line(node),\n            start_byte: node.start_byte() as i64,\n            name_start_byte: Some(last_type_identifier(ty).start_byte() as i64),\n            arg_count,\n            receiver_kind: \"none\".to_string(),\n            ..Default::default()\n        });\n    }"
+    },
+    {
+      "line": 64,
+      "name": "pop",
+      "path": "src/analysis/scope.rs",
+      "snippet_truncated": false,
+      "source_chars": 107,
+      "text": "src/analysis/scope.rs\npub fn pop(&mut self) {\r\n        if self.stack.len() > 1 {\r\n            self.stack.pop();\r\n        }\r\n    }"
+    },
+    {
+      "line": 292,
+      "name": "collect_call",
+      "path": "src/analysis/java.rs",
+      "snippet_truncated": false,
+      "source_chars": 1124,
+      "text": "src/analysis/java.rs\nfn collect_call(&mut self, node: Node) {\n        let Some(name_node) = node.child_by_field_name(\"name\") else {\n            return;\n        };\n        let name = self.text(name_node).to_string();\n        if name.is_empty() {\n            return;\n        }\n        let receiver = node\n            .child_by_field_name(\"object\")\n            .map(|o| self.text(o).to_string());\n        let receiver_kind = match receiver.as_deref() {\n            None => \"none\",\n            Some(\"this\") | Some(\"super\") => \"self\",\n            Some(_) => \"value\",\n        };\n        let arg_count = node.child_by_field_name(\"arguments\").map(|a| {\n            let mut c = a.walk();\n            a.named_children(&mut c).count() as i64\n        });\n        self.out.refs.push(NewRef {\n            name,\n            ref_kind: \"call\".to_string(),\n            receiver,\n            start_line: self.line(node),\n            start_byte: node.start_byte() as i64,\n            name_start_byte: Some(name_node.start_byte() as i64),\n            arg_count,\n            receiver_kind: receiver_kind.to_string(),\n            ..Default::default()\n        });\n    }"
+    },
+    {
+      "line": 83,
+      "name": "resolve_git_dir",
+      "path": "src/commands/init.rs",
+      "snippet_truncated": false,
+      "source_chars": 783,
+      "text": "src/commands/init.rs\nfn resolve_git_dir(project: &Path) -> Option<std::path::PathBuf> {\n    let git = project.join(\".git\");\n    if !git.exists() {\n        return None;\n    }\n    if git.is_dir() {\n        return Some(git);\n    }\n    if git.is_file() {\n        let content = fs::read_to_string(&git).ok()?;\n        for line in content.lines() {\n            if let Some(rest) = line.trim().strip_prefix(\"gitdir:\") {\n                let gitdir_path = std::path::PathBuf::from(rest.trim());\n                let actual = if gitdir_path.is_absolute() {\n                    gitdir_path\n                } else {\n                    project.join(gitdir_path)\n                };\n                if actual.exists() {\n                    return Some(actual);\n                }\n            }\n        }\n    }\n    None\n}"
+    },
+    {
+      "line": 419,
+      "name": "exported_in",
+      "path": "src/graph/resolve/refs.rs",
+      "snippet_truncated": false,
+      "source_chars": 273,
+      "text": "src/graph/resolve/refs.rs\nfn exported_in(ctx: &ResolveCtx, file_id: i64, name: &str) -> Option<i64> {\n    let list = ctx.syms_by_file.get(&file_id)?;\n    list.iter()\n        .find(|s| s.name == name && s.is_exported)\n        .or_else(|| list.iter().find(|s| s.name == name))\n        .map(|s| s.id)\n}"
+    },
+    {
+      "line": 146,
+      "name": "sync_cache",
+      "path": "src/commands/sync.rs",
+      "snippet_truncated": true,
+      "source_chars": 4892,
+      "text": "src/commands/sync.rs\npub fn sync_cache(db: &mut CacheDb, args: &SyncArgs) -> Result<SyncStats> {\n    let project = &args.project;\n    let cfg = ProjectConfig::load(project)?;\n    let settings = config::resolve_sync(args, &cfg);\n    let max_bytes = settings.max_bytes;\n    let filter = &settings.languages;\n\n    // Current source files on disk.\n    let mut on_disk: Vec<DiskFile> = Vec::new();\n    let mut out_of_scope: HashSet<String> = HashSet::new();\n    for abs in walker::collect_source_files(project)? {\n        crate::operation::check()?;\n        let Some(language) = Language::from_path(&abs) else {\n            continue;\n        };\n        // Skip minified / vendored bundles (e.g. `d3.min.js`). They aren't\n        // project source and a single one can dump thousands of bogus symbols.\n        if abs\n            .file_name()\n            .and_then(|n| n.to_str())\n            .is_some_and(|n| n.contains(\".min.\"))\n        {\n            continue;\n        }\n        if !filter.is_empty() && !filter.iter().any(|t| language.matches_filter(t)) {\n            // Out of scope for this run, not gone: its cached rows must survive.\n            let rel = abs.strip_prefix(project).unwrap_or(&abs);\n            out_of_scope.insert(rel.to_string_lossy().replace('\\\\', \"/\"));\n            continue;\n        }\n        let meta = fs::metadata(&abs)\n            .with_context(|| format!(\"reading metadata for {}\", abs.display()))?;\n        if meta.len() > max_bytes {\n            crate::operation::warning(format!(\"skipped oversized file: {}\", abs.display()));\n            let rel = abs.strip_prefix(project).unwrap_or(&abs);\n            out_of_scope.insert(rel.to_string_lossy().replace('\\\\', \"/\"));\n            continue;\n        }\n        let rel = abs.strip_prefix(project).unwrap_or(&abs);\n        let rel = rel.to_string_l"
+    },
+    {
+      "line": 141,
+      "name": "default",
+      "path": "src/config.rs",
+      "snippet_truncated": false,
+      "source_chars": 98,
+      "text": "src/config.rs\nfn default() -> Self {\n        Self {\n            server: \"jetbrains\".to_string(),\n        }\n    }"
+    },
+    {
+      "line": 387,
+      "name": "remove_claude_hook",
+      "path": "src/commands/setup_integrations.rs",
+      "snippet_truncated": false,
+      "source_chars": 1699,
+      "text": "src/commands/setup_integrations.rs\npub fn remove_claude_hook(path: &Path) -> Result<Change> {\n    use serde_json::Value;\n\n    if !path.exists() {\n        return Ok(Change::NotPresent);\n    }\n    let mut root = read_settings(path)?;\n\n    let mut removed = false;\n    if let Some(groups) = root\n        .get_mut(\"hooks\")\n        .and_then(|h| h.get_mut(\"SessionStart\"))\n        .and_then(Value::as_array_mut)\n    {\n        for group in groups.iter_mut() {\n            if let Some(handlers) = group.get_mut(\"hooks\").and_then(Value::as_array_mut) {\n                let before = handlers.len();\n                handlers.retain(|h| !is_our_handler(h));\n                removed |= handlers.len() != before;\n            }\n        }\n        // Only drop groups we emptied ourselves.\n        if removed {\n            groups.retain(|g| {\n                g.get(\"hooks\")\n                    .and_then(Value::as_array)\n                    .is_none_or(|h| !h.is_empty())\n            });\n        }\n    }\n    if !removed {\n        return Ok(Change::NotPresent);\n    }\n\n    let obj = root.as_object_mut().expect(\"checked in read_settings\");\n    if let Some(hooks) = obj.get_mut(\"hooks\").and_then(Value::as_object_mut)\n        && hooks\n            .get(\"SessionStart\")\n            .and_then(Value::as_array)\n            .is_some_and(|a| a.is_empty())\n    {\n        hooks.remove(\"SessionStart\");\n    }\n    if obj\n        .get(\"hooks\")\n        .and_then(Value::as_object)\n        .is_some_and(|h| h.is_empty())\n    {\n        obj.remove(\"hooks\");\n    }\n\n    if obj.is_empty() {\n        fs::remove_file(path).with_context(|| format!(\"failed to remove {}\", path.display()))?;\n    } else {\n        write_settings(path, &root)?;\n    }\n    Ok(Change::Removed)\n}"
+    },
+    {
+      "line": 505,
+      "name": "push_ref",
+      "path": "src/analysis/javascript.rs",
+      "snippet_truncated": false,
+      "source_chars": 635,
+      "text": "src/analysis/javascript.rs\nfn push_ref(\n        &mut self,\n        name: String,\n        kind: &str,\n        receiver: Option<String>,\n        receiver_kind: &str,\n        arg_count: Option<i64>,\n        name_node: Option<Node>,\n        node: Node,\n    ) {\n        self.out.refs.push(NewRef {\n            name,\n            ref_kind: kind.to_string(),\n            receiver,\n            start_line: self.line(node),\n            start_byte: node.start_byte() as i64,\n            name_start_byte: name_node.map(|n| n.start_byte() as i64),\n            arg_count,\n            receiver_kind: receiver_kind.to_string(),\n            ..Default::default()\n        });\n    }"
+    },
+    {
+      "line": 182,
+      "name": "all",
+      "path": "src/cache/schema.rs",
+      "snippet_truncated": false,
+      "source_chars": 282,
+      "text": "src/cache/schema.rs\npub fn all(&self) -> [&TableSchema; 8] {\n        [\n            &self.meta,\n            &self.files,\n            &self.symbols,\n            &self.imports,\n            &self.refs,\n            &self.scopes,\n            &self.bindings,\n            &self.string_literals,\n        ]\n    }"
+    },
+    {
+      "line": 64,
+      "name": "shape",
+      "path": "src/graph/render/dot.rs",
+      "snippet_truncated": false,
+      "source_chars": 283,
+      "text": "src/graph/render/dot.rs\nfn shape(kind: &str) -> &'static str {\n    match kind {\n        \"file\" => \"box\",\n        \"dir\" => \"folder\",\n        \"struct\" | \"enum\" | \"trait\" | \"interface\" | \"type\" | \"class\" => \"diamond\",\n        \"variable\" => \"note\",\n        \"external\" => \"box3d\",\n        _ => \"ellipse\",\n    }\n}"
+    },
+    {
+      "line": 85,
+      "name": "parent_is_class",
+      "path": "src/analysis/python/python.rs",
+      "snippet_truncated": false,
+      "source_chars": 147,
+      "text": "src/analysis/python/python.rs\nfn parent_is_class(&self) -> bool {\n        self.stack\n            .last()\n            .is_some_and(|&i| self.out.symbols[i].kind == \"class\")\n    }"
+    },
+    {
+      "line": 153,
+      "name": "text",
+      "path": "src/analysis/rust/mod.rs",
+      "snippet_truncated": false,
+      "source_chars": 96,
+      "text": "src/analysis/rust/mod.rs\npub fn text(&self, node: Node) -> &'a str {\n        node.utf8_text(self.src).unwrap_or(\"\")\n    }"
+    },
+    {
+      "line": 368,
+      "name": "render_markdown",
+      "path": "src/commands/report.rs",
+      "snippet_truncated": true,
+      "source_chars": 3481,
+      "text": "src/commands/report.rs\npub fn render_markdown(d: &ReportData) -> String {\n    let mut md = String::new();\n    md.push_str(&format!(\"# Code Report: {}\\n\\n\", d.project));\n    md.push_str(\n        \"_Generated by code-rcl. Refresh with `code-rcl report --write`; `code-rcl sync` keeps it current._\\n\\n\",\n    );\n\n    let langs = if d.languages.is_empty() {\n        \"none\".to_string()\n    } else {\n        let mut v: Vec<_> = d.languages.iter().collect();\n        v.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));\n        v.iter()\n            .map(|(l, n)| format!(\"{l} ({n})\"))\n            .collect::<Vec<_>>()\n            .join(\", \")\n    };\n    md.push_str(&format!(\n        \"**Summary**: {} files | {} symbols ({} public) | Languages: {}\\n\\n\",\n        d.total_files, d.total_symbols, d.public_symbols, langs\n    ));\n\n    if !d.hubs.is_empty() {\n        md.push_str(\"## Core hubs\\n\\nMost connected nodes; changes here reach the furthest.\\n\\n\");\n        md.push_str(\"| Symbol | Kind | File | Degree |\\n| :--- | :--- | :--- | :--- |\\n\");\n        for h in &d.hubs {\n            md.push_str(&format!(\n                \"| `{}` | {} | `{}` | {} |\\n\",\n                h.label,\n                h.kind,\n                h.path.as_deref().unwrap_or(\"-\"),\n                h.degree\n            ));\n        }\n        md.push('\\n');\n    }\n\n    md.push_str(\"## Subsystems\\n\\n\");\n    if d.subsystems.is_empty() {\n        md.push_str(\"_No subsystems detected: files have no cross-file imports or calls yet._\\n\\n\");\n    } else {\n        md.push_str(\n            \"Groups of files that depend on each other far more than on the rest (detected from imports and calls).\\n\\n\",\n        );\n        for (i, s) in d.subsystems.iter().enumerate() {\n            md.push_str(&format!(\n                \"### {}. {} ({} files)\\n\\n\",\n                i + "
+    },
+    {
+      "line": 43,
+      "name": "serve",
+      "path": "src/server/mod.rs",
+      "snippet_truncated": true,
+      "source_chars": 2425,
+      "text": "src/server/mod.rs\npub fn serve(graph: &CodeGraph, opts: ServeOptions) -> Result<()> {\n    let data = serde_json::to_string(graph)?;\n    let stat = format!(\n        \"{} nodes \\u{00b7} {} edges\",\n        graph.nodes.len(),\n        graph.edges.len()\n    );\n    let mut token_bytes = [0u8; 32];\n    getrandom::fill(&mut token_bytes).map_err(|e| anyhow!(\"creating session token: {e}\"))?;\n    let token = token_bytes\n        .iter()\n        .map(|b| format!(\"{b:02x}\"))\n        .collect::<String>();\n    let page = Arc::new(assets::graph_page(&data, &stat, Delivery::Server).replace(\n        \"</head>\",\n        &format!(\"<meta name=\\\"code-rcl-token\\\" content=\\\"{token}\\\"></head>\"),\n    ));\n    let token = Arc::new(token);\n\n    let server = Server::http((\"127.0.0.1\", opts.port))\n        .map_err(|e| anyhow!(\"cannot bind 127.0.0.1:{}: {e}\", opts.port))?;\n    let port = server\n        .server_addr()\n        .to_ip()\n        .map(|a| a.port())\n        .unwrap_or(opts.port);\n    let url = format!(\"http://127.0.0.1:{port}/\");\n    let server = Arc::new(server);\n\n    let shutdown = Arc::new(AtomicBool::new(false));\n    let live = Arc::new(AtomicUsize::new(0));\n    let project = Arc::new(opts.project);\n\n    // Ctrl-C -> ask everything to wind down. Workers poll `shutdown` between\n    // short accept timeouts, so flipping the flag is all it takes.\n    {\n        let shutdown = shutdown.clone();\n        let _ = ctrlc::set_handler(move || shutdown.store(true, Ordering::SeqCst));\n    }\n\n    spawn_reaper(shutdown.clone(), live.clone());\n\n    println!(\"code-rcl graph  ->  {url}\");\n    println!(\n        \"  serving {} nodes / {} edges; the server exits when you close the tab (or press Ctrl-C)\",\n        graph.nodes.len(),\n        graph.edges.len()\n    );\n    if opts.open && webbrowser::open(&url).is_err() {\n        eprin"
+    },
+    {
+      "line": 356,
+      "name": "collect_vars_and_consts",
+      "path": "src/analysis/go.rs",
+      "snippet_truncated": false,
+      "source_chars": 730,
+      "text": "src/analysis/go.rs\nfn collect_vars_and_consts(&mut self, node: Node) {\n        let mut cursor = node.walk();\n        for child in node.children(&mut cursor) {\n            if child.kind() == \"var_spec\" || child.kind() == \"const_spec\" {\n                let type_str = child\n                    .child_by_field_name(\"type\")\n                    .map(|t| self.text(t).to_string());\n                let mut vcursor = child.walk();\n                for vchild in child.children(&mut vcursor) {\n                    if vchild.kind() == \"identifier\" {\n                        let vname = self.text(vchild);\n                        self.sc.bind(vname, \"local\", None, None, type_str.clone());\n                    }\n                }\n            }\n        }\n    }"
+    },
+    {
+      "line": 85,
+      "name": "render_json",
+      "path": "src/commands/path.rs",
+      "snippet_truncated": false,
+      "source_chars": 111,
+      "text": "src/commands/path.rs\npub fn render_json(reports: &[PathReport]) -> Result<String> {\n    Ok(serde_json::to_string_pretty(reports)?)\n}"
+    },
+    {
+      "line": 319,
+      "name": "is_our_handler",
+      "path": "src/commands/setup_integrations.rs",
+      "snippet_truncated": false,
+      "source_chars": 178,
+      "text": "src/commands/setup_integrations.rs\nfn is_our_handler(handler: &serde_json::Value) -> bool {\n    handler\n        .get(\"command\")\n        .and_then(|c| c.as_str())\n        .is_some_and(|c| c.contains(HOOK_MARKER))\n}"
+    },
+    {
+      "line": 141,
+      "name": "string_literal_row",
+      "path": "src/cache/mappers.rs",
+      "snippet_truncated": false,
+      "source_chars": 303,
+      "text": "src/cache/mappers.rs\npub fn string_literal_row(r: &Row) -> StringLiteralRow {\n    let p = &r.values;\n    StringLiteralRow {\n        id: id(r),\n        file_id: int(p, \"file_id\").unwrap_or_default(),\n        value: text(p, \"value\").unwrap_or_default(),\n        callee: text(p, \"callee\"),\n        line: int(p, \"line\"),\n    }\n}"
+    },
+    {
+      "line": 102,
+      "name": "default",
+      "path": "src/config.rs",
+      "snippet_truncated": false,
+      "source_chars": 332,
+      "text": "src/config.rs\nfn default() -> Self {\n        Self {\n            min_confidence: 0.4,\n            include_external: false,\n            max_nodes: 4000,\n            depth: 2,\n            kinds: [\"imports\", \"calls\", \"contains\", \"implements\"]\n                .iter()\n                .map(|s| s.to_string())\n                .collect(),\n        }\n    }"
+    },
+    {
+      "line": 295,
+      "name": "names_foreign_type",
+      "path": "src/graph/resolve/refs.rs",
+      "snippet_truncated": false,
+      "source_chars": 319,
+      "text": "src/graph/resolve/refs.rs\nfn names_foreign_type(rf: &RefRow, ctx: &ResolveCtx) -> bool {\n    let Some(recv) = rf.receiver.as_deref() else {\n        return false;\n    };\n    let head = recv.rsplit(\"::\").next().unwrap_or(recv);\n    head.chars().next().is_some_and(char::is_uppercase)\n        && head != \"Self\"\n        && !is_type_name(ctx, head)\n}"
+    },
+    {
+      "line": 106,
+      "name": "report_precise",
+      "path": "src/commands/sync.rs",
+      "snippet_truncated": false,
+      "source_chars": 853,
+      "text": "src/commands/sync.rs\npub fn report_precise(stats: &PreciseStats) {\n    for outcome in &stats.languages {\n        eprintln!(\n            \"precise[{}]: {} resolved {}/{} refs in {} file(s) \\\n             ({} external, {} untracked, {} unresolved)\",\n            outcome.language,\n            outcome.server,\n            outcome.hits,\n            outcome.queried,\n            outcome.files,\n            outcome.external,\n            outcome.nonode,\n            outcome.unresolved,\n        );\n    }\n    if stats.languages.is_empty() && stats.warnings.is_empty() && stats.errors.is_empty() {\n        eprintln!(\"precise: everything was already up to date (use --precise-full to redo it)\");\n    }\n    for warning in &stats.warnings {\n        eprintln!(\"warning: {warning}\");\n    }\n    for error in &stats.errors {\n        eprintln!(\"error: precise pass failed for {error}\");\n    }\n}"
+    },
+    {
+      "line": 29,
+      "name": "substring",
+      "path": "src/commands/mcp/inputs.rs",
+      "snippet_truncated": false,
+      "source_chars": 56,
+      "text": "src/commands/mcp/inputs.rs\nfn substring() -> MatchMode {\n    MatchMode::Substring\n}"
+    },
+    {
+      "line": 17,
+      "name": "run",
+      "path": "src/commands/explain/mod.rs",
+      "snippet_truncated": false,
+      "source_chars": 305,
+      "text": "src/commands/explain/mod.rs\npub fn run(args: ExplainArgs) -> Result<()> {\n    let reports = generate_reports(&args)?;\n    if args.json {\n        println!(\n            \"{}\",\n            crate::output::json(&args.project, args.no_sync, &reports)?\n        );\n    } else {\n        print!(\"{}\", render_ascii(&reports));\n    }\n    Ok(())\n}"
+    },
+    {
+      "line": 113,
+      "name": "write_section",
+      "path": "src/commands/explain/render.rs",
+      "snippet_truncated": false,
+      "source_chars": 481,
+      "text": "src/commands/explain/render.rs\nfn write_section(\r\n    out: &mut String,\r\n    title: &str,\r\n    empty: &str,\r\n    items: &[crate::commands::impact::ImpactItem],\r\n) {\r\n    let _ = writeln!(out, \"{title}\");\r\n    if items.is_empty() {\r\n        let _ = writeln!(out, \"  {empty}\");\r\n    } else {\r\n        let mut visited = HashSet::new();\r\n        for (i, item) in items.iter().enumerate() {\r\n            write_tree(out, item, \"  \", i + 1 == items.len(), &mut visited);\r\n        }\r\n    }\r\n    let _ = writeln!(out);\r\n}"
+    },
+    {
+      "line": 154,
+      "name": "analyze",
+      "path": "src/commands/report.rs",
+      "snippet_truncated": true,
+      "source_chars": 1877,
+      "text": "src/commands/report.rs\nfn analyze(project: &Path, graph: &CodeGraph) -> ReportData {\n    let mut languages: BTreeMap<String, usize> = BTreeMap::new();\n    let (mut total_files, mut total_symbols, mut public_symbols) = (0usize, 0usize, 0usize);\n    for n in &graph.nodes {\n        match n.kind.as_str() {\n            \"file\" => {\n                total_files += 1;\n                if let Some(lang) = &n.language {\n                    *languages.entry(lang.clone()).or_insert(0) += 1;\n                }\n            }\n            // Same symbol kinds `digest` counts, so the two summaries agree.\n            \"struct\" | \"enum\" | \"class\" | \"interface\" | \"trait\" | \"type\" | \"method\"\n            | \"function\" => {\n                total_symbols += 1;\n                if n.exported {\n                    public_symbols += 1;\n                }\n            }\n            _ => {}\n        }\n    }\n\n    let hubs = hubs_from_graph(graph);\n    let communities = community::detect_graph(graph);\n    let links = file_graph(&graph.nodes, &graph.edges);\n\n    let label_of: HashMap<u32, &str> = communities\n        .list\n        .iter()\n        .map(|c| (c.id, c.label.as_str()))\n        .collect();\n\n    let subsystems: Vec<Subsystem> = communities\n        .list\n        .iter()\n        .take(MAX_SUBSYSTEMS)\n        .map(|c| subsystem_of(c, &communities, &label_of))\n        .collect();\n\n    let clustered: usize = communities.list.iter().map(|c| c.size).sum();\n    let unclustered_files = total_files.saturating_sub(clustered);\n\n    let bridges = bridges_of(&communities, &links, &label_of);\n    let questions = questions_of(&hubs, &subsystems, &communities, &bridges);\n\n    ReportData {\n        project: project_name(project),\n        total_files,\n        total_symbols,\n        public_symbols,\n        languages,\n        hubs,\n        subsy"
+    },
+    {
+      "line": 78,
+      "name": "relation_entries",
+      "path": "src/commands/dump.rs",
+      "snippet_truncated": false,
+      "source_chars": 1133,
+      "text": "src/commands/dump.rs\npub fn relation_entries(\n    project: &Path,\n    target: &str,\n    depth: u32,\n    max_size_kb: u64,\n    no_sync: bool,\n) -> Result<(Vec<PathBuf>, Vec<walker::FileEntry>)> {\n    let query = GraphQuery {\n        project: project.to_path_buf(),\n        scope: \"both\".to_string(),\n        kinds: vec![\n            \"imports\".to_string(),\n            \"calls\".to_string(),\n            \"contains\".to_string(),\n        ],\n        path: None,\n        focus: Some(target.to_string()),\n        depth: Some(depth),\n        // None: min_confidence / include_external come from config.toml.\n        min_confidence: None,\n        include_external: None,\n        max_nodes: Some(4000),\n        no_sync,\n        precise: Default::default(),\n    };\n\n    let graph = build_graph(&query)?;\n    let target_rel_paths: Vec<PathBuf> = graph\n        .nodes\n        .iter()\n        .filter_map(|n| n.path.as_deref())\n        .map(PathBuf::from)\n        .collect::<HashSet<_>>()\n        .into_iter()\n        .collect();\n\n    let (tree_paths, files) =\n        walker::collect_related_files(project, &target_rel_paths, max_size_kb);\n    Ok((tree_paths, files))\n}"
+    },
+    {
+      "line": 359,
+      "name": "run_dump",
+      "path": "src/server/mod.rs",
+      "snippet_truncated": false,
+      "source_chars": 1213,
+      "text": "src/server/mod.rs\nfn run_dump(project: &Path, url: &str) -> String {\n    let Some(target) = query_param(url, \"target\").filter(|t| !t.is_empty()) else {\n        return serde_json::json!({\"ok\": false, \"error\": \"missing target\"}).to_string();\n    };\n    let depth = query_param(url, \"depth\")\n        .and_then(|d| d.parse::<u32>().ok())\n        .unwrap_or(2)\n        .clamp(1, 5);\n    let name = sanitize_name(query_param(url, \"name\"), &unique_name(\"context\", \"md\"));\n    let dir = match resolve_output_dir(project, query_param(url, \"dir\")) {\n        Ok(d) => d,\n        Err(e) => return serde_json::json!({\"ok\": false, \"error\": e}).to_string(),\n    };\n    let output = dir.join(&name);\n\n    match crate::commands::dump::generate_relation_bundle(project, &target, depth, 50, false)\n        .and_then(|(body, n)| {\n            write_project_file(project, &output, &body)?;\n            Ok((output.clone(), n))\n        }) {\n        Ok((path, n)) => serde_json::json!({\n            \"ok\": true,\n            \"path\": path.display().to_string(),\n            \"files\": n,\n        })\n        .to_string(),\n        Err(e) => serde_json::json!({\n            \"ok\": false,\n            \"error\": e.to_string(),\n        })\n        .to_string(),\n    }\n}"
+    },
+    {
+      "line": 53,
+      "name": "apply_focus",
+      "path": "src/graph/resolve/postprocess.rs",
+      "snippet_truncated": false,
+      "source_chars": 1354,
+      "text": "src/graph/resolve/postprocess.rs\npub(super) fn apply_focus(nodes: &mut Vec<Node>, edges: &mut Vec<Edge>, focus: &str, depth: u32) {\n    let focus_normalized = focus.replace(\"\\\\\", \"/\");\n    let focus_clean = focus_normalized\n        .strip_prefix(\"./\")\n        .unwrap_or(&focus_normalized);\n    let seeds: HashSet<&str> = nodes\n        .iter()\n        .filter(|n| n.label == focus_clean || n.id.contains(focus_clean))\n        .map(|n| n.id.as_str())\n        .collect();\n    if seeds.is_empty() {\n        return;\n    }\n\n    let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();\n    for e in edges.iter() {\n        adj.entry(&e.source).or_default().push(&e.target);\n        adj.entry(&e.target).or_default().push(&e.source);\n    }\n\n    let mut keep: HashSet<String> = seeds.iter().map(|s| s.to_string()).collect();\n    let mut frontier: VecDeque<(String, u32)> = seeds.iter().map(|s| (s.to_string(), 0)).collect();\n    while let Some((id, d)) = frontier.pop_front() {\n        if d >= depth {\n            continue;\n        }\n        if let Some(neigh) = adj.get(id.as_str()) {\n            for n in neigh {\n                if keep.insert(n.to_string()) {\n                    frontier.push_back((n.to_string(), d + 1));\n                }\n            }\n        }\n    }\n\n    nodes.retain(|n| keep.contains(&n.id));\n    edges.retain(|e| keep.contains(&e.source) && keep.contains(&e.target));\n}"
+    },
+    {
+      "line": 114,
+      "name": "scope_row",
+      "path": "src/cache/mappers.rs",
+      "snippet_truncated": false,
+      "source_chars": 435,
+      "text": "src/cache/mappers.rs\npub fn scope_row(r: &Row) -> ScopeRow {\n    let p = &r.values;\n    ScopeRow {\n        id: id(r),\n        file_id: int(p, \"file_id\").unwrap_or_default(),\n        parent_scope_id: int(p, \"parent_scope_id\"),\n        owner_symbol_id: int(p, \"owner_symbol_id\"),\n        kind: text(p, \"kind\").unwrap_or_default(),\n        start_byte: int(p, \"start_byte\").unwrap_or_default(),\n        end_byte: int(p, \"end_byte\").unwrap_or_default(),\n    }\n}"
+    },
+    {
+      "line": 46,
+      "name": "resolve_project",
+      "path": "src/commands/mcp/handlers.rs",
+      "snippet_truncated": false,
+      "source_chars": 245,
+      "text": "src/commands/mcp/handlers.rs\npub fn resolve_project(default_project: &Path, args: &Value) -> PathBuf {\n    if let Some(p) = args.get(\"project\").and_then(|v| v.as_str())\n        && !p.is_empty()\n    {\n        return PathBuf::from(p);\n    }\n    default_project.to_path_buf()\n}"
+    },
+    {
+      "line": 164,
+      "name": "rpc_error",
+      "path": "src/commands/mcp/mod.rs",
+      "snippet_truncated": false,
+      "source_chars": 320,
+      "text": "src/commands/mcp/mod.rs\nfn rpc_error(id: Option<Value>, code: i64, message: String) -> JsonRpcResponse<'static> {\n    JsonRpcResponse {\n        jsonrpc: \"2.0\",\n        id: Some(id.unwrap_or(Value::Null)),\n        result: None,\n        error: Some(JsonRpcError {\n            code,\n            message,\n            data: None,\n        }),\n    }\n}"
+    },
+    {
+      "line": 477,
+      "name": "method_owner_type",
+      "path": "src/graph/resolve/refs.rs",
+      "snippet_truncated": false,
+      "source_chars": 451,
+      "text": "src/graph/resolve/refs.rs\nfn method_owner_type(ctx: &ResolveCtx, symbol_id: i64) -> Option<String> {\n    let s = ctx.sym_by_id.get(&symbol_id)?;\n    if let Some(t) = &s.type_name {\n        return Some(t.clone());\n    }\n    // Fall back to the parent symbol's name (a class / struct / impl).\n    let p = s.parent_symbol_id.and_then(|pid| ctx.sym_by_id.get(&pid))?;\n    let n = p.name.rsplit(\" for \").next().unwrap_or(&p.name).trim();\n    (!n.is_empty()).then(|| n.to_string())\n}"
+    },
+    {
+      "line": 29,
+      "name": "extension",
+      "path": "src/graph/render/mod.rs",
+      "snippet_truncated": false,
+      "source_chars": 184,
+      "text": "src/graph/render/mod.rs\npub fn extension(&self) -> &'static str {\n        match self {\n            Format::Html => \"html\",\n            Format::Json => \"json\",\n            Format::Dot => \"dot\",\n        }\n    }"
+    },
+    {
+      "line": 66,
+      "name": "bind_signature",
+      "path": "src/analysis/rust/symbols.rs",
+      "snippet_truncated": false,
+      "source_chars": 1099,
+      "text": "src/analysis/rust/symbols.rs\npub fn bind_signature(&mut self, func: Node) {\n        let generics = self.generic_param_names(func);\n\n        if let Some(params) = func.child_by_field_name(\"parameters\") {\n            let kids: Vec<Node> = {\n                let mut c = params.walk();\n                params.named_children(&mut c).collect()\n            };\n            for p in kids {\n                if p.kind() != \"parameter\" {\n                    continue;\n                }\n                let Some(pat) = p.child_by_field_name(\"pattern\") else {\n                    continue;\n                };\n                let name = self.text(pat).to_string();\n                let ty_node = p.child_by_field_name(\"type\");\n                let ty = ty_node.map(|t| self.text(t).trim().to_string());\n                self.sc.bind(&name, \"param\", None, None, ty);\n                if let Some(t) = ty_node {\n                    self.collect_type_refs(t, &generics);\n                }\n            }\n        }\n\n        if let Some(ret) = func.child_by_field_name(\"return_type\") {\n            self.collect_type_refs(ret, &generics);\n        }\n    }"
+    },
+    {
+      "line": 332,
+      "name": "write_report",
+      "path": "src/commands/path.rs",
+      "snippet_truncated": true,
+      "source_chars": 2626,
+      "text": "src/commands/path.rs\nfn write_report(out: &mut String, report: &PathReport, label_endpoints: bool) {\n    let _ = writeln!(out, \"{RULE_HEAVY}\");\n    let _ = writeln!(out, \"  PATH: {} → {}\", report.from, report.to);\n    if label_endpoints {\n        let _ = writeln!(out, \"{RULE_LIGHT}\");\n        let _ = writeln!(\n            out,\n            \"  From : {}\\n  To   : {}\",\n            report.from_loc.as_deref().unwrap_or(\"(unknown location)\"),\n            report.to_loc.as_deref().unwrap_or(\"(unknown location)\"),\n        );\n    }\n    let _ = writeln!(out, \"{RULE_LIGHT}\");\n    if report.found {\n        let _ = writeln!(\n            out,\n            \"  Length : {} hop(s)   Direction : {}\",\n            report.length, report.direction\n        );\n    } else {\n        let _ = writeln!(out, \"  Direction : {}\", report.direction);\n    }\n    let _ = writeln!(out, \"{RULE_HEAVY}\\n\");\n\n    if !report.found {\n        let _ = writeln!(\n            out,\n            \"  No path found from '{}' to '{}'.\",\n            report.from, report.to\n        );\n        if report.direction.eq_ignore_ascii_case(\"forward\") {\n            let _ = writeln!(\n                out,\n                \"  Try --direction any to follow edges in either direction, or raise --max-depth.\\n\"\n            );\n        } else {\n            let _ = writeln!(out, \"  Try raising --max-depth.\\n\");\n        }\n        return;\n    }\n\n    let last = report.hops.len().saturating_sub(1);\n    for (i, hop) in report.hops.iter().enumerate() {\n        let glyph = if i == 0 || i == last { \"◆\" } else { \"○\" };\n        let loc = hop\n            .path\n            .as_deref()\n            .map(|p| format!(\"  {p}\"))\n            .unwrap_or_default();\n        let _ = writeln!(out, \"  {glyph} {}  [{}]{loc}\", hop.label, hop.kind);\n\n        if i < last {\n            let next = &re"
+    },
+    {
+      "line": 80,
+      "name": "resolve_rust_import",
+      "path": "src/graph/resolve/imports.rs",
+      "snippet_truncated": false,
+      "source_chars": 1714,
+      "text": "src/graph/resolve/imports.rs\nfn resolve_rust_import(\n    importer_rel: &str,\n    spec: &str,\n    path_set: &HashSet<String>,\n) -> Option<String> {\n    let segs: Vec<&str> = spec.split(\"::\").filter(|s| !s.is_empty()).collect();\n    if segs.is_empty() {\n        return None;\n    }\n\n    let mut base: Vec<String>;\n    let rest: &[&str];\n    match segs[0] {\n        \"crate\" => {\n            base = vec![\"src\".to_string()];\n            rest = &segs[1..];\n        }\n        \"self\" => {\n            base = dir_components(importer_rel);\n            rest = &segs[1..];\n        }\n        \"super\" => {\n            base = dir_components(importer_rel);\n            let mut i = 0;\n            while i < segs.len() && segs[i] == \"super\" {\n                base.pop();\n                i += 1;\n            }\n            rest = &segs[i..];\n        }\n        _ => {\n            // Possibly a local top-level module; otherwise an external crate.\n            base = vec![\"src\".to_string()];\n            rest = &segs[..];\n        }\n    }\n\n    let mut module: Vec<String> = std::mem::take(&mut base);\n    module.extend(rest.iter().map(|s| s.to_string()));\n\n    // Try the full module path, then drop the trailing item name.\n    for cut in [0usize, 1] {\n        if module.len() <= cut {\n            continue;\n        }\n        let mp = &module[..module.len() - cut];\n        let joined = mp.join(\"/\");\n        let cands = [\n            format!(\"{joined}.rs\"),\n            format!(\"{joined}/mod.rs\"),\n            joined\n                .strip_prefix(\"src/\")\n                .map(|s| format!(\"{s}.rs\"))\n                .unwrap_or_default(),\n        ];\n        if let Some(hit) = first_existing(path_set, &cands) {\n            return Some(hit);\n        }\n    }\n    None\n}"
+    },
+    {
+      "line": 92,
+      "name": "prune_unreferenced_externals",
+      "path": "src/graph/resolve/postprocess.rs",
+      "snippet_truncated": false,
+      "source_chars": 431,
+      "text": "src/graph/resolve/postprocess.rs\npub(super) fn prune_unreferenced_externals(\n    nodes: &mut Vec<Node>,\n    edges: &[Edge],\n    include_external: bool,\n) {\n    if !include_external {\n        nodes.retain(|n| n.kind != \"external\");\n        return;\n    }\n    let used: HashSet<&str> = edges\n        .iter()\n        .flat_map(|e| [e.source.as_str(), e.target.as_str()])\n        .collect();\n    nodes.retain(|n| n.kind != \"external\" || used.contains(n.id.as_str()));\n}"
+    },
+    {
+      "line": 65,
+      "name": "kinds",
+      "path": "src/commands/mcp/inputs.rs",
+      "snippet_truncated": false,
+      "source_chars": 93,
+      "text": "src/commands/mcp/inputs.rs\nfn kinds() -> Vec<String> {\n    vec![\"calls\".into(), \"imports\".into(), \"references\".into()]\n}"
+    },
+    {
+      "line": 206,
+      "name": "param_count",
+      "path": "src/analysis/javascript.rs",
+      "snippet_truncated": false,
+      "source_chars": 468,
+      "text": "src/analysis/javascript.rs\nfn param_count(&self, node: Node) -> Option<i64> {\n        let params = node.child_by_field_name(\"parameters\")?;\n        let mut c = params.walk();\n        let n = params\n            .named_children(&mut c)\n            .filter(|p| {\n                matches!(\n                    p.kind(),\n                    \"required_parameter\" | \"optional_parameter\" | \"identifier\" | \"rest_pattern\"\n                )\n            })\n            .count();\n        Some(n as i64)\n    }"
+    },
+    {
+      "line": 222,
+      "name": "language_selected",
+      "path": "src/precise/mod.rs",
+      "snippet_truncated": false,
+      "source_chars": 525,
+      "text": "src/precise/mod.rs\nfn language_selected(lang_group: &str, filter: &[String]) -> bool {\n    filter.is_empty()\n        || filter.iter().any(|t| {\n            let t = t.trim().to_ascii_lowercase();\n            match t.as_str() {\n                \"py\" => lang_group == \"python\",\n                \"kt\" => lang_group == \"kotlin\",\n                \"rs\" => lang_group == \"rust\",\n                \"ts\" => lang_group == \"typescript\",\n                \"js\" => lang_group == \"javascript\",\n                other => other == lang_group,\n            }\n        })\n}"
+    },
+    {
+      "line": 478,
+      "name": "add",
+      "path": "src/graph/resolve/mod.rs",
+      "snippet_truncated": false,
+      "source_chars": 543,
+      "text": "src/graph/resolve/mod.rs\nfn add(\n        &mut self,\n        source: String,\n        target: String,\n        kind: &str,\n        conf: f32,\n        external: Option<String>,\n        line: Option<i64>,\n    ) {\n        let key = (source, target, kind.to_string());\n        let entry = self.map.entry(key).or_default();\n        if conf >= entry.confidence {\n            entry.confidence = conf;\n        }\n        if entry.external.is_none() {\n            entry.external = external;\n        }\n        if entry.line.is_none() {\n            entry.line = line;\n        }\n    }"
+    },
+    {
+      "line": 65,
+      "name": "command_for",
+      "path": "src/commands/setup.rs",
+      "snippet_truncated": false,
+      "source_chars": 225,
+      "text": "src/commands/setup.rs\nfn command_for(exe: Option<String>, path_var: Option<&std::ffi::OsStr>) -> String {\n    if on_path(COMMAND_NAME, path_var) {\n        return COMMAND_NAME.to_string();\n    }\n    exe.unwrap_or_else(|| COMMAND_NAME.to_string())\n}"
+    }
+  ],
+  "max_source_chars": 1800,
+  "max_tokens": 512,
+  "notes": "Agent-authored bilingual queries with a single designated relevant function per task, fixed before inference. Deterministic distractor sample. Rust-only internal evaluation; not a public benchmark.",
+  "queries": [
+    {
+      "gold": 0,
+      "language": "id",
+      "task": 0,
+      "text": "Mengubah posisi baris dan kolom UTF-16 menjadi offset byte, serta menolak posisi di tengah surrogate pair."
+    },
+    {
+      "gold": 0,
+      "language": "en",
+      "task": 0,
+      "text": "Convert a line and UTF-16 column to a byte offset while rejecting the middle of a surrogate pair."
+    },
+    {
+      "gold": 1,
+      "language": "id",
+      "task": 1,
+      "text": "Memilih deklarasi dengan rentang terkecil yang mencakup suatu posisi byte."
+    },
+    {
+      "gold": 1,
+      "language": "en",
+      "task": 1,
+      "text": "Choose the narrowest declaration range containing a byte position."
+    },
+    {
+      "gold": 2,
+      "language": "id",
+      "task": 2,
+      "text": "Mengubah path filesystem menjadi URI file dan melakukan encoding karakter khusus."
+    },
+    {
+      "gold": 2,
+      "language": "en",
+      "task": 2,
+      "text": "Turn a filesystem path into a file URI with special characters encoded."
+    },
+    {
+      "gold": 3,
+      "language": "id",
+      "task": 3,
+      "text": "Mengubah URI file dari language server kembali menjadi path lokal."
+    },
+    {
+      "gold": 3,
+      "language": "en",
+      "task": 3,
+      "text": "Convert a language server file URI back into a local filesystem path."
+    },
+    {
+      "gold": 4,
+      "language": "id",
+      "task": 4,
+      "text": "Menyimpan hasil ekspor hanya di dalam proyek dan menolak menimpa file yang sudah ada."
+    },
+    {
+      "gold": 4,
+      "language": "en",
+      "task": 4,
+      "text": "Save an export within the project directory and refuse to overwrite an existing file."
+    },
+    {
+      "gold": 5,
+      "language": "id",
+      "task": 5,
+      "text": "Menerjemahkan escape persen pada parameter URL dan tanda tambah menjadi spasi."
+    },
+    {
+      "gold": 5,
+      "language": "en",
+      "task": 5,
+      "text": "Decode percent escapes in a URL parameter and turn plus signs into spaces."
+    },
+    {
+      "gold": 6,
+      "language": "id",
+      "task": 6,
+      "text": "Membuat nama file hasil ekspor dengan akhiran acak dari sistem operasi."
+    },
+    {
+      "gold": 6,
+      "language": "en",
+      "task": 6,
+      "text": "Generate an export filename with an operating-system random suffix."
+    },
+    {
+      "gold": 7,
+      "language": "id",
+      "task": 7,
+      "text": "Mencari teks tanpa membedakan huruf besar kecil di baris file ketika pencarian simbol tidak cukup."
+    },
+    {
+      "gold": 7,
+      "language": "en",
+      "task": 7,
+      "text": "Search file lines for case-insensitive text when declaration lookup is insufficient."
+    },
+    {
+      "gold": 8,
+      "language": "id",
+      "task": 8,
+      "text": "Membatalkan seluruh relasi language server dan menaikkan generasi cache sebelum ID simbol diganti."
+    },
+    {
+      "gold": 8,
+      "language": "en",
+      "task": 8,
+      "text": "Invalidate language-server relationships across the project and advance the cache generation before symbol IDs change."
+    },
+    {
+      "gold": 9,
+      "language": "id",
+      "task": 9,
+      "text": "Menghapus catatan sebuah file beserta simbol, impor, referensi, scope dan binding dari database."
+    },
+    {
+      "gold": 9,
+      "language": "en",
+      "task": 9,
+      "text": "Delete a file record together with its symbols, imports, references, scopes and bindings from the database."
+    },
+    {
+      "gold": 10,
+      "language": "id",
+      "task": 10,
+      "text": "Membangun ulang tabel cache ketika versi schema tersimpan berbeda dari versi yang diperlukan."
+    },
+    {
+      "gold": 10,
+      "language": "en",
+      "task": 10,
+      "text": "Rebuild cache tables when the persisted schema version differs from the required version."
+    },
+    {
+      "gold": 11,
+      "language": "id",
+      "task": 11,
+      "text": "Mengecilkan respons terstruktur sampai sesuai batas byte dengan membuang item utuh dan mencatat pemangkasan."
+    },
+    {
+      "gold": 11,
+      "language": "en",
+      "task": 11,
+      "text": "Shrink a structured response to a byte budget by removing whole items and recording truncation."
+    },
+    {
+      "gold": 12,
+      "language": "id",
+      "task": 12,
+      "text": "Memeriksa argumen tool, batas angka, teks kosong, serta pilihan eksklusif simbol atau diff."
+    },
+    {
+      "gold": 12,
+      "language": "en",
+      "task": 12,
+      "text": "Validate tool arguments, numeric limits, empty strings and the exclusive choice between a symbol and a diff."
+    },
+    {
+      "gold": 13,
+      "language": "id",
+      "task": 13,
+      "text": "Menunggu language server selesai indexing dengan memantau progress, masa tenang, timeout dan pembatalan."
+    },
+    {
+      "gold": 13,
+      "language": "en",
+      "task": 13,
+      "text": "Wait for language-server indexing by observing progress, a quiet period, timeout and cancellation."
+    },
+    {
+      "gold": 14,
+      "language": "id",
+      "task": 14,
+      "text": "Memastikan proses anak language server dibunuh dan ditunggu saat objek client dihancurkan."
+    },
+    {
+      "gold": 14,
+      "language": "en",
+      "task": 14,
+      "text": "Ensure the language-server child process is killed and reaped when its client is destroyed."
+    },
+    {
+      "gold": 15,
+      "language": "id",
+      "task": 15,
+      "text": "Menyeragamkan respons definisi language server yang dapat berupa array atau satu lokasi menjadi daftar target."
+    },
+    {
+      "gold": 15,
+      "language": "en",
+      "task": 15,
+      "text": "Normalize a language-server definition response containing either an array or a single location into a target list."
+    }
+  ]
+}

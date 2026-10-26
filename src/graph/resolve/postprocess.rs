@@ -149,6 +149,7 @@ pub(super) fn enforce_max_nodes(
 
     nodes.retain(|n| !doomed.contains(&n.id));
     edges.retain(|e| !doomed.contains(&e.source) && !doomed.contains(&e.target));
+    crate::operation::omitted(doomed.len());
     if !doomed.is_empty() {
         eprintln!(
             "graph: dropped {} low-degree symbol nodes to stay under --max-nodes {max_nodes}",

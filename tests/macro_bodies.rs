@@ -45,7 +45,7 @@ fn graph_json(work: &Path) -> Value {
         "graph failed: {}",
         String::from_utf8_lossy(&result.stderr)
     );
-    serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap()
+    support::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap()
 }
 
 fn edges_of_kind(graph: &Value, kind: &str) -> HashSet<(String, String)> {
@@ -124,3 +124,5 @@ fn a_symbol_reached_only_through_a_macro_is_not_dead_code() {
         "impact must name the caller hidden in the macro:\n{stdout}"
     );
 }
+
+mod support;

@@ -81,7 +81,7 @@ fn a_config_file_adds_no_nodes_to_the_dependency_graph() {
     assert!(result.status.success());
 
     let graph: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+        support::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
     let has_toml = graph["nodes"]
         .as_array()
         .unwrap()
@@ -92,3 +92,5 @@ fn a_config_file_adds_no_nodes_to_the_dependency_graph() {
         "config files are indexed for search only; they must not enter the graph"
     );
 }
+
+mod support;

@@ -1,5 +1,9 @@
 # codebase-recall
 
+[Getting started](docs/GETTING-STARTED.md) · [Usage guide](docs/USAGE.md) · [MCP setup and tools](docs/MCP.md)
+
+Version 0.10.0 adds semantic/hybrid search with local EmbeddingGemma 1 Q4. Read the [embedding guide](docs/EMBEDDINGS.md) and [0.10 migration guide](docs/MIGRATION-0.10.md). The [0.9 migration guide](docs/MIGRATION-0.9.md) still applies to older integrations. JSON examples below show the `data` payload unless an envelope is shown.
+
 > **High-performance CLI codebase context dumper for LLMs and AST-based code relation grapher.**
 
 `codebase-recall` (`code-rcl`) is a command-line tool built with Rust 🦀 designed for two primary developer workflows:
@@ -14,6 +18,22 @@
 ![code-rcl interactive graph demo](docs/media/demo.gif)
 
 ---
+
+## Semantic code search
+
+```sh
+code-rcl embeddings setup
+code-rcl embeddings sync
+code-rcl search "where requests are cancelled" --semantic
+code-rcl search "cancel request" --hybrid
+```
+
+Model download is explicit. Normal semantic/hybrid searches refresh pending
+embeddings after edits; explicit indexing is also available. Lexical search
+remains the default while the automatic feature pipeline is quality-gated.
+Inspect embedding freshness and coverage before drawing conclusions. See
+[setup, configuration and troubleshooting](docs/EMBEDDINGS.md).
+See [search consistency and automatic retrieval evaluation](docs/AUTOMATIC-SEARCH.md).
 
 ## Key Features
 
@@ -32,7 +52,7 @@
 
 - **Multi-Language AST Parsing:** Powered by tree-sitter for **Rust**, **Go**, **JavaScript/JSX**, **TypeScript/TSX**, **Python**, **Java**, **Kotlin**, and Single-File Components (**Vue**, **Svelte**).
 - **Multi-Tier Resolution:** Tracks symbols (functions, structs, classes, enums, methods), imports, and call references across files with confidence scoring.
-- **Incremental bkndb Caching:** Stores file hashes (Blake3) and AST entities in `.code-rcl/cache.bkndb`, an embedded single-file database. Re-runs only parse files modified since the last sync.
+- **Incremental bkndb Caching:** Stores file hashes (Blake3) and AST entities in `.code-rcl/cache.bkndb`, an embedded single-file database. Every normal sync hashes eligible contents; only changed contents are reparsed.
 - **Interactive Browser Viewer (`serve`):**
   - Instant local visualization powered by vendored d3-force simulation (smooth zoom, pan, and drag).
   - Toggle edge kinds (`imports`, `calls`, `references`).
@@ -46,6 +66,8 @@
 ## Installation
 
 ### Prebuilt Binaries
+
+Release installers fetch published artifacts. To use unpublished 0.10.0 changes in this checkout, build/install from source and verify `code-rcl --version`.
 
 #### macOS / Linux (Shell Script)
 
@@ -79,6 +101,16 @@ cargo install --path .
 The compiled binary is available as `code-rcl`.
 
 ---
+
+## Search modes and structured output
+
+```sh
+code-rcl search CacheDb --match-mode exact --json
+code-rcl search Cache --match-mode prefix
+code-rcl sync --json
+```
+
+CLI JSON uses `schema_version`, `status`, `data`, and `metadata`. Existing consumers must read former root-level fields/arrays from `data`. See [the usage guide](docs/USAGE.md) for examples and [migration](docs/MIGRATION-0.9.md) for compatibility changes.
 
 ## Subcommands Overview
 
@@ -149,7 +181,7 @@ code-rcl dump -r App --no-sync
 ### Output Markdown Structure
 
 ````markdown
-> **Targeted dump**: focused on `build_graph` with depth 2. 
+> **Targeted dump**: focused on `build_graph` with depth 2.
 
 # Directory Tree
 
@@ -261,7 +293,7 @@ code-rcl serve --scope symbol --focus handle_request --depth 3
 
 ## Usage — `digest` (Architecture Outline & Public API Digest)
 
-Generate a high-level architectural skeleton and public API index. `digest` strips function bodies (`{ ... }`), preserving types, interfaces, methods, and exported signatures to save 80–90% prompt tokens while giving LLMs full structural visibility. It also detects **Core Architecture Hubs** (the highest-degree connected symbols) to highlight the central pillars of the codebase.
+Generate a high-level architectural skeleton and public API index. `digest` strips function bodies (`{ ... }`), preserving types, interfaces, methods, and exported signatures to reduce source-context size while keeping declarations visible. It also detects **Core Architecture Hubs** (the highest-degree connected symbols) to highlight the central pillars of the codebase.
 
 ### Examples
 
@@ -296,7 +328,7 @@ code-rcl digest --json
 
 ## Usage — `impact` (Blast Radius & Impact Analysis)
 
-Analyze the blast radius of modifying a function, class, or module. `impact` performs reverse dependency traversal (`calls` and `imports`) on the relation graph to show every symbol and file that will be affected by your change.
+Analyze the blast radius of modifying a function, class, or module. `impact` traverses caller/callee relationships (`calls`, `imports`, and `references` by default) to inspect potential effects. Results depend on parser/resolver coverage, confidence, and configured limits.
 
 ### Examples
 
@@ -417,26 +449,26 @@ References are resolved through a 5-tier pipeline ordered by confidence:
 ```mermaid
 flowchart TD
     Ref(["Call Site Reference"]) --> L0{"L0: Language Server?<br/><i>(precise_status)</i>"}
-    
+
     %% L0 Tier
     L0 -->|"hit"| Res0["Emit Edge: Target Symbol<br/><b>confidence: 1.00</b>"]
     L0 -->|"external / nonode"| Drop0["Drop Edge: External / Stdlib<br/><i>(suppress heuristic false edges)</i>"]
     L0 -->|"unresolved / disabled"| L1{"L1: Lexical Scope?<br/><i>(sync-time AST analysis)</i>"}
-    
+
     %% L1 Tier
     L1 -->|"local_only = true"| Drop1["Drop Edge: Local Scope Binding<br/><i>(variable, param, closure quarantined)</i>"]
     L1 -->|"resolved_symbol_id"| Res1["Emit Edge: Local Symbol<br/><b>confidence: 0.95</b>"]
     L1 -->|"unresolved"| L2{"L2: Explicit Import?<br/><i>(binding)</i>"}
-    
+
     %% L2 Tier
     L2 -->|"Target::Symbol (named import)"| Res2A["Emit Edge: Import Target<br/><b>confidence: 0.90</b>"]
     L2 -->|"Target::Module (module::func / ns.func)"| Res2B["Emit Edge: Module Symbol<br/><b>confidence: 0.90</b>"]
     L2 -->|"unresolved"| L3{"L3: Receiver Type?<br/><i>(self, Type::method, self.field)</i>"}
-    
+
     %% L3 Tier
     L3 -->|"method found in type_methods"| Res3["Emit Edge: Type Method<br/><b>confidence: 0.80 - 0.90</b>"]
     L3 -->|"unresolved"| L4{"L4: Compatible Candidates?<br/><i>(defs_by_name)</i>"}
-    
+
     %% L4 Tier
     L4 -->|"no candidates"| Drop4A["Drop Edge: Unknown Symbol"]
     L4 -->|"scored candidates"| L4Margin{"Score Margin?<br/><i>(best - runner_up)</i>"}
@@ -494,7 +526,7 @@ code-rcl graph --precise
 
 ### Supported Language Servers
 
-Nothing is bundled. Install the servers for your languages; a missing server is reported with its install command and that language simply retains its heuristic edges.
+Nothing is bundled. Install the servers for your languages; a missing server is reported with its install command and the precise request fails. Explicit `--allow-heuristic-fallback` permits partial heuristic results with warnings.
 
 | Language | Server | Install Command | Override Variable |
 | :--- | :--- | :--- | :--- |
@@ -514,13 +546,14 @@ Per-project defaults for these flags, and the Kotlin server choice (`[precise.ko
 | :--- | :--- | :--- |
 | `--precise` | `false` | Resolve references through the real language servers |
 | `--precise-full` | `false` | Re-ask about every file, not just the ones with no answer yet |
-| `--precise-timeout <SECONDS>` | `15` | Budget for a single language-server answer |
+| `--precise-timeout <SECONDS>` | `15` | Initialization/request budget; also bounds the indexing wait |
+| `--allow-heuristic-fallback` | `false` | With `--precise`, permit partial heuristic results when LSP fails |
 
 ---
 
 ## JSON Schema (`--format json`, `version: 2`)
 
-When exporting with `code-rcl graph --format json`, the output conforms to this structure:
+When exporting with `code-rcl graph --format json`, the following structure is inside the result envelope's `data` field. Read nodes as `result.data.nodes`; the envelope has `schema_version: 1`. See [JSON results](docs/USAGE.md#json-results).
 
 ```jsonc
 {
@@ -577,69 +610,53 @@ When exporting with `code-rcl graph --format json`, the output conforms to this 
 
 ## Model Context Protocol (MCP) Server
 
-`code-rcl` includes a built-in MCP server that runs over standard I/O (`stdio`), allowing AI coding agents (Claude Desktop, Cursor, Gemini Antigravity, Cline, etc.) to perform AST-based architecture discovery and dependency traversal automatically:
+The server exposes nine tools over stdio, protocol **2025-06-18**. See the
+[complete MCP guide](docs/MCP.md) for setup, schemas, example requests, budgets,
+errors, and cancellation.
 
-```bash
-# Launch MCP server over stdio for current directory
-code-rcl mcp
-
-# Launch with an explicit target project
-code-rcl mcp --project /path/to/project
-```
-
-### Instant Automated Setup (`code-rcl setup`)
-
-Instead of configuring JSON files manually, `code-rcl` can self-install its agent skill and register itself into your agent's MCP configuration automatically:
-
-```bash
-# Auto-configure current workspace (.agents/skills/code-rcl/SKILL.md and .mcp.json)
+```sh
+# Run from the project you want to analyze, after installing the new binary:
 code-rcl setup --workspace
+code-rcl setup --global --target codex
 
-# Configure globally for all projects (~/.gemini/config and ~/.claude.json)
-code-rcl setup --global
+# Remove only the selected agent integration:
+code-rcl uninstall --workspace --target codex
+code-rcl uninstall --global --target all
 
-# Target specific agent environments
-code-rcl setup --target claude
-code-rcl setup --target gemini
-
-# Inspect the embedded skill directly in terminal without writing files
-code-rcl setup --print-skill
+# Or launch a server with an explicit project:
+code-rcl mcp --project /absolute/path/to/project
 ```
 
-### Manual IDE & Agent Configuration
+Setup installs the complete skill bundle under `.agents/skills/code-rcl/` and
+configures Codex, Claude Code, and Antigravity/Gemini using their native
+configuration formats. Use `--target codex|claude|antigravity|gemini|all`
+(default `all`); `gemini` aliases Antigravity. A server launched without `--project` requires project in every
+tool call. Global configuration is opt-in through `setup --global`. Uninstall preserves
+shared resources while another target needs them and retains unrelated settings,
+custom skill files, executable, model, and index. Legacy `setup --remove`
+continues to remove only optional instructions/hooks. See [agent setup](docs/MCP.md#setup).
 
-Alternatively, you can manually add `code-rcl` to your agent's MCP configuration (`mcp_config.json` or `.mcp.json`):
+| Tool | Purpose |
+| --- | --- |
+| `code_rcl_report` | Architecture, hubs, subsystems, bridges. |
+| `code_rcl_digest` | Module and declaration outlines. |
+| `code_rcl_search` | Indexed exact/prefix, substring, strings and suggestions. |
+| `code_rcl_impact` | Callers/callees or tracked changes including deletions. |
+| `code_rcl_path` | A connection between two symbols/files. |
+| `code_rcl_explain` | A symbol's declaration and direct relationships. |
+| `code_rcl_dump` | Related source files as a context bundle. |
+| `code_rcl_sync` | Content-hash sync and optional strict LSP resolution. |
+| `code_rcl_graph` | Nodes and edges with explicit limits. |
 
-```json
-{
-  "mcpServers": {
-    "code-rcl": {
-      "command": "code-rcl",
-      "args": ["mcp"]
-    }
-  }
-}
-```
+MCP always returns structured results; **do not pass the removed `json` flag**.
+Check status, warnings, freshness, resolution_mode, and truncation metadata.
+Precise failures are errors unless fallback was requested explicitly. Ping and
+cooperative cancellation remain available while analysis runs.
 
-### Exposed MCP Tools
-
-1. **`code_rcl_digest`**: Generates a high-level architecture skeleton and public API index with Core Architecture Hubs (strips function bodies to save 80–90% prompt tokens).
-2. **`code_rcl_search`**: Instant symbol & declaration lookup across the codebase from the bkndb cache (0–5ms, no grep overhead).
-3. **`code_rcl_impact`**: Analyzes reverse caller hierarchy and modification blast radius before editing symbols, with risk flags (supports optional `precise: true`, and `diff: true` to analyze uncommitted changes without naming a symbol).
-4. **`code_rcl_path`**: Shortest call/import chain between two symbols.
-5. **`code_rcl_explain`**: One-call summary of a symbol (signature, docs, members, direct callers/callees).
-6. **`code_rcl_report`**: One-page architecture overview (hubs, subsystems, bridges, suggested questions). Read it first when orienting.
-7. **`code_rcl_dump`**: Extracts a relation-aware neighborhood context bundle around a focal symbol or file.
-8. **`code_rcl_sync`**: Incremental AST sync with optional compiler-grade (`precise: true`) LSP pass for ground-truth verification.
-9. **`code_rcl_graph`**: Returns raw nodes and edges of the code graph in structured JSON.
-
-### Making agents use these tools
-
-Registering the server only makes the tools available. To make agents reach for them first, `setup` can (opt-in, idempotent, removable with `--remove`) write a marked instruction block into `CLAUDE.md` / `AGENTS.md` / `GEMINI.md`, install a git post-commit hook that re-syncs the cache in the background, and add a Claude Code `SessionStart` hook:
-
-```bash
-code-rcl setup --workspace --instructions --git-hook --claude-hook
-```
+Editing the repository does not update installed executables or global skill
+copies. To use this checkout, run `cargo install --path . --locked`, verify
+`code-rcl --version`, then run setup in the target project and reconnect the
+client. See [updating installations](docs/USAGE.md#update-an-installed-skill-or-mcp-server).
 
 ---
 
@@ -699,3 +716,13 @@ This project is licensed under the [MIT License](LICENSE).
    ```bash
    code-rcl impact decorate --depth 3
    ```
+
+Embedding indexing shows live stderr progress and supports safe Ctrl+C/resume.
+Use `embeddings status --files` for blocked/pending source and saved operation status
+while indexing. See [operations](docs/OPERATIONS.md) and
+[retrieval evaluation](docs/RETRIEVAL-EVALUATION.md).
+
+Embedding indexing supports explicit cross-file length batching while preserving
+input text and cache compatibility. The default remains file batching pending
+performance/quality gates. See [indexing benchmarks](docs/INDEXING-BENCHMARK.md);
+compact container representation remains an experimental profile.

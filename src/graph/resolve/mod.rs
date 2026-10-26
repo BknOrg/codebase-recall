@@ -60,6 +60,7 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
     let sym_by_id: HashMap<i64, &SymbolRow> = symbols.iter().map(|s| (s.id, s)).collect();
     let mut syms_by_file: HashMap<i64, Vec<&SymbolRow>> = HashMap::new();
     for s in &symbols {
+        crate::operation::check()?;
         syms_by_file.entry(s.file_id).or_default().push(s);
     }
     let import_by_id: HashMap<i64, &ImportRow> = imports.iter().map(|i| (i.id, i)).collect();
@@ -76,6 +77,7 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
     let mut sym_node: HashMap<i64, (String, String)> = HashMap::new();
 
     for f in &files {
+        crate::operation::check()?;
         // Config files are indexed for their keys, not their structure; they
         // define no symbols and import nothing, so a node for one would only
         // ever sit unconnected in the graph.
@@ -100,6 +102,7 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
 
     let want_symbols = opts.scope != Scope::File;
     for s in &symbols {
+        crate::operation::check()?;
         let Some(f) = file_by_id.get(&s.file_id) else {
             continue;
         };
@@ -132,6 +135,7 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
     // contains
     if opts.kinds.contains("contains") && want_symbols {
         for s in &symbols {
+            crate::operation::check()?;
             let Some((child, file_node)) = sym_node.get(&s.id) else {
                 continue;
             };
@@ -148,6 +152,7 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
     let mut imports_files: HashMap<i64, HashSet<i64>> = HashMap::new();
 
     for im in &imports {
+        crate::operation::check()?;
         let Some(importer) = file_by_id.get(&im.file_id) else {
             continue;
         };
@@ -207,6 +212,7 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
     // ---- calls / references -------------------------------------------
     let mut defs_by_name: HashMap<&str, Vec<&SymbolRow>> = HashMap::new();
     for s in &symbols {
+        crate::operation::check()?;
         defs_by_name.entry(s.name.as_str()).or_default().push(s);
     }
 
@@ -230,6 +236,7 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
                 .copied()
         };
         for s in &symbols {
+            crate::operation::check()?;
             if s.kind != "impl" {
                 continue;
             }
@@ -303,6 +310,7 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
     // kept, in symbol order, and the resolver picks the one nearest the caller.
     let mut type_methods: HashMap<String, HashMap<String, Vec<i64>>> = HashMap::new();
     for s in &symbols {
+        crate::operation::check()?;
         if s.kind == "method"
             && let Some(t) = &s.type_name
         {
@@ -355,6 +363,7 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
     };
 
     for rf in &refs {
+        crate::operation::check()?;
         let edge_kind = if rf.ref_kind == "call" {
             "calls"
         } else {
@@ -429,7 +438,11 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
     let community_infos: Vec<CommunityInfo> = communities
         .list
         .iter()
-        .map(|c| CommunityInfo { id: c.id, label: c.label.clone(), size: c.size })
+        .map(|c| CommunityInfo {
+            id: c.id,
+            label: c.label.clone(),
+            size: c.size,
+        })
         .collect();
 
     Ok(CodeGraph {
@@ -444,7 +457,7 @@ pub fn build(db: &CacheDb, opts: &GraphOptions) -> Result<CodeGraph> {
 
 /// Parent directory of a project-relative path, or `None` at the repo root.
 pub(super) fn parent_dir(path: &str) -> Option<String> {
-    path.rfind('/').map(|i| path[..i].to_string())
+    path.rfind(['/', '\\']).map(|i| path[..i].to_string())
 }
 
 type EdgeKey = (String, String, String);

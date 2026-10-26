@@ -44,7 +44,10 @@ pub fn get_snippet(
             .unwrap_or_default()
     });
     let idx = (l - 1) as usize;
-    lines.get(idx).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    lines
+        .get(idx)
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 pub fn calculate_max_depth(items: &[ImpactItem], max_d: &mut u32) {
@@ -69,6 +72,7 @@ pub fn count_risky(items: &[ImpactItem], seen: &mut HashSet<String>, count: &mut
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn traverse_tree(
     current_id: &str,
     depth: u32,
@@ -82,7 +86,7 @@ pub fn traverse_tree(
     file_lines_cache: &mut HashMap<String, Vec<String>>,
     ctx: &RiskContext,
 ) -> Vec<ImpactItem> {
-    if depth >= max_depth {
+    if crate::operation::cancelled() || depth >= max_depth {
         return Vec::new();
     }
 

@@ -262,7 +262,7 @@ impl<'a> Walker<'a> {
             end_line: node.end_position().row as i64 + 1,
             start_byte: node.start_byte() as i64,
             end_byte: node.end_byte() as i64,
-            signature: None,
+            signature: crate::analysis::node_signature(node, self.src),
             param_count,
             type_name,
         });
@@ -323,6 +323,14 @@ impl<'a> Walker<'a> {
             let mut pushed = None;
             if make_symbol {
                 let kind = if is_fn { "function" } else { "variable" };
+                let signature = if is_fn {
+                    value
+                        .and_then(|v| crate::analysis::node_signature(v, self.src))
+                        .map(|s| format!("{} = {}", name, s))
+                        .or_else(|| crate::analysis::node_signature(d, self.src))
+                } else {
+                    crate::analysis::node_signature(d, self.src)
+                };
                 self.out.symbols.push(NewSymbol {
                     name: name.clone(),
                     kind: kind.to_string(),
@@ -332,7 +340,7 @@ impl<'a> Walker<'a> {
                     end_line: d.end_position().row as i64 + 1,
                     start_byte: d.start_byte() as i64,
                     end_byte: d.end_byte() as i64,
-                    signature: None,
+                    signature,
                     param_count: None,
                     type_name: None,
                 });

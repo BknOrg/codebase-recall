@@ -52,6 +52,13 @@ pub struct LspClient {
     root: String,
 }
 
+impl Drop for LspClient {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
 impl LspClient {
     /// Spawn the server and wire up its pipes.
     pub fn start(launcher: &Launcher, root: &Path) -> Result<Self> {
@@ -174,6 +181,9 @@ impl LspClient {
         let mut idle_since: Option<Instant> = None;
 
         while start.elapsed() < max {
+            if crate::operation::cancelled() {
+                return Readiness::TimedOut;
+            }
             if self.quiescent {
                 return Readiness::Ready;
             }
@@ -249,9 +259,11 @@ impl LspClient {
             let mut pending = chunk.len();
             let mut deadline = Instant::now() + timeout;
             while pending > 0 {
+                crate::operation::check()?;
                 let remaining = deadline.saturating_duration_since(Instant::now());
-                let message = match self.inbox.recv_timeout(remaining) {
+                let message = match self.inbox.recv_timeout(remaining.min(Duration::from_millis(100))) {
                     Ok(m) => m,
+                    Err(RecvTimeoutError::Timeout) if Instant::now() < deadline => continue,
                     Err(RecvTimeoutError::Timeout) => bail!(
                         "language server `{}` did not answer `textDocument/definition` within {}s.
                            The project may be larger than the timeout allows — raise it with                          `--precise-timeout <seconds>`.{}",
@@ -278,7 +290,10 @@ impl LspClient {
                 }
             }
         }
-        Ok(answers.into_iter().map(|a| a.unwrap_or(Value::Null)).collect())
+        Ok(answers
+            .into_iter()
+            .map(|a| a.unwrap_or(Value::Null))
+            .collect())
     }
 
     /// Ask the server to stop, then make sure it actually did.
@@ -352,12 +367,17 @@ impl LspClient {
     /// startup) simply stops making progress.
     fn pump(&mut self, want: Option<i64>, deadline: Instant) -> Result<Option<Value>> {
         loop {
+            crate::operation::check()?;
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
                 return Ok(None);
             }
-            let message = match self.inbox.recv_timeout(remaining) {
+            let message = match self
+                .inbox
+                .recv_timeout(remaining.min(Duration::from_millis(100)))
+            {
                 Ok(m) => m,
+                Err(RecvTimeoutError::Timeout) if Instant::now() < deadline => continue,
                 Err(RecvTimeoutError::Timeout) => return Ok(None),
                 Err(RecvTimeoutError::Disconnected) => {
                     bail!(
@@ -368,12 +388,12 @@ impl LspClient {
                 }
             };
 
-            if let Some((id, result)) = self.dispatch(&message)? {
-                if Some(id) == want {
-                    return Ok(Some(result));
-                }
-                // a stale answer we no longer care about
+            if let Some((id, result)) = self.dispatch(&message)?
+                && Some(id) == want
+            {
+                return Ok(Some(result));
             }
+            // a stale answer we no longer care about
         }
     }
 
@@ -405,7 +425,10 @@ impl LspClient {
                         .unwrap_or("unknown error");
                     bail!("language server `{}` returned an error: {text}", self.name);
                 }
-                return Ok(Some((id, message.get("result").cloned().unwrap_or(Value::Null))));
+                return Ok(Some((
+                    id,
+                    message.get("result").cloned().unwrap_or(Value::Null),
+                )));
             }
             (None, None) => {}
         }

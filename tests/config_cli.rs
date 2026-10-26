@@ -81,7 +81,7 @@ fn graph(dir: &Path, extra: &[&str]) -> Value {
         "graph {extra:?} failed: {}",
         String::from_utf8_lossy(&out.stderr)
     );
-    serde_json::from_slice(&out.stdout).expect("graph json on stdout")
+    support::from_slice(&out.stdout).expect("graph json on stdout")
 }
 
 fn has_external(g: &Value) -> bool {
@@ -109,7 +109,10 @@ fn edge_count(g: &Value) -> usize {
 fn config_include_external_and_flag_override() {
     let dir = ts_project("external");
 
-    assert!(!has_external(&graph(&dir, &[])), "default: no external nodes");
+    assert!(
+        !has_external(&graph(&dir, &[])),
+        "default: no external nodes"
+    );
     assert!(has_external(&graph(&dir, &["--include-external"])));
 
     write_config(&dir, "[graph]\ninclude_external = true\n");
@@ -123,7 +126,10 @@ fn config_include_external_and_flag_override() {
 #[test]
 fn config_kinds_and_flag_override() {
     let dir = ts_project("kinds");
-    assert!(edge_kinds(&graph(&dir, &[]), "calls") > 0, "default has calls");
+    assert!(
+        edge_kinds(&graph(&dir, &[]), "calls") > 0,
+        "default has calls"
+    );
 
     write_config(&dir, "[graph]\nkinds = [\"imports\"]\n");
     let g = graph(&dir, &[]);
@@ -176,11 +182,15 @@ fn impact_ignores_graph_config() {
     let baseline = run(&dir, &["impact", "greet", "--json"]);
     assert!(baseline.status.success());
     let baseline_report = run(&dir, &["report", "--json"]);
-    let report_repeatable = {
-        let again = run(&dir, &["report", "--json"]);
-        baseline_report.status.success()
-            && again.status.success()
-            && again.stdout == baseline_report.stdout
+    assert!(baseline_report.status.success());
+    let stable = |bytes: &[u8]| {
+        let mut value: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+        // Per-operation telemetry is expected to vary; analysis/config behavior is not.
+        value["metadata"]
+            .as_object_mut()
+            .unwrap()
+            .remove("timings_ms");
+        value
     };
 
     write_config(
@@ -190,16 +200,14 @@ fn impact_ignores_graph_config() {
     let with_config = run(&dir, &["impact", "greet", "--json"]);
     assert!(with_config.status.success());
     assert_eq!(
-        baseline.stdout, with_config.stdout,
+        stable(&baseline.stdout),
+        stable(&with_config.stdout),
         "impact output must not change with config [graph]"
     );
 
-    if report_repeatable {
-        let report = run(&dir, &["report", "--json"]);
-        assert_eq!(baseline_report.stdout, report.stdout);
-    } else {
-        eprintln!("report --json is not byte-stable across runs; skipping its regression");
-    }
+    let report = run(&dir, &["report", "--json"]);
+    assert!(report.status.success());
+    assert_eq!(stable(&baseline_report.stdout), stable(&report.stdout));
     remove_config(&dir);
 }
 
@@ -248,7 +256,13 @@ fn sync_line(out: &Output) -> (usize, usize, usize, usize, usize) {
     let toks: Vec<&str> = line[line.find('(').unwrap() + 1..line.find(')').unwrap()]
         .split_whitespace()
         .collect();
-    (scanned, num(toks[0]), num(toks[1]), num(toks[2]), num(toks[3]))
+    (
+        scanned,
+        num(toks[0]),
+        num(toks[1]),
+        num(toks[2]),
+        num(toks[3]),
+    )
 }
 
 fn scanned(out: &Output) -> usize {
@@ -278,7 +292,10 @@ fn config_languages_and_flag_override() {
     let out = sync(&dir, &[]);
     assert_eq!(scanned(&out), flag_py);
     let err = String::from_utf8_lossy(&out.stderr);
-    assert!(err.contains("languages") && err.contains("config.toml"), "{err}");
+    assert!(
+        err.contains("languages") && err.contains("config.toml"),
+        "{err}"
+    );
 
     let out = sync(&dir, &["--language", "rust"]);
     assert_eq!(scanned(&out), flag_rs);
@@ -300,9 +317,18 @@ fn implicit_sync_uses_the_same_limit_as_explicit_sync() {
         .filter_map(|n| n["label"].as_str())
         .collect();
     assert!(labels.contains(&"a"), "small file symbols kept: {labels:?}");
-    assert!(!labels.contains(&"big"), "over-limit file stays out: {labels:?}");
+    assert!(
+        !labels.contains(&"big"),
+        "over-limit file stays out: {labels:?}"
+    );
 
     let second = sync_line(&sync(&dir, &[]));
     assert_eq!(second.0, first.0);
-    assert_eq!((second.1, second.2, second.4), (0, 0, 0), "no thrash: {second:?}");
+    assert_eq!(
+        (second.1, second.2, second.4),
+        (0, 0, 0),
+        "no thrash: {second:?}"
+    );
 }
+
+mod support;

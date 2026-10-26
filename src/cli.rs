@@ -15,6 +15,8 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
+    /// Set up the local embedding model, index source, or inspect index coverage.
+    Embeddings(EmbeddingsArgs),
     /// Dump the codebase into a single Markdown context file
     Dump(DumpArgs),
     /// Create .code-rcl/ (graph cache DB + config) in the target project
@@ -39,8 +41,10 @@ pub enum Command {
     Digest(DigestArgs),
     /// Run Model Context Protocol (MCP) server over stdio for AI agent integration
     Mcp(McpArgs),
-    /// Self-install the AI agent skill and configure MCP servers (Antigravity/Gemini, Claude Code)
+    /// Install skills and MCP for Codex, Antigravity/Gemini, and Claude Code
     Setup(SetupArgs),
+    /// Remove code-rcl agent integrations, preserving resources shared by other targets
+    Uninstall(UninstallArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -95,6 +99,9 @@ pub struct InitArgs {
     after_help = "Examples:\n  code-rcl sync\n  code-rcl sync --language rust,py\n  code-rcl sync --precise\n  code-rcl sync --precise --precise-full\n  code-rcl sync --no-report"
 )]
 pub struct SyncArgs {
+    /// Return the versioned JSON result envelope.
+    #[arg(long)]
+    pub json: bool,
     /// Project directory to sync
     #[arg(long, default_value = ".")]
     pub project: PathBuf,
@@ -118,8 +125,11 @@ pub struct SyncArgs {
 }
 
 /// Opt-in compiler-grade resolution, shared by `sync`, `graph`, `serve`, and `impact`.
-#[derive(Parser, Debug, Clone)]
+#[derive(Parser, Debug, Clone, Default)]
 pub struct PreciseArgs {
+    /// Return explicitly partial heuristic results when requested LSP resolution fails.
+    #[arg(long, requires = "precise")]
+    pub allow_heuristic_fallback: bool,
     /// Resolve references through the real language server for each language
     /// (rust-analyzer, pyright, jdtls, typescript-language-server, and for
     /// Kotlin JetBrains' intellij-server by default or fwcd's kotlin-language-server
@@ -140,16 +150,6 @@ pub struct PreciseArgs {
     /// [default: from .code-rcl/config.toml, else 15]
     #[arg(long, value_name = "SECONDS", requires = "precise")]
     pub precise_timeout: Option<u64>,
-}
-
-impl Default for PreciseArgs {
-    fn default() -> Self {
-        Self {
-            precise: false,
-            precise_full: false,
-            precise_timeout: None,
-        }
-    }
 }
 
 /// Filters shared by `graph` and `serve`: they select which nodes and edges the
@@ -277,7 +277,11 @@ pub struct ImpactArgs {
     pub direction: String,
 
     /// Edge kinds to traverse, comma-separated (e.g. calls,imports,references)
-    #[arg(long, value_delimiter = ',', default_value = "calls,imports,references")]
+    #[arg(
+        long,
+        value_delimiter = ',',
+        default_value = "calls,imports,references"
+    )]
     pub kinds: Vec<String>,
 
     /// Output result as JSON instead of ASCII tree
@@ -309,7 +313,11 @@ pub struct PathArgs {
     pub project: PathBuf,
 
     /// Edge kinds to follow, comma-separated (e.g. calls,imports,references)
-    #[arg(long, value_delimiter = ',', default_value = "calls,imports,references")]
+    #[arg(
+        long,
+        value_delimiter = ',',
+        default_value = "calls,imports,references"
+    )]
     pub kinds: Vec<String>,
 
     /// Edge direction: forward (FROM calls TO), reverse (TO calls FROM), or any
@@ -363,6 +371,8 @@ pub struct ExplainArgs {
     after_help = "Examples:\n  code-rcl report\n  code-rcl report --write\n  code-rcl report -o architecture\n  code-rcl report --json"
 )]
 pub struct ReportArgs {
+    #[command(flatten)]
+    pub filters: crate::selection::Filters,
     /// Project directory to inspect
     #[arg(long, default_value = ".")]
     pub project: PathBuf,
@@ -387,9 +397,25 @@ pub struct ReportArgs {
 #[derive(Parser, Debug)]
 #[command(
     about = "Search symbols, functions, types, and string literals in the bkndb cache",
-    after_help = "Examples:\n  code-rcl search CacheDb\n  code-rcl search build_graph --kind function\n  code-rcl search --strings get_bool\n  code-rcl search handle_request --json"
+    after_help = "Examples:\n  code-rcl search CacheDb --lexical\n  code-rcl search build_graph --kind function\n  code-rcl search --strings get_bool\n  code-rcl search \"undo changes when a transaction fails\" --semantic\n  code-rcl search handle_request --json\n\nDefault lookup stays lexical until automatic feature retrieval passes release gates.\nSemantic/hybrid require explicit local model setup and refresh pending in-scope embeddings."
 )]
 pub struct SearchArgs {
+    #[command(flatten)]
+    pub filters: crate::selection::Filters,
+    /// Retrieve code by meaning with a prepared local model; refresh pending embeddings.
+    #[arg(long, conflicts_with_all=["lexical", "hybrid", "strings", "no_grep", "no_fuzzy", "match_mode"])]
+    pub semantic: bool,
+    /// Fuse lexical declaration and semantic retrieval.
+    #[arg(long, conflicts_with_all=["lexical", "semantic", "strings", "no_grep"])]
+    pub hybrid: bool,
+    /// Force model-free name/content lookup instead of automatic feature retrieval.
+    #[arg(long,conflicts_with_all=["semantic","hybrid"])]
+    pub lexical: bool,
+    #[arg(skip)]
+    pub automatic: bool,
+    /// Indexed exact/prefix name lookup, or substring search of names and signatures.
+    #[arg(long, value_parser = ["exact", "prefix", "substring"])]
+    pub match_mode: Option<String>,
     /// Symbol name, substring, or string literal to search for
     pub query: String,
 
@@ -425,7 +451,7 @@ pub struct SearchArgs {
     #[arg(long)]
     pub no_grep: bool,
 
-    /// Skip auto-syncing changed files before searching
+    /// Use saved, unverified source/vector snapshots without updates
     #[arg(long)]
     pub no_sync: bool,
 }
@@ -490,27 +516,27 @@ impl DigestArgs {
     after_help = "Examples:\n  code-rcl mcp\n  code-rcl mcp --project /path/to/repo"
 )]
 pub struct McpArgs {
-    /// Default project directory to analyze [default: .]
-    #[arg(long, default_value = ".")]
-    pub project: PathBuf,
+    /// Default project directory. If omitted, every tool call must supply project.
+    #[arg(long)]
+    pub project: Option<PathBuf>,
 }
 
 #[derive(Parser, Debug, Clone)]
 #[command(
-    about = "Self-install the AI agent skill and configure MCP servers (Antigravity/Gemini, Claude Code)",
+    about = "Install skills and MCP for Codex, Antigravity/Gemini, and Claude Code",
     after_help = "Examples:\n  code-rcl setup\n  code-rcl setup --workspace\n  code-rcl setup --global\n  code-rcl setup --target claude\n  code-rcl setup --print-skill\n  code-rcl setup --workspace --instructions --git-hook --claude-hook\n  code-rcl setup --workspace --remove"
 )]
 pub struct SetupArgs {
-    /// Install globally to user profile config (~/.gemini/config and ~/.claude.json)
-    #[arg(long)]
+    /// Install into the selected agents' user profile locations
+    #[arg(long, conflicts_with = "workspace")]
     pub global: bool,
 
-    /// Install locally into the current workspace (.agents/ and .mcp.json)
+    /// Install native skill/MCP configurations in the current workspace (default)
     #[arg(long)]
     pub workspace: bool,
 
-    /// Target AI agent environment: gemini, claude, or all [default: all]
-    #[arg(long, default_value = "all")]
+    /// Target AI agent environment (gemini is an alias for antigravity)
+    #[arg(long, default_value = "all", value_parser = ["codex", "claude", "antigravity", "gemini", "all"], ignore_case = true)]
     pub target: String,
 
     /// Print the embedded SKILL.md to stdout and exit
@@ -518,7 +544,7 @@ pub struct SetupArgs {
     pub print_skill: bool,
 
     /// Only install the skill file, do not modify MCP configs
-    #[arg(long)]
+    #[arg(long, conflicts_with = "mcp_only")]
     pub skill_only: bool,
 
     /// Only configure MCP server, do not install skill file
@@ -526,7 +552,7 @@ pub struct SetupArgs {
     pub mcp_only: bool,
 
     /// Custom target directory for the skill (overrides defaults)
-    #[arg(long)]
+    #[arg(long, conflicts_with = "mcp_only")]
     pub skill_dir: Option<PathBuf>,
 
     /// Also write a marked instruction block into CLAUDE.md / AGENTS.md / GEMINI.md
@@ -551,4 +577,96 @@ pub struct SetupArgs {
     /// Print the short reminder used by the Claude Code hook and exit
     #[arg(long, hide = true)]
     pub print_reminder: bool,
+}
+
+#[derive(Parser, Debug)]
+#[command(
+    after_help = "Examples:\n  code-rcl uninstall --workspace --target codex\n  code-rcl uninstall --global --target all\nOnly agent integrations are removed; the executable, model and index are retained."
+)]
+pub struct UninstallArgs {
+    /// Remove user-scope integrations instead of workspace integrations
+    #[arg(long, conflicts_with = "workspace")]
+    pub global: bool,
+    /// Remove integrations from the current workspace (default)
+    #[arg(long)]
+    pub workspace: bool,
+    #[arg(long, default_value = "all", value_parser = ["codex", "claude", "antigravity", "gemini", "all"], ignore_case = true)]
+    pub target: String,
+    /// Remove only the skill bundle
+    #[arg(long, conflicts_with = "mcp_only")]
+    pub skill_only: bool,
+    /// Remove only the MCP registration
+    #[arg(long)]
+    pub mcp_only: bool,
+    /// Custom skill directory used during setup
+    #[arg(long, conflicts_with = "mcp_only")]
+    pub skill_dir: Option<PathBuf>,
+}
+
+#[derive(Parser, Debug)]
+pub struct EmbeddingsArgs {
+    #[command(subcommand)]
+    pub command: EmbeddingsCommand,
+}
+#[derive(clap::Subcommand, Debug)]
+pub enum EmbeddingsCommand {
+    /// Download and verify the pinned model, or configure a local directory.
+    Setup {
+        #[arg(long, default_value = ".")]
+        project: PathBuf,
+        #[arg(long)]
+        json: bool,
+        #[arg(long)]
+        model_dir: Option<PathBuf>,
+    },
+    /// Hash source and incrementally embed changed symbols.
+    Sync {
+        #[arg(long, default_value = ".")]
+        project: PathBuf,
+        #[arg(long)]
+        json: bool,
+        #[arg(long)]
+        full: bool,
+        /// Render progress on stderr; stdout remains machine-readable.
+        #[arg(long, default_value="auto", value_parser=["auto","plain","off"])]
+        progress: String,
+    },
+    /// Read saved index coverage without loading a model or verifying source.
+    Status {
+        #[arg(long, default_value = ".")]
+        project: PathBuf,
+        #[arg(long)]
+        json: bool,
+        #[arg(long)]
+        files: bool,
+        /// Explain scope for an explicitly requested project-relative path.
+        #[arg(long)]
+        path: Option<String>,
+    },
+}
+
+#[cfg(test)]
+mod embedding_documentation_tests {
+    use super::*;
+    use clap::Parser;
+    #[test]
+    fn published_embedding_examples_parse_without_running_them() {
+        for text in [
+            include_str!("../docs/EMBEDDINGS.md"),
+            include_str!("../skills/code-rcl/references/embeddings.md"),
+        ] {
+            for line in text.lines().filter(|l| l.starts_with("code-rcl ")) {
+                let words = shlex::split(line).expect("valid shell example");
+                Cli::try_parse_from(words)
+                    .unwrap_or_else(|e| panic!("documentation example {line}: {e}"));
+            }
+        }
+        assert!(
+            crate::commands::setup::bundled_text(include_str!(
+                "../skills/code-rcl/references/embeddings.md"
+            ))
+            .contains(env!("CARGO_PKG_VERSION"))
+        );
+        assert!(include_str!("../docs/EMBEDDINGS.md").contains(crate::embeddings::REVISION));
+    }
 }

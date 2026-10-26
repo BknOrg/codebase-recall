@@ -22,10 +22,8 @@ mod tests {
     use crate::graph::CodeGraph;
 
     /// `render()` promises a self-contained page ("no network requests,
-    /// works offline"); it must never emit a reference to a sibling file —
-    /// that shape (`Delivery::Separated`) is what `code-rcl graph
-    /// --format html` uses instead, and it writes the sibling files that
-    /// mode expects. This function does not, so it must stay `Inline`.
+    /// works offline"); it must never emit a reference to a sibling file.
+    /// Both `code-rcl graph --format html` and `code-rcl serve` use this.
     #[test]
     fn output_is_fully_self_contained() {
         let graph = CodeGraph {
@@ -37,8 +35,14 @@ mod tests {
             communities: Vec::new(),
         };
         let html = render(&graph);
-        assert!(!html.contains("href=\"./"), "must not link a sibling file:\n{html}");
-        assert!(!html.contains("src=\"./"), "must not source a sibling file:\n{html}");
+        assert!(
+            !html.contains("href=\"./"),
+            "must not link a sibling file:\n{html}"
+        );
+        assert!(
+            !html.contains("src=\"./"),
+            "must not source a sibling file:\n{html}"
+        );
         assert!(html.contains("<style>"), "CSS must be inlined");
         assert!(html.contains("<script>"), "JS must be inlined");
     }
@@ -54,11 +58,21 @@ mod tests {
             generated_at: 0,
             nodes: Vec::new(),
             edges: Vec::new(),
-            communities: vec![CommunityInfo { id: 0, label: "src/billing".into(), size: 3 }],
+            communities: vec![CommunityInfo {
+                id: 0,
+                label: "src/billing".into(),
+                size: 3,
+            }],
         };
         let html = render(&graph);
         assert!(html.contains("id=\"colorByCommunity\""), "toggle missing");
-        assert!(html.contains("function communityColor"), "colour helper missing");
-        assert!(html.contains("src/billing"), "communities must be embedded in the page data");
+        assert!(
+            html.contains("function communityColor"),
+            "colour helper missing"
+        );
+        assert!(
+            html.contains("src/billing"),
+            "communities must be embedded in the page data"
+        );
     }
 }

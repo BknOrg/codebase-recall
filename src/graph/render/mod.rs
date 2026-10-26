@@ -4,7 +4,7 @@ pub mod dot;
 pub mod html;
 pub mod json;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 use crate::graph::CodeGraph;
 

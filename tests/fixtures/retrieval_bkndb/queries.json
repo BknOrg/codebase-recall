@@ -1,0 +1,1847 @@
+{
+  "schema_version": 1,
+  "judgments": "graded seed judgments from pinned source; unlisted symbols remain unjudged, not proven irrelevant; recall is not estimated",
+  "split_policy": "task-disjoint: 14 tuning tasks (56 queries), 6 held-out tasks (24 queries); no query paraphrase crosses splits",
+  "queries": [
+    {
+      "id": "q01-1",
+      "task": "t01",
+      "split": "tuning",
+      "query": "prepare",
+      "kind": "identifier",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/graph.rs",
+          "name": "prepare",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q01-2",
+      "task": "t01",
+      "split": "tuning",
+      "query": "normalize vectors and reject zero or nonfinite inputs before indexing",
+      "kind": "behavior",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/graph.rs",
+          "name": "prepare",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q01-3",
+      "task": "t01",
+      "split": "tuning",
+      "query": "normalisasi vektor dan tolak vektor nol sebelum indexing",
+      "kind": "behavior",
+      "query_language": "id",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/graph.rs",
+          "name": "prepare",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q01-4",
+      "task": "t01",
+      "split": "tuning",
+      "query": "prepare normalize vectors and reject zero or nonfinite inputs before indexing",
+      "kind": "mixed",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/graph.rs",
+          "name": "prepare",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q02-1",
+      "task": "t02",
+      "split": "evaluation",
+      "query": "on_row_change",
+      "kind": "identifier",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/mod.rs",
+          "name": "on_row_change",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q02-2",
+      "task": "t02",
+      "split": "evaluation",
+      "query": "maintain vector indexes when rows change",
+      "kind": "behavior",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/mod.rs",
+          "name": "on_row_change",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q02-3",
+      "task": "t02",
+      "split": "evaluation",
+      "query": "perbarui indeks vector ketika baris berubah",
+      "kind": "behavior",
+      "query_language": "id",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/mod.rs",
+          "name": "on_row_change",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q02-4",
+      "task": "t02",
+      "split": "evaluation",
+      "query": "on_row_change maintain vector indexes when rows change",
+      "kind": "mixed",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/mod.rs",
+          "name": "on_row_change",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q03-1",
+      "task": "t03",
+      "split": "tuning",
+      "query": "write_tx",
+      "kind": "identifier",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/db/write_tx.rs",
+          "name": "write_tx",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "bindings/python/bkndb/_ops_core.py",
+          "name": "__exit__",
+          "grade": 2,
+          "reason": "related context-manager rollback wrapper; not the Rust closure implementation"
+        },
+        {
+          "path": "bindings/python/tests/test_transactions.py",
+          "name": "test_failed_operation_aborts_the_transaction",
+          "grade": 1,
+          "reason": "related usage test, not implementation"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q03-2",
+      "task": "t03",
+      "split": "tuning",
+      "query": "roll back writes when a transaction closure fails",
+      "kind": "behavior",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/db/write_tx.rs",
+          "name": "write_tx",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "bindings/python/bkndb/_ops_core.py",
+          "name": "__exit__",
+          "grade": 2,
+          "reason": "related context-manager rollback wrapper; not the Rust closure implementation"
+        },
+        {
+          "path": "bindings/python/tests/test_transactions.py",
+          "name": "test_failed_operation_aborts_the_transaction",
+          "grade": 1,
+          "reason": "related usage test, not implementation"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q03-3",
+      "task": "t03",
+      "split": "tuning",
+      "query": "batalkan perubahan jika closure transaksi gagal",
+      "kind": "behavior",
+      "query_language": "id",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/db/write_tx.rs",
+          "name": "write_tx",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "bindings/python/bkndb/_ops_core.py",
+          "name": "__exit__",
+          "grade": 2,
+          "reason": "related context-manager rollback wrapper; not the Rust closure implementation"
+        },
+        {
+          "path": "bindings/python/tests/test_transactions.py",
+          "name": "test_failed_operation_aborts_the_transaction",
+          "grade": 1,
+          "reason": "related usage test, not implementation"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q03-4",
+      "task": "t03",
+      "split": "tuning",
+      "query": "write_tx roll back writes when a transaction closure fails",
+      "kind": "mixed",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/db/write_tx.rs",
+          "name": "write_tx",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "bindings/python/bkndb/_ops_core.py",
+          "name": "__exit__",
+          "grade": 2,
+          "reason": "related context-manager rollback wrapper; not the Rust closure implementation"
+        },
+        {
+          "path": "bindings/python/tests/test_transactions.py",
+          "name": "test_failed_operation_aborts_the_transaction",
+          "grade": 1,
+          "reason": "related usage test, not implementation"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q04-1",
+      "task": "t04",
+      "split": "tuning",
+      "query": "backup_to",
+      "kind": "identifier",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-storage-redb/src/lib.rs",
+          "name": "backup_to",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-storage-lsm/src/engine/ops.rs",
+          "name": "backup_to",
+          "grade": 3,
+          "reason": "alternate storage engine implementing the same backup operation"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q04-2",
+      "task": "t04",
+      "split": "tuning",
+      "query": "copy committed database contents into a backup file",
+      "kind": "behavior",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-storage-redb/src/lib.rs",
+          "name": "backup_to",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-storage-lsm/src/engine/ops.rs",
+          "name": "backup_to",
+          "grade": 3,
+          "reason": "alternate storage engine implementing the same backup operation"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q04-3",
+      "task": "t04",
+      "split": "tuning",
+      "query": "salin isi database yang sudah commit ke berkas cadangan",
+      "kind": "behavior",
+      "query_language": "id",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-storage-redb/src/lib.rs",
+          "name": "backup_to",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-storage-lsm/src/engine/ops.rs",
+          "name": "backup_to",
+          "grade": 3,
+          "reason": "alternate storage engine implementing the same backup operation"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q04-4",
+      "task": "t04",
+      "split": "tuning",
+      "query": "backup_to copy committed database contents into a backup file",
+      "kind": "mixed",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-storage-redb/src/lib.rs",
+          "name": "backup_to",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-storage-lsm/src/engine/ops.rs",
+          "name": "backup_to",
+          "grade": 3,
+          "reason": "alternate storage engine implementing the same backup operation"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q05-1",
+      "task": "t05",
+      "split": "evaluation",
+      "query": "search_vector_in",
+      "kind": "identifier",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "search_vector_in",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        }
+      ]
+    },
+    {
+      "id": "q05-2",
+      "task": "t05",
+      "split": "evaluation",
+      "query": "scan matching rows to find nearest vectors",
+      "kind": "behavior",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "search_vector_in",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        }
+      ]
+    },
+    {
+      "id": "q05-3",
+      "task": "t05",
+      "split": "evaluation",
+      "query": "pindai baris yang cocok untuk mencari vektor terdekat",
+      "kind": "behavior",
+      "query_language": "id",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "search_vector_in",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        }
+      ]
+    },
+    {
+      "id": "q05-4",
+      "task": "t05",
+      "split": "evaluation",
+      "query": "search_vector_in scan matching rows to find nearest vectors",
+      "kind": "mixed",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "search_vector_in",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        }
+      ]
+    },
+    {
+      "id": "q06-1",
+      "task": "t06",
+      "split": "tuning",
+      "query": "remove",
+      "kind": "identifier",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/graph.rs",
+          "name": "remove",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q06-2",
+      "task": "t06",
+      "split": "tuning",
+      "query": "remove a vector graph node and reconnect surviving neighbors",
+      "kind": "behavior",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/graph.rs",
+          "name": "remove",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q06-3",
+      "task": "t06",
+      "split": "tuning",
+      "query": "hapus node graf vector dan hubungkan kembali tetangganya",
+      "kind": "behavior",
+      "query_language": "id",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/graph.rs",
+          "name": "remove",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q06-4",
+      "task": "t06",
+      "split": "tuning",
+      "query": "remove remove a vector graph node and reconnect surviving neighbors",
+      "kind": "mixed",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/graph.rs",
+          "name": "remove",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q07-1",
+      "task": "t07",
+      "split": "tuning",
+      "query": "pack_vector",
+      "kind": "identifier",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        }
+      ]
+    },
+    {
+      "id": "q07-2",
+      "task": "t07",
+      "split": "tuning",
+      "query": "encode float vectors as database property bytes",
+      "kind": "behavior",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        }
+      ]
+    },
+    {
+      "id": "q07-3",
+      "task": "t07",
+      "split": "tuning",
+      "query": "ubah vektor float menjadi byte property database",
+      "kind": "behavior",
+      "query_language": "id",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        }
+      ]
+    },
+    {
+      "id": "q07-4",
+      "task": "t07",
+      "split": "tuning",
+      "query": "pack_vector encode float vectors as database property bytes",
+      "kind": "mixed",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        }
+      ]
+    },
+    {
+      "id": "q08-1",
+      "task": "t08",
+      "split": "evaluation",
+      "query": "vector_of",
+      "kind": "identifier",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "vector_of",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        }
+      ]
+    },
+    {
+      "id": "q08-2",
+      "task": "t08",
+      "split": "evaluation",
+      "query": "decode vectors stored as byte properties or lists",
+      "kind": "behavior",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "vector_of",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        }
+      ]
+    },
+    {
+      "id": "q08-3",
+      "task": "t08",
+      "split": "evaluation",
+      "query": "baca vektor dari property byte atau daftar angka",
+      "kind": "behavior",
+      "query_language": "id",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "vector_of",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        }
+      ]
+    },
+    {
+      "id": "q08-4",
+      "task": "t08",
+      "split": "evaluation",
+      "query": "vector_of decode vectors stored as byte properties or lists",
+      "kind": "mixed",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "vector_of",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        }
+      ]
+    },
+    {
+      "id": "q09-1",
+      "task": "t09",
+      "split": "tuning",
+      "query": "create_in",
+      "kind": "identifier",
+      "query_language": "en",
+      "intent": "configuration",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/mod.rs",
+          "name": "create_in",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q09-2",
+      "task": "t09",
+      "split": "tuning",
+      "query": "create and configure a table vector index",
+      "kind": "behavior",
+      "query_language": "en",
+      "intent": "configuration",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/mod.rs",
+          "name": "create_in",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q09-3",
+      "task": "t09",
+      "split": "tuning",
+      "query": "buat dan konfigurasi indeks vektor tabel",
+      "kind": "behavior",
+      "query_language": "id",
+      "intent": "configuration",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/mod.rs",
+          "name": "create_in",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q09-4",
+      "task": "t09",
+      "split": "tuning",
+      "query": "create_in create and configure a table vector index",
+      "kind": "mixed",
+      "query_language": "en",
+      "intent": "configuration",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/relational/ann/mod.rs",
+          "name": "create_in",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q10-1",
+      "task": "t10",
+      "split": "tuning",
+      "query": "neighbors_out",
+      "kind": "identifier",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/graph/txn.rs",
+          "name": "neighbors_out",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q10-2",
+      "task": "t10",
+      "split": "tuning",
+      "query": "list outgoing neighbors filtered by edge type",
+      "kind": "behavior",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/graph/txn.rs",
+          "name": "neighbors_out",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q10-3",
+      "task": "t10",
+      "split": "tuning",
+      "query": "daftar tetangga keluar berdasarkan jenis edge",
+      "kind": "behavior",
+      "query_language": "id",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/graph/txn.rs",
+          "name": "neighbors_out",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q10-4",
+      "task": "t10",
+      "split": "tuning",
+      "query": "neighbors_out list outgoing neighbors filtered by edge type",
+      "kind": "mixed",
+      "query_language": "en",
+      "intent": "implementation",
+      "labels": [
+        {
+          "path": "crates/bkndb-core/src/graph/txn.rs",
+          "name": "neighbors_out",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q11-1",
+      "task": "t11",
+      "split": "tuning",
+      "query": "from_json_value",
+      "kind": "identifier",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_io.py",
+          "name": "from_json_value",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q11-2",
+      "task": "t11",
+      "split": "tuning",
+      "query": "decode tagged JSON bytes timestamps and UUID values in Python",
+      "kind": "behavior",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_io.py",
+          "name": "from_json_value",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q11-3",
+      "task": "t11",
+      "split": "tuning",
+      "query": "baca nilai JSON bertanda byte waktu dan UUID di Python",
+      "kind": "behavior",
+      "query_language": "id",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_io.py",
+          "name": "from_json_value",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q11-4",
+      "task": "t11",
+      "split": "tuning",
+      "query": "from_json_value decode tagged JSON bytes timestamps and UUID values in Python",
+      "kind": "mixed",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_io.py",
+          "name": "from_json_value",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q12-1",
+      "task": "t12",
+      "split": "tuning",
+      "query": "from_csv_cell",
+      "kind": "identifier",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_io.py",
+          "name": "from_csv_cell",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q12-2",
+      "task": "t12",
+      "split": "tuning",
+      "query": "convert a CSV cell into the declared database column type",
+      "kind": "behavior",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_io.py",
+          "name": "from_csv_cell",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q12-3",
+      "task": "t12",
+      "split": "tuning",
+      "query": "konversi sel CSV sesuai tipe kolom database",
+      "kind": "behavior",
+      "query_language": "id",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_io.py",
+          "name": "from_csv_cell",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q12-4",
+      "task": "t12",
+      "split": "tuning",
+      "query": "from_csv_cell convert a CSV cell into the declared database column type",
+      "kind": "mixed",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_io.py",
+          "name": "from_csv_cell",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q13-1",
+      "task": "t13",
+      "split": "evaluation",
+      "query": "row_to_csv",
+      "kind": "identifier",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_io.py",
+          "name": "row_to_csv",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q13-2",
+      "task": "t13",
+      "split": "evaluation",
+      "query": "serialize a database row using CSV header order",
+      "kind": "behavior",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_io.py",
+          "name": "row_to_csv",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q13-3",
+      "task": "t13",
+      "split": "evaluation",
+      "query": "ubah baris database menjadi CSV sesuai urutan header",
+      "kind": "behavior",
+      "query_language": "id",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_io.py",
+          "name": "row_to_csv",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q13-4",
+      "task": "t13",
+      "split": "evaluation",
+      "query": "row_to_csv serialize a database row using CSV header order",
+      "kind": "mixed",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_io.py",
+          "name": "row_to_csv",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q14-1",
+      "task": "t14",
+      "split": "tuning",
+      "query": "rollback",
+      "kind": "identifier",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_ops_core.py",
+          "name": "rollback",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q14-2",
+      "task": "t14",
+      "split": "tuning",
+      "query": "discard writes from an explicit Python transaction",
+      "kind": "behavior",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_ops_core.py",
+          "name": "rollback",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q14-3",
+      "task": "t14",
+      "split": "tuning",
+      "query": "batalkan tulisan transaksi eksplisit Python",
+      "kind": "behavior",
+      "query_language": "id",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_ops_core.py",
+          "name": "rollback",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q14-4",
+      "task": "t14",
+      "split": "tuning",
+      "query": "rollback discard writes from an explicit Python transaction",
+      "kind": "mixed",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_ops_core.py",
+          "name": "rollback",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q15-1",
+      "task": "t15",
+      "split": "tuning",
+      "query": "__exit__",
+      "kind": "identifier",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_ops_core.py",
+          "name": "__exit__",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q15-2",
+      "task": "t15",
+      "split": "tuning",
+      "query": "commit successful Python context managers and roll back exceptions",
+      "kind": "behavior",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_ops_core.py",
+          "name": "__exit__",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q15-3",
+      "task": "t15",
+      "split": "tuning",
+      "query": "commit context manager Python yang sukses dan rollback saat exception",
+      "kind": "behavior",
+      "query_language": "id",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_ops_core.py",
+          "name": "__exit__",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q15-4",
+      "task": "t15",
+      "split": "tuning",
+      "query": "__exit__ commit successful Python context managers and roll back exceptions",
+      "kind": "mixed",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/python/bkndb/_ops_core.py",
+          "name": "__exit__",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q16-1",
+      "task": "t16",
+      "split": "tuning",
+      "query": "test_failed_operation_aborts_the_transaction",
+      "kind": "identifier",
+      "query_language": "en",
+      "intent": "test",
+      "labels": [
+        {
+          "path": "bindings/python/tests/test_transactions.py",
+          "name": "test_failed_operation_aborts_the_transaction",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q16-2",
+      "task": "t16",
+      "split": "tuning",
+      "query": "test that a failed operation aborts its transaction",
+      "kind": "behavior",
+      "query_language": "en",
+      "intent": "test",
+      "labels": [
+        {
+          "path": "bindings/python/tests/test_transactions.py",
+          "name": "test_failed_operation_aborts_the_transaction",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q16-3",
+      "task": "t16",
+      "split": "tuning",
+      "query": "contoh pengujian operasi gagal membatalkan transaksi",
+      "kind": "behavior",
+      "query_language": "id",
+      "intent": "test",
+      "labels": [
+        {
+          "path": "bindings/python/tests/test_transactions.py",
+          "name": "test_failed_operation_aborts_the_transaction",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q16-4",
+      "task": "t16",
+      "split": "tuning",
+      "query": "test_failed_operation_aborts_the_transaction test that a failed operation aborts its transaction",
+      "kind": "mixed",
+      "query_language": "en",
+      "intent": "test",
+      "labels": [
+        {
+          "path": "bindings/python/tests/test_transactions.py",
+          "name": "test_failed_operation_aborts_the_transaction",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q17-1",
+      "task": "t17",
+      "split": "evaluation",
+      "query": "Begin",
+      "kind": "identifier",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/go/bkndb/tx.go",
+          "name": "Begin",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q17-2",
+      "task": "t17",
+      "split": "evaluation",
+      "query": "begin an explicit transaction in the Go binding",
+      "kind": "behavior",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/go/bkndb/tx.go",
+          "name": "Begin",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q17-3",
+      "task": "t17",
+      "split": "evaluation",
+      "query": "mulai transaksi eksplisit pada binding Go",
+      "kind": "behavior",
+      "query_language": "id",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/go/bkndb/tx.go",
+          "name": "Begin",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q17-4",
+      "task": "t17",
+      "split": "evaluation",
+      "query": "Begin begin an explicit transaction in the Go binding",
+      "kind": "mixed",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/go/bkndb/tx.go",
+          "name": "Begin",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q18-1",
+      "task": "t18",
+      "split": "tuning",
+      "query": "Rollback",
+      "kind": "identifier",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/go/bkndb/tx.go",
+          "name": "Rollback",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q18-2",
+      "task": "t18",
+      "split": "tuning",
+      "query": "roll back an explicit Go transaction",
+      "kind": "behavior",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/go/bkndb/tx.go",
+          "name": "Rollback",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q18-3",
+      "task": "t18",
+      "split": "tuning",
+      "query": "batalkan transaksi eksplisit di Go",
+      "kind": "behavior",
+      "query_language": "id",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/go/bkndb/tx.go",
+          "name": "Rollback",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q18-4",
+      "task": "t18",
+      "split": "tuning",
+      "query": "Rollback roll back an explicit Go transaction",
+      "kind": "mixed",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/go/bkndb/tx.go",
+          "name": "Rollback",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q19-1",
+      "task": "t19",
+      "split": "tuning",
+      "query": "SearchVector",
+      "kind": "identifier",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/go/bkndb/search.go",
+          "name": "SearchVector",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q19-2",
+      "task": "t19",
+      "split": "tuning",
+      "query": "search nearest vectors through the Go database API",
+      "kind": "behavior",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/go/bkndb/search.go",
+          "name": "SearchVector",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q19-3",
+      "task": "t19",
+      "split": "tuning",
+      "query": "cari vektor terdekat melalui API database Go",
+      "kind": "behavior",
+      "query_language": "id",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/go/bkndb/search.go",
+          "name": "SearchVector",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q19-4",
+      "task": "t19",
+      "split": "tuning",
+      "query": "SearchVector search nearest vectors through the Go database API",
+      "kind": "mixed",
+      "query_language": "en",
+      "intent": "wrapper",
+      "labels": [
+        {
+          "path": "bindings/go/bkndb/search.go",
+          "name": "SearchVector",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q20-1",
+      "task": "t20",
+      "split": "evaluation",
+      "query": "TestFulltextAndVectorSearch",
+      "kind": "identifier",
+      "query_language": "en",
+      "intent": "test",
+      "labels": [
+        {
+          "path": "bindings/go/bkndb/bkndb_test.go",
+          "name": "TestFulltextAndVectorSearch",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q20-2",
+      "task": "t20",
+      "split": "evaluation",
+      "query": "show a Go test using fulltext and vector retrieval",
+      "kind": "behavior",
+      "query_language": "en",
+      "intent": "test",
+      "labels": [
+        {
+          "path": "bindings/go/bkndb/bkndb_test.go",
+          "name": "TestFulltextAndVectorSearch",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q20-3",
+      "task": "t20",
+      "split": "evaluation",
+      "query": "contoh tes Go memakai pencarian fulltext dan vector",
+      "kind": "behavior",
+      "query_language": "id",
+      "intent": "test",
+      "labels": [
+        {
+          "path": "bindings/go/bkndb/bkndb_test.go",
+          "name": "TestFulltextAndVectorSearch",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    },
+    {
+      "id": "q20-4",
+      "task": "t20",
+      "split": "evaluation",
+      "query": "TestFulltextAndVectorSearch show a Go test using fulltext and vector retrieval",
+      "kind": "mixed",
+      "query_language": "en",
+      "intent": "test",
+      "labels": [
+        {
+          "path": "bindings/go/bkndb/bkndb_test.go",
+          "name": "TestFulltextAndVectorSearch",
+          "grade": 3,
+          "reason": "direct implementation or requested usage example inspected in pinned source"
+        },
+        {
+          "path": "crates/bkndb-core/src/relational/search/vector.rs",
+          "name": "pack_vector",
+          "grade": 0,
+          "reason": "vector serialization does not directly implement this task"
+        }
+      ]
+    }
+  ]
+}

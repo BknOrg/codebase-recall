@@ -49,6 +49,7 @@ const MINIFIED_EXTENSIONS: &[&str] = &[
     ".d.ts.map",
 ];
 
+#[derive(serde::Serialize)]
 pub struct FileEntry {
     pub relative_path: PathBuf,
     pub content: String,
@@ -120,22 +121,43 @@ pub fn collect_related_files(
 
     for rel in relative_path {
         let abs = root.join(rel);
-        if !abs.is_file() {
+        if !abs.is_file() || should_skip_content(&abs) {
             continue;
         }
 
         tree_paths.push(rel.clone());
 
-        if let Ok(metadata) = abs.metadata()
-            && metadata.len() > max_byte
-        {
+        let is_ipynb = abs
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("ipynb"))
+            .unwrap_or(false);
+
+        if let Ok(metadata) = abs.metadata() {
+            let allow_read = if is_ipynb {
+                metadata.len() <= 10 * 1024 * 1024
+            } else {
+                metadata.len() <= max_byte
+            };
+            if !allow_read {
+                continue;
+            }
+        } else {
             continue;
         }
-        if let Ok(content) = std::fs::read_to_string(&abs) {
-            files.push(FileEntry {
-                relative_path: rel.clone(),
-                content,
-            });
+
+        if let Ok(raw_content) = std::fs::read_to_string(&abs) {
+            let content = if is_ipynb {
+                crate::dump::ipynb::cleaning_ipynb(&raw_content).unwrap_or(raw_content)
+            } else {
+                raw_content
+            };
+            if (content.len() as u64) <= max_byte {
+                files.push(FileEntry {
+                    relative_path: rel.clone(),
+                    content,
+                });
+            }
         }
     }
     tree_paths.sort();
@@ -182,12 +204,9 @@ pub fn collect_files(
                     metadata.len() <= max_bytes
                 };
 
-                if allow_read
-                    && let Ok(raw_content) = std::fs::read_to_string(path)
-                {
+                if allow_read && let Ok(raw_content) = std::fs::read_to_string(path) {
                     let content = if is_ipynb {
-                        crate::analysis::python::ipynb::cleaning_ipynb(&raw_content)
-                            .unwrap_or(raw_content)
+                        crate::dump::ipynb::cleaning_ipynb(&raw_content).unwrap_or(raw_content)
                     } else {
                         raw_content
                     };

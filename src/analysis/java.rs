@@ -202,7 +202,7 @@ impl<'a> Walker<'a> {
             end_line: node.end_position().row as i64 + 1,
             start_byte: node.start_byte() as i64,
             end_byte: node.end_byte() as i64,
-            signature: None,
+            signature: crate::analysis::node_signature(node, self.src),
             param_count,
             type_name,
         });

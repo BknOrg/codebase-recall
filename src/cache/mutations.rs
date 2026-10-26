@@ -17,11 +17,49 @@ fn props<const N: usize>(items: [(&str, PropValue); N]) -> Properties {
 fn int_pk(pk: PropValue) -> std::result::Result<i64, BknError> {
     match pk {
         PropValue::Int(v) => Ok(v),
-        other => Err(BknError::Encoding(format!("expected integer primary key, got {other:?}"))),
+        other => Err(BknError::Encoding(format!(
+            "expected integer primary key, got {other:?}"
+        ))),
     }
 }
 
 impl CacheDb {
+    pub fn update_file_metadata(
+        &self,
+        file_id: i64,
+        mtime: Option<i64>,
+        size: Option<i64>,
+    ) -> Result<()> {
+        self.db.write_tx(|b| {
+            b.relational().table(self.tables.files.clone()).update(
+                &PropValue::Int(file_id),
+                |row| {
+                    row.insert("mtime".into(), mtime.into());
+                    row.insert("size".into(), size.into());
+                },
+            )?;
+            Ok(())
+        })?;
+        Ok(())
+    }
+
+    /// Invalidate before changing symbol IDs, including if a later file fails.
+    pub fn invalidate_precise_generation(&mut self) -> Result<()> {
+        let generation = self
+            .meta_get("generation")?
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(0)
+            + 1;
+        let ids = self
+            .all_files()?
+            .into_iter()
+            .map(|f| f.id)
+            .collect::<Vec<_>>();
+        self.clear_precise(&ids)?;
+        self.meta_set("precise_generation", "invalid")?;
+        self.meta_set("generation", &generation.to_string())
+    }
+
     pub fn meta_set(&self, key: &str, value: &str) -> Result<()> {
         self.db.write_tx(|b| {
             b.relational()
@@ -37,11 +75,34 @@ impl CacheDb {
         let t = &self.tables;
         self.db.write_tx(|b| {
             let mut rel = b.relational();
-            let rows = rel.table(t.files.clone()).select_eq("path", &PropValue::from(path))?;
+            rel.table(t.embedding_chunks.clone())
+                .delete_where_eq("path", &PropValue::from(path))?;
+            rel.table(t.meta.clone())
+                .delete(&PropValue::from(format!("embedding_file:{path}")))?;
+            rel.table(t.meta.clone())
+                .delete(&PropValue::from(format!("embedding_excluded:{path}")))?;
+            for prefix in ["analyzer:", "diagnostics:", "embedding_count:"] {
+                rel.table(t.meta.clone())
+                    .delete(&PropValue::from(format!("{prefix}{path}")))?;
+            }
+            let rows = rel
+                .table(t.files.clone())
+                .select_eq("path", &PropValue::from(path))?;
             for row in rows {
                 let file_id = PropValue::Int(int_pk(row.pk.clone())?);
-                for child in [&t.symbols, &t.imports, &t.refs, &t.scopes, &t.bindings, &t.string_literals] {
-                    rel.table(child.clone()).delete_where_eq("file_id", &file_id)?;
+                super::content::remove(&mut rel, t, int_pk(row.pk.clone())?)?;
+                super::purpose::remove(&mut rel, t, int_pk(row.pk.clone())?)?;
+                rel.table(t.source_snapshots.clone()).delete(&file_id)?;
+                for child in [
+                    &t.symbols,
+                    &t.imports,
+                    &t.refs,
+                    &t.scopes,
+                    &t.bindings,
+                    &t.string_literals,
+                ] {
+                    rel.table(child.clone())
+                        .delete_where_eq("file_id", &file_id)?;
                 }
                 rel.table(t.files.clone()).delete(&row.pk)?;
             }
@@ -65,15 +126,17 @@ impl CacheDb {
             let mut rel = b.relational();
             for (ref_id, status, symbol_id, confidence) in results {
                 let conf = matches!(status, PreciseStatus::Hit).then_some(*confidence);
-                rel.table(t.refs.clone()).update(&PropValue::Int(*ref_id), |row| {
-                    row.insert("precise_status".into(), status.as_str().into());
-                    row.insert("precise_symbol_id".into(), (*symbol_id).into());
-                    row.insert("precise_confidence".into(), conf.into());
-                })?;
+                rel.table(t.refs.clone())
+                    .update(&PropValue::Int(*ref_id), |row| {
+                        row.insert("precise_status".into(), status.as_str().into());
+                        row.insert("precise_symbol_id".into(), (*symbol_id).into());
+                        row.insert("precise_confidence".into(), conf.into());
+                    })?;
             }
-            rel.table(t.files.clone()).update(&PropValue::Int(file_id), |row| {
-                row.insert("precise_synced_at".into(), now.into());
-            })?;
+            rel.table(t.files.clone())
+                .update(&PropValue::Int(file_id), |row| {
+                    row.insert("precise_synced_at".into(), now.into());
+                })?;
             Ok(())
         })?;
         Ok(())
@@ -95,9 +158,10 @@ impl CacheDb {
                         ("precise_confidence", PropValue::Null),
                     ],
                 )?;
-                rel.table(t.files.clone()).update(&PropValue::Int(*id), |row| {
-                    row.insert("precise_synced_at".into(), PropValue::Null);
-                })?;
+                rel.table(t.files.clone())
+                    .update(&PropValue::Int(*id), |row| {
+                        row.insert("precise_synced_at".into(), PropValue::Null);
+                    })?;
             }
             Ok(())
         })?;
@@ -125,15 +189,36 @@ impl CacheDb {
         scopes: &[NewScope],
         bindings: &[NewBinding],
         string_literals: &[NewStringLiteral],
+        source: Option<&[u8]>,
     ) -> Result<()> {
+        if let Some(bytes) = source {
+            anyhow::ensure!(
+                blake3::hash(bytes).to_hex().as_str() == content_hash,
+                "source snapshot hash does not match analysis for {path}"
+            );
+        }
+        let prepared = super::content::prepare(path, content_hash, source, symbols)?;
         let t = &self.tables;
         let now = unix_now();
 
         self.db.write_tx(|b| {
             let mut rel = b.relational();
 
+            let old_chunks = rel
+                .table(t.embedding_chunks.clone())
+                .select_eq("path", &PropValue::from(path))?;
+            for chunk in old_chunks {
+                rel.table(t.embedding_chunks.clone())
+                    .update(&chunk.pk, |v| {
+                        v.insert("valid".into(), false.into());
+                    })?;
+            }
+            rel.table(t.meta.clone())
+                .delete(&PropValue::from(format!("embedding_file:{path}")))?;
             // Upsert the file row, keeping its id stable across re-syncs.
-            let existing = rel.table(t.files.clone()).select_eq("path", &PropValue::from(path))?;
+            let existing = rel
+                .table(t.files.clone())
+                .select_eq("path", &PropValue::from(path))?;
             let file_id = match existing.first() {
                 Some(row) => {
                     rel.table(t.files.clone()).update(&row.pk, |v| {
@@ -162,7 +247,22 @@ impl CacheDb {
 
             // No foreign keys: clear this file's child rows by hand.
             let fid = PropValue::Int(file_id);
-            for child in [&t.symbols, &t.imports, &t.refs, &t.scopes, &t.bindings, &t.string_literals] {
+            prepared.write(&mut rel, t, file_id, content_hash)?;
+            if let Some(bytes) = source {
+                let _snapshot_timer = crate::operation::time("source_snapshot_fill");
+                rel.table(t.source_snapshots.clone())
+                    .upsert(super::snapshots::properties(file_id, content_hash, bytes))?;
+            } else {
+                rel.table(t.source_snapshots.clone()).delete(&fid)?;
+            }
+            for child in [
+                &t.symbols,
+                &t.imports,
+                &t.refs,
+                &t.scopes,
+                &t.bindings,
+                &t.string_literals,
+            ] {
                 rel.table(child.clone()).delete_where_eq("file_id", &fid)?;
             }
 
@@ -180,6 +280,7 @@ impl CacheDb {
                 let pk = rel.table(t.symbols.clone()).insert(props([
                     ("file_id", file_id.into()),
                     ("name", s.name.as_str().into()),
+                    ("name_lower", s.name.to_ascii_lowercase().into()),
                     ("kind", s.kind.as_str().into()),
                     ("parent_symbol_id", parent.into()),
                     ("is_exported", s.is_exported.into()),
@@ -195,9 +296,10 @@ impl CacheDb {
             }
             for (i, p) in late_parents {
                 let parent_id = ids[p];
-                rel.table(t.symbols.clone()).update(&PropValue::Int(ids[i]), |row| {
-                    row.insert("parent_symbol_id".into(), parent_id.into());
-                })?;
+                rel.table(t.symbols.clone())
+                    .update(&PropValue::Int(ids[i]), |row| {
+                        row.insert("parent_symbol_id".into(), parent_id.into());
+                    })?;
             }
 
             // Scopes, same shape as symbols.
@@ -224,26 +326,31 @@ impl CacheDb {
             }
             for (i, p) in late_scopes {
                 let parent_id = scope_ids[p];
-                rel.table(t.scopes.clone()).update(&PropValue::Int(scope_ids[i]), |row| {
-                    row.insert("parent_scope_id".into(), parent_id.into());
-                })?;
+                rel.table(t.scopes.clone())
+                    .update(&PropValue::Int(scope_ids[i]), |row| {
+                        row.insert("parent_scope_id".into(), parent_id.into());
+                    })?;
             }
 
             // Imports (before bindings so `namespace` bindings can point at them).
             let import_ids: Vec<i64> = if imports.is_empty() {
                 Vec::new()
             } else {
-                let pks = rel.table(t.imports.clone()).insert_bulk(imports.iter().map(|im| {
-                    props([
-                        ("file_id", file_id.into()),
-                        ("raw_specifier", im.raw_specifier.as_str().into()),
-                        ("imported_name", im.imported_name.clone().into()),
-                        ("alias", im.alias.clone().into()),
-                        ("is_relative", im.is_relative.into()),
-                        ("start_line", im.start_line.into()),
-                    ])
-                }))?;
-                pks.into_iter().map(int_pk).collect::<std::result::Result<_, _>>()?
+                let pks = rel
+                    .table(t.imports.clone())
+                    .insert_bulk(imports.iter().map(|im| {
+                        props([
+                            ("file_id", file_id.into()),
+                            ("raw_specifier", im.raw_specifier.as_str().into()),
+                            ("imported_name", im.imported_name.clone().into()),
+                            ("alias", im.alias.clone().into()),
+                            ("is_relative", im.is_relative.into()),
+                            ("start_line", im.start_line.into()),
+                        ])
+                    }))?;
+                pks.into_iter()
+                    .map(int_pk)
+                    .collect::<std::result::Result<_, _>>()?
             };
 
             // Bindings.
@@ -274,7 +381,9 @@ impl CacheDb {
                 .iter()
                 .map(|rf| {
                     let enclosing = innermost_symbol(symbols, &ids, rf.start_byte);
-                    let resolved = rf.resolved_local_symbol_index.and_then(|i| ids.get(i).copied());
+                    let resolved = rf
+                        .resolved_local_symbol_index
+                        .and_then(|i| ids.get(i).copied());
                     let resolved_conf: Option<f64> = resolved.map(|_| 0.95);
                     props([
                         ("file_id", file_id.into()),
@@ -298,14 +407,22 @@ impl CacheDb {
 
             // String literals.
             if !string_literals.is_empty() {
-                rel.table(t.string_literals.clone()).insert_bulk(string_literals.iter().map(|sl| {
-                    props([
-                        ("file_id", file_id.into()),
-                        ("value", sl.value.as_str().into()),
-                        ("callee", sl.callee.clone().into()),
-                        ("line", sl.line.into()),
-                    ])
-                }))?;
+                rel.table(t.string_literals.clone())
+                    .insert_bulk(string_literals.iter().map(|sl| {
+                        props([
+                            ("file_id", file_id.into()),
+                            ("value", sl.value.as_str().into()),
+                            ("callee", sl.callee.clone().into()),
+                            ("line", sl.line.into()),
+                        ])
+                    }))?;
+            }
+
+            #[cfg(test)]
+            if super::snapshots::FAIL_ANALYSIS_COMMIT.with(|flag| flag.replace(false)) {
+                return Err(BknError::Encoding(
+                    "injected analysis commit failure".into(),
+                ));
             }
 
             Ok(())

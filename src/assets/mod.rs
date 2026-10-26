@@ -11,6 +11,7 @@ use std::sync::LazyLock;
 pub const D3_JS: &str = include_str!("d3.min.js");
 pub const GRAPH_CSS: &str = include_str!("graph.css");
 /// Heartbeat client used only by `code-ctx serve`.
+#[cfg(feature = "viewer")]
 pub const LIVE_JS: &str = include_str!("live.js");
 
 /// Icon-rail SVGs (`currentColor`-filled, so they theme through the button's
@@ -24,12 +25,15 @@ const ICON_SIDEBAR: &str = include_str!("icons/sidebar-icon.svg");
 pub const APP_LOGO: &str = include_str!("icons/app-logo.svg");
 
 static FAVICON_DATA_URI: LazyLock<String> = LazyLock::new(|| {
-    format!("data:image/svg+xml;base64,{}", to_base64(APP_LOGO.as_bytes()))
+    format!(
+        "data:image/svg+xml;base64,{}",
+        to_base64(APP_LOGO.as_bytes())
+    )
 });
 
 fn to_base64(bytes: &[u8]) -> String {
     const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
         let b0 = chunk[0];
         let b1 = if chunk.len() > 1 { chunk[1] } else { 0 };
@@ -78,10 +82,9 @@ pub static GRAPH_VIEW_JS: LazyLock<String> = LazyLock::new(|| {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Delivery {
-    #[allow(dead_code)]
     Inline,
+    #[cfg(feature = "viewer")]
     Server,
-    Separated,
 }
 
 const BODY: &str = r#"<div id="app">
@@ -161,9 +164,10 @@ pub fn graph_page(data_json: &str, stat: &str, delivery: Delivery) -> String {
                 "<script id=\"graph-data\" type=\"application/json\">{safe}</script>\n\
                  <script>{D3_JS}</script>\n\
                  <script>{}</script>",
-                &*GRAPH_VIEW_JS
+                GRAPH_VIEW_JS.as_str()
             ),
         ),
+        #[cfg(feature = "viewer")]
         Delivery::Server => (
             "<link rel=\"stylesheet\" href=\"/assets/graph.css\">".to_string(),
             format!(
@@ -172,13 +176,6 @@ pub fn graph_page(data_json: &str, stat: &str, delivery: Delivery) -> String {
                  <script src=\"/assets/graph-view.js\"></script>\n\
                  <script src=\"/assets/live.js\"></script>"
             ),
-        ),
-        Delivery::Separated => (
-            "<link rel=\"stylesheet\" href=\"./style.css\">".to_string(),
-            "<script src=\"./data.js\"></script>\n\
-             <script src=\"./js/d3.min.js\"></script>\n\
-             <script src=\"./js/graph-view.js\"></script>"
-                .to_string(),
         ),
     };
 
@@ -199,25 +196,4 @@ pub fn graph_page(data_json: &str, stat: &str, delivery: Delivery) -> String {
 </body>\n\
 </html>\n"
     )
-}
-
-/// Bundle of separated assets for offline directory export.
-pub struct HtmlBundle {
-    pub html: String,
-    pub css: &'static str,
-    pub data_js: String,
-    pub d3_js: &'static str,
-    pub graph_view_js: String,
-}
-
-pub fn graph_separated_bundle(data_json: &str, stat: &str) -> HtmlBundle {
-    let html = graph_page(data_json, stat, Delivery::Separated);
-    let data_js = format!("window.__GRAPH_DATA__ = {data_json};\n");
-    HtmlBundle {
-        html,
-        css: GRAPH_CSS,
-        data_js,
-        d3_js: D3_JS,
-        graph_view_js: GRAPH_VIEW_JS.clone(),
-    }
 }

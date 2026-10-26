@@ -67,9 +67,9 @@ pub struct ReportData {
 }
 
 pub fn run(args: ReportArgs) -> Result<()> {
-    let data = generate(&args.project, args.no_sync)?;
+    let data = generate_filtered(&args.project, args.no_sync, &args.filters)?;
     let content = if args.json {
-        serde_json::to_string_pretty(&data)?
+        crate::output::json(&args.project, args.no_sync, &data)?
     } else {
         render_markdown(&data)
     };
@@ -128,6 +128,14 @@ pub fn refresh_after_sync(
 }
 
 pub fn generate(project: &Path, no_sync: bool) -> Result<ReportData> {
+    generate_filtered(project, no_sync, &Default::default())
+}
+pub fn generate_filtered(
+    project: &Path,
+    no_sync: bool,
+    filters: &crate::selection::Filters,
+) -> Result<ReportData> {
+    let selection = crate::selection::Selection::new(project, filters)?;
     let query = crate::service::analysis_query(
         project,
         crate::service::call_and_import_kinds(),
@@ -135,7 +143,14 @@ pub fn generate(project: &Path, no_sync: bool) -> Result<ReportData> {
         PreciseArgs::default(),
     );
 
-    let graph = build_graph(&query).context("failed to build code graph for the report")?;
+    let mut graph = build_graph(&query).context("failed to build code graph for the report")?;
+    graph
+        .nodes
+        .retain(|n| n.path.as_ref().is_none_or(|p| selection.accepts(p)));
+    let ids: std::collections::HashSet<_> = graph.nodes.iter().map(|n| n.id.clone()).collect();
+    graph
+        .edges
+        .retain(|e| ids.contains(&e.source) && ids.contains(&e.target));
     Ok(analyze(project, &graph))
 }
 
@@ -250,9 +265,10 @@ fn subsystem_of(
             .into_iter()
             .take(3)
             .filter_map(|(id, links)| {
-                label_of
-                    .get(&id)
-                    .map(|l| LinkInfo { subsystem: (*l).to_string(), links })
+                label_of.get(&id).map(|l| LinkInfo {
+                    subsystem: (*l).to_string(),
+                    links,
+                })
             })
             .collect(),
     }
@@ -332,7 +348,11 @@ fn questions_of(
             command: format!("code-rcl explain {}", bridge.file),
         });
     }
-    if let Some((&(a, b), _)) = communities.links.iter().max_by_key(|(k, w)| (**w, std::cmp::Reverse(**k))) {
+    if let Some((&(a, b), _)) = communities
+        .links
+        .iter()
+        .max_by_key(|(k, w)| (**w, std::cmp::Reverse(**k)))
+    {
         let key = |id: u32| {
             subsystems
                 .iter()
@@ -405,7 +425,12 @@ pub fn render_markdown(d: &ReportData) -> String {
             "Groups of files that depend on each other far more than on the rest (detected from imports and calls).\n\n",
         );
         for (i, s) in d.subsystems.iter().enumerate() {
-            md.push_str(&format!("### {}. {} ({} files)\n\n", i + 1, s.label, s.files));
+            md.push_str(&format!(
+                "### {}. {} ({} files)\n\n",
+                i + 1,
+                s.label,
+                s.files
+            ));
             let keys: Vec<String> = s.key_files.iter().map(|f| format!("`{f}`")).collect();
             md.push_str(&format!("- Key files: {}\n", keys.join(", ")));
             md.push_str(&format!(
@@ -474,7 +499,10 @@ mod tests {
                 cohesion: 0.86,
                 internal_links: 6,
                 external_links: 1,
-                depends_on: vec![LinkInfo { subsystem: "shipping".into(), links: 1 }],
+                depends_on: vec![LinkInfo {
+                    subsystem: "shipping".into(),
+                    links: 1,
+                }],
             }],
             unclustered_files: 0,
             bridges: vec![Bridge {
@@ -505,7 +533,11 @@ mod tests {
         ] {
             assert!(md.contains(needle), "missing {needle:?} in:\n{md}");
         }
-        assert_eq!(md, render_markdown(&sample()), "rendering must be deterministic");
+        assert_eq!(
+            md,
+            render_markdown(&sample()),
+            "rendering must be deterministic"
+        );
     }
 
     #[test]

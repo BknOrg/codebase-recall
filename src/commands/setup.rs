@@ -1,13 +1,42 @@
+use anyhow::{Result, bail};
+#[cfg(test)]
 use std::fs;
 use std::path::{Path, PathBuf};
-use anyhow::{bail, Context, Result};
-use serde_json::{json, Value};
 
 use crate::cli::SetupArgs;
 use crate::commands::setup_integrations as integ;
 
 /// Master AI Agent Skill embedded directly into the binary at compile time.
+const REFERENCES: &[(&str, &str)] = &[
+    (
+        "embeddings.md",
+        include_str!("../../skills/code-rcl/references/embeddings.md"),
+    ),
+    (
+        "cli.md",
+        include_str!("../../skills/code-rcl/references/cli.md"),
+    ),
+    (
+        "mcp.md",
+        include_str!("../../skills/code-rcl/references/mcp.md"),
+    ),
+    (
+        "installation.md",
+        include_str!("../../skills/code-rcl/references/installation.md"),
+    ),
+];
+
 const EMBEDDED_SKILL: &str = include_str!("../../skills/code-rcl/SKILL.md");
+
+/// Bundle documentation describes the executable shipping it, not a future release.
+pub(crate) fn bundled_text(text: &str) -> String {
+    let version = EMBEDDED_SKILL
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("version: "))
+        .unwrap_or(env!("CARGO_PKG_VERSION"))
+        .trim_matches('"');
+    text.replace(version, env!("CARGO_PKG_VERSION"))
+}
 
 /// Cleans Windows verbatim path prefix (\\?\) if present.
 fn clean_path(path: &Path) -> String {
@@ -23,11 +52,16 @@ fn clean_path(path: &Path) -> String {
 fn get_home_dir() -> Option<PathBuf> {
     #[cfg(windows)]
     {
-        if let Ok(profile) = std::env::var("USERPROFILE") {
+        if let Ok(profile) = std::env::var("USERPROFILE")
+            && !profile.is_empty()
+        {
             return Some(PathBuf::from(profile));
         }
     }
-    std::env::var("HOME").ok().map(PathBuf::from)
+    std::env::var("HOME")
+        .ok()
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from)
 }
 
 /// Name the installer puts on `PATH`, and what config files should invoke.
@@ -71,226 +105,47 @@ fn on_path(name: &str, path_var: Option<&std::ffi::OsStr>) -> bool {
     })
 }
 
-/// Inserts or updates the "code-rcl" entry in an MCP configuration JSON file.
-fn update_mcp_json_file(file_path: &Path, exe_cmd: &str) -> Result<()> {
-    let mut root: Value = if file_path.exists() {
-        let content = fs::read_to_string(file_path)
-            .with_context(|| format!("Failed to read MCP config: {}", file_path.display()))?;
-        if content.trim().is_empty() {
-            json!({})
-        } else {
-            serde_json::from_str(&content).with_context(|| {
-                format!(
-                    "{} is not valid JSON; refusing to overwrite it. Fix the file, then re-run",
-                    file_path.display()
-                )
-            })?
-        }
-    } else {
-        json!({})
-    };
-
-    if !root.is_object() {
-        bail!(
-            "{} must contain a JSON object; refusing to overwrite it",
-            file_path.display()
-        );
-    }
-
-    let mcp_servers = root
-        .as_object_mut()
-        .unwrap()
-        .entry("mcpServers")
-        .or_insert_with(|| json!({}));
-
-    if !mcp_servers.is_object() {
-        bail!(
-            "{}: \"mcpServers\" must be an object; refusing to overwrite it",
-            file_path.display()
-        );
-    }
-
-    mcp_servers.as_object_mut().unwrap().insert(
-        "code-rcl".to_string(),
-        json!({
-            "command": exe_cmd,
-            "args": ["mcp"]
-        }),
-    );
-
-    if let Some(parent) = file_path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
-    }
-
-    let pretty_json = serde_json::to_string_pretty(&root)
-        .context("Failed to serialize MCP configuration JSON")?;
-    fs::write(file_path, format!("{}\n", pretty_json))
-        .with_context(|| format!("Failed to write MCP config: {}", file_path.display()))?;
-
-    Ok(())
-}
+#[path = "agent_setup.rs"]
+mod agents;
 
 pub fn run(args: SetupArgs) -> Result<()> {
     if args.print_skill {
-        println!("{}", EMBEDDED_SKILL);
+        println!("{}", bundled_text(EMBEDDED_SKILL));
         return Ok(());
     }
     if args.print_reminder {
         println!("{}", integ::REMINDER_TEXT);
         return Ok(());
     }
-
-    let exe_cmd = get_executable_command();
-    let home = get_home_dir();
-
     if args.remove {
-        println!("[code-rcl setup] Removing agent integrations...");
-        apply_integrations(&args, &exe_cmd, home.as_deref(), true)?;
-        return Ok(());
-    }
-
-    println!("[code-rcl setup] Setting up AI agent integration...");
-
-    // 1. Skill Installation
-    if !args.mcp_only {
-        let mut skill_paths: Vec<(PathBuf, bool)> = Vec::new(); // (path, is_required)
-
-        if let Some(custom_dir) = &args.skill_dir {
-            skill_paths.push((custom_dir.join("SKILL.md"), true));
-        } else if args.global {
-            if let Some(h) = &home {
-                skill_paths.push((
-                    h.join(".gemini").join("config").join("skills").join("code-rcl").join("SKILL.md"),
-                    true,
-                ));
-            } else {
-                eprintln!("[warn] Cannot determine home directory for global skill installation; falling back to workspace.");
-                skill_paths.push((
-                    PathBuf::from(".agents").join("skills").join("code-rcl").join("SKILL.md"),
-                    true,
-                ));
-            }
-        } else if args.workspace {
-            skill_paths.push((
-                PathBuf::from(".agents").join("skills").join("code-rcl").join("SKILL.md"),
-                true,
-            ));
-        } else {
-            // Default: workspace is required, global is best-effort if directory already exists
-            skill_paths.push((
-                PathBuf::from(".agents").join("skills").join("code-rcl").join("SKILL.md"),
-                true,
-            ));
-            if let Some(h) = &home {
-                let global_skill = h.join(".gemini").join("config").join("skills").join("code-rcl").join("SKILL.md");
-                if global_skill.parent().map(|p| p.exists()).unwrap_or(false) {
-                    skill_paths.push((global_skill, false));
-                }
-            }
-        }
-
-        for (skill_path, required) in skill_paths {
-            if let Some(parent) = skill_path.parent() {
-                if let Err(e) = fs::create_dir_all(parent) {
-                    if required {
-                        return Err(e).with_context(|| format!("Failed to create skill directory: {}", parent.display()));
-                    } else {
-                        eprintln!("  ⚠ Skipped optional skill directory: {}", parent.display());
-                        continue;
-                    }
-                }
-            }
-            match fs::write(&skill_path, EMBEDDED_SKILL) {
-                Ok(_) => println!("  ✓ Installed agent skill: {}", skill_path.display()),
-                Err(e) => {
-                    if required {
-                        return Err(e).with_context(|| format!("Failed to write SKILL.md to: {}", skill_path.display()));
-                    } else {
-                        eprintln!("  ⚠ Skipped optional skill path: {}", skill_path.display());
-                    }
-                }
-            }
-        }
-    }
-
-    // 2. MCP Server Configuration
-    if !args.skill_only {
-        let target_lower = args.target.to_lowercase();
-        let config_gemini = target_lower == "all" || target_lower == "gemini" || target_lower == "antigravity";
-        let config_claude = target_lower == "all" || target_lower == "claude";
-
-        if args.global {
-            if config_gemini {
-                if let Some(h) = &home {
-                    let global_gemini = h.join(".gemini").join("config").join("mcp_config.json");
-                    update_mcp_json_file(&global_gemini, &exe_cmd)?;
-                    println!("  ✓ Registered global MCP server (Antigravity/Gemini): {}", global_gemini.display());
-                }
-            }
-            if config_claude {
-                if let Some(h) = &home {
-                    let global_claude = h.join(".claude.json");
-                    update_mcp_json_file(&global_claude, &exe_cmd)?;
-                    println!("  ✓ Registered global MCP server (Claude): {}", global_claude.display());
-                }
-            }
-        } else if args.workspace {
-            // Explicit workspace installation only
-            if config_claude {
-                let workspace_mcp = PathBuf::from(".mcp.json");
-                update_mcp_json_file(&workspace_mcp, &exe_cmd)?;
-                println!("  ✓ Registered workspace MCP server (Claude Code / Standard): {}", workspace_mcp.display());
-            }
-
-            if config_gemini {
-                let workspace_gemini = PathBuf::from(".agents").join("mcp_config.json");
-                update_mcp_json_file(&workspace_gemini, &exe_cmd)?;
-                println!("  ✓ Registered workspace MCP server (Antigravity/Gemini): {}", workspace_gemini.display());
-            }
-        } else {
-            // Default: workspace configs are primary, global Gemini is synchronized if available
-            if config_claude {
-                let workspace_mcp = PathBuf::from(".mcp.json");
-                update_mcp_json_file(&workspace_mcp, &exe_cmd)?;
-                println!("  ✓ Registered workspace MCP server (Claude Code / Standard): {}", workspace_mcp.display());
-            }
-
-            if config_gemini {
-                let workspace_gemini = PathBuf::from(".agents").join("mcp_config.json");
-                update_mcp_json_file(&workspace_gemini, &exe_cmd)?;
-                println!("  ✓ Registered workspace MCP server (Antigravity/Gemini): {}", workspace_gemini.display());
-
-                // Best-effort sync to global config if directory exists
-                if let Some(h) = &home {
-                    let global_gemini = h.join(".gemini").join("config").join("mcp_config.json");
-                    if global_gemini.parent().map(|p| p.exists()).unwrap_or(false) {
-                        if let Err(e) = update_mcp_json_file(&global_gemini, &exe_cmd) {
-                            eprintln!("  ⚠ Optional global MCP config sync skipped: {}", e);
-                        } else {
-                            println!("  ✓ Synchronized global MCP server (Antigravity/Gemini): {}", global_gemini.display());
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if args.instructions || args.git_hook || args.claude_hook {
-        apply_integrations(&args, &exe_cmd, home.as_deref(), false)?;
-    }
-
-    println!("[code-rcl setup] Setup completed successfully.");
-    println!("  Command written to configs: {}", exe_cmd);
-    if exe_cmd != COMMAND_NAME {
-        println!(
-            "  ⚠ `{COMMAND_NAME}` is not on PATH, so the absolute path was written; \
-             add its folder to PATH and re-run setup to get a portable config."
+        return apply_integrations(
+            &args,
+            &get_executable_command(),
+            get_home_dir().as_deref(),
+            true,
         );
     }
-    println!("  Run `code-rcl --help` or `code-rcl mcp` for details.");
+    agents::run(&args, false)
+}
 
-    Ok(())
+pub fn uninstall(args: crate::cli::UninstallArgs) -> Result<()> {
+    agents::run(
+        &SetupArgs {
+            global: args.global,
+            workspace: args.workspace,
+            target: args.target,
+            skill_only: args.skill_only,
+            mcp_only: args.mcp_only,
+            skill_dir: args.skill_dir,
+            print_skill: false,
+            print_reminder: false,
+            remove: false,
+            instructions: false,
+            git_hook: false,
+            claude_hook: false,
+        },
+        true,
+    )
 }
 
 fn report(what: &str, path: &Path, change: integ::Change) {
@@ -337,7 +192,9 @@ fn apply_integrations(
 
     if do_git_hook {
         if args.global {
-            eprintln!("  ⚠ Skipped git hook: hooks are per-repository; run without --global inside the repo");
+            eprintln!(
+                "  ⚠ Skipped git hook: hooks are per-repository; run without --global inside the repo"
+            );
         } else {
             let hook = integ::post_commit_hook_path(&base)?;
             let change = if remove {
@@ -360,7 +217,10 @@ fn apply_integrations(
             };
             report("Claude Code hook", &settings, change);
         } else {
-            eprintln!("  ⚠ Skipped Claude Code hook: --target {} is not claude/all", args.target);
+            eprintln!(
+                "  ⚠ Skipped Claude Code hook: --target {} is not claude/all",
+                args.target
+            );
         }
     }
 
@@ -374,12 +234,32 @@ fn apply_integrations(
 mod tests {
     use super::*;
 
+    #[test]
+    fn bundled_cli_examples_parse_with_the_current_binary_contract() {
+        use clap::Parser;
+        let reference = REFERENCES
+            .iter()
+            .find(|(name, _)| *name == "cli.md")
+            .unwrap()
+            .1;
+        let examples = reference
+            .lines()
+            .filter(|line| line.starts_with("code-rcl "))
+            .collect::<Vec<_>>();
+        assert!(!examples.is_empty());
+        for example in examples {
+            crate::cli::Cli::try_parse_from(example.split_whitespace())
+                .unwrap_or_else(|error| panic!("invalid bundled example {example}: {error}"));
+        }
+    }
+
     /// Scoped temp dir; the crate has no dev-dependency for one.
     struct TempDir(PathBuf);
 
     impl TempDir {
         fn new(tag: &str) -> Self {
-            let path = std::env::temp_dir().join(format!("code-rcl-setup-{}-{tag}", std::process::id()));
+            let path =
+                std::env::temp_dir().join(format!("code-rcl-setup-{}-{tag}", std::process::id()));
             let _ = fs::remove_dir_all(&path);
             fs::create_dir_all(&path).unwrap();
             TempDir(path)
@@ -393,7 +273,11 @@ mod tests {
     }
 
     fn exe_name() -> &'static str {
-        if cfg!(windows) { "code-rcl.exe" } else { "code-rcl" }
+        if cfg!(windows) {
+            "code-rcl.exe"
+        } else {
+            "code-rcl"
+        }
     }
 
     #[test]

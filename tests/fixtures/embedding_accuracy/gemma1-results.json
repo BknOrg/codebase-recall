@@ -1,0 +1,2205 @@
+{
+  "batch_ms": [
+    1132,
+    1404,
+    2592,
+    2634,
+    2665,
+    1625,
+    1235,
+    2326,
+    886,
+    1823,
+    2706,
+    2745,
+    2847,
+    1062,
+    1229,
+    2847,
+    2485,
+    1696,
+    2815,
+    898,
+    171,
+    113,
+    145,
+    148,
+    143,
+    167,
+    156,
+    148
+  ],
+  "documents": 80,
+  "evaluations": [
+    {
+      "dimensions": 768,
+      "metrics": {
+        "all": {
+          "mrr": 0.984375,
+          "queries": 32,
+          "recall_at_1": 0.96875,
+          "recall_at_5": 1.0
+        },
+        "en": {
+          "mrr": 0.96875,
+          "queries": 16,
+          "recall_at_1": 0.9375,
+          "recall_at_5": 1.0
+        },
+        "id": {
+          "mrr": 1.0,
+          "queries": 16,
+          "recall_at_1": 1.0,
+          "recall_at_5": 1.0
+        }
+      },
+      "queries": [
+        {
+          "gold": "src/precise/map.rs:byte_offset",
+          "language": "id",
+          "query": "Mengubah posisi baris dan kolom UTF-16 menjadi offset byte, serta menolak posisi di tengah surrogate pair.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "byte_offset",
+              "path": "src/precise/map.rs",
+              "score": 0.5467521548271179
+            },
+            {
+              "name": "symbol_at_byte",
+              "path": "src/precise/map.rs",
+              "score": 0.45016196370124817
+            },
+            {
+              "name": "path_to_uri",
+              "path": "src/precise/map.rs",
+              "score": 0.4220125079154968
+            },
+            {
+              "name": "percent_decode",
+              "path": "src/server/mod.rs",
+              "score": 0.420520156621933
+            },
+            {
+              "name": "string_literal_row",
+              "path": "src/cache/mappers.rs",
+              "score": 0.4199009835720062
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/map.rs:byte_offset",
+          "language": "en",
+          "query": "Convert a line and UTF-16 column to a byte offset while rejecting the middle of a surrogate pair.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "byte_offset",
+              "path": "src/precise/map.rs",
+              "score": 0.6016988754272461
+            },
+            {
+              "name": "symbol_at_byte",
+              "path": "src/precise/map.rs",
+              "score": 0.4746764898300171
+            },
+            {
+              "name": "innermost_symbol",
+              "path": "src/cache/utils.rs",
+              "score": 0.446520060300827
+            },
+            {
+              "name": "get_snippet",
+              "path": "src/commands/impact/traversal.rs",
+              "score": 0.39082080125808716
+            },
+            {
+              "name": "int_pk",
+              "path": "src/cache/mutations.rs",
+              "score": 0.3862847089767456
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/map.rs:symbol_at_byte",
+          "language": "id",
+          "query": "Memilih deklarasi dengan rentang terkecil yang mencakup suatu posisi byte.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "symbol_at_byte",
+              "path": "src/precise/map.rs",
+              "score": 0.613797664642334
+            },
+            {
+              "name": "innermost_symbol",
+              "path": "src/cache/utils.rs",
+              "score": 0.5650370717048645
+            },
+            {
+              "name": "resolve_locals",
+              "path": "src/analysis/scope.rs",
+              "score": 0.49836137890815735
+            },
+            {
+              "name": "byte_offset",
+              "path": "src/precise/map.rs",
+              "score": 0.48801955580711365
+            },
+            {
+              "name": "get_snippet",
+              "path": "src/commands/impact/traversal.rs",
+              "score": 0.4380088746547699
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/map.rs:symbol_at_byte",
+          "language": "en",
+          "query": "Choose the narrowest declaration range containing a byte position.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "symbol_at_byte",
+              "path": "src/precise/map.rs",
+              "score": 0.5942553281784058
+            },
+            {
+              "name": "innermost_symbol",
+              "path": "src/cache/utils.rs",
+              "score": 0.5772266983985901
+            },
+            {
+              "name": "byte_offset",
+              "path": "src/precise/map.rs",
+              "score": 0.5157690048217773
+            },
+            {
+              "name": "resolve_locals",
+              "path": "src/analysis/scope.rs",
+              "score": 0.473816454410553
+            },
+            {
+              "name": "method_of_type",
+              "path": "src/graph/resolve/refs.rs",
+              "score": 0.4293670058250427
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/map.rs:path_to_uri",
+          "language": "id",
+          "query": "Mengubah path filesystem menjadi URI file dan melakukan encoding karakter khusus.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "path_to_uri",
+              "path": "src/precise/map.rs",
+              "score": 0.6153186559677124
+            },
+            {
+              "name": "uri_to_path",
+              "path": "src/precise/map.rs",
+              "score": 0.5526471734046936
+            },
+            {
+              "name": "normalize_path",
+              "path": "src/dump/formatter.rs",
+              "score": 0.5190742611885071
+            },
+            {
+              "name": "shell_path",
+              "path": "src/commands/setup_integrations.rs",
+              "score": 0.4925324320793152
+            },
+            {
+              "name": "resolve_target",
+              "path": "src/commands/digest/mod.rs",
+              "score": 0.47892308235168457
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/map.rs:path_to_uri",
+          "language": "en",
+          "query": "Turn a filesystem path into a file URI with special characters encoded.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "path_to_uri",
+              "path": "src/precise/map.rs",
+              "score": 0.6730243563652039
+            },
+            {
+              "name": "uri_to_path",
+              "path": "src/precise/map.rs",
+              "score": 0.563495934009552
+            },
+            {
+              "name": "normalize_path",
+              "path": "src/dump/formatter.rs",
+              "score": 0.5375791788101196
+            },
+            {
+              "name": "shell_path",
+              "path": "src/commands/setup_integrations.rs",
+              "score": 0.5177348256111145
+            },
+            {
+              "name": "resolve_target",
+              "path": "src/commands/digest/mod.rs",
+              "score": 0.4940735101699829
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/map.rs:uri_to_path",
+          "language": "id",
+          "query": "Mengubah URI file dari language server kembali menjadi path lokal.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "uri_to_path",
+              "path": "src/precise/map.rs",
+              "score": 0.5578886866569519
+            },
+            {
+              "name": "path_to_uri",
+              "path": "src/precise/map.rs",
+              "score": 0.5071197152137756
+            },
+            {
+              "name": "normalize_path",
+              "path": "src/dump/formatter.rs",
+              "score": 0.4899384379386902
+            },
+            {
+              "name": "shell_path",
+              "path": "src/commands/setup_integrations.rs",
+              "score": 0.4809674918651581
+            },
+            {
+              "name": "resolve_target",
+              "path": "src/commands/digest/mod.rs",
+              "score": 0.44506189227104187
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/map.rs:uri_to_path",
+          "language": "en",
+          "query": "Convert a language server file URI back into a local filesystem path.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "uri_to_path",
+              "path": "src/precise/map.rs",
+              "score": 0.6272446513175964
+            },
+            {
+              "name": "path_to_uri",
+              "path": "src/precise/map.rs",
+              "score": 0.5386841297149658
+            },
+            {
+              "name": "normalize_path",
+              "path": "src/dump/formatter.rs",
+              "score": 0.500886857509613
+            },
+            {
+              "name": "shell_path",
+              "path": "src/commands/setup_integrations.rs",
+              "score": 0.48874014616012573
+            },
+            {
+              "name": "resolve_target",
+              "path": "src/commands/digest/mod.rs",
+              "score": 0.4874558746814728
+            }
+          ]
+        },
+        {
+          "gold": "src/server/mod.rs:write_project_file",
+          "language": "id",
+          "query": "Menyimpan hasil ekspor hanya di dalam proyek dan menolak menimpa file yang sudah ada.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "write_project_file",
+              "path": "src/server/mod.rs",
+              "score": 0.47041669487953186
+            },
+            {
+              "name": "resolve_project",
+              "path": "src/commands/mcp/handlers.rs",
+              "score": 0.43370938301086426
+            },
+            {
+              "name": "exported_in",
+              "path": "src/graph/resolve/refs.rs",
+              "score": 0.42630138993263245
+            },
+            {
+              "name": "sync_cache",
+              "path": "src/commands/sync.rs",
+              "score": 0.39853107929229736
+            },
+            {
+              "name": "prune_unreferenced_externals",
+              "path": "src/graph/resolve/postprocess.rs",
+              "score": 0.3870536983013153
+            }
+          ]
+        },
+        {
+          "gold": "src/server/mod.rs:write_project_file",
+          "language": "en",
+          "query": "Save an export within the project directory and refuse to overwrite an existing file.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "write_project_file",
+              "path": "src/server/mod.rs",
+              "score": 0.5012077689170837
+            },
+            {
+              "name": "json",
+              "path": "src/output.rs",
+              "score": 0.40647950768470764
+            },
+            {
+              "name": "sync_cache",
+              "path": "src/commands/sync.rs",
+              "score": 0.3945634067058563
+            },
+            {
+              "name": "upsert_marked_block",
+              "path": "src/commands/setup_integrations.rs",
+              "score": 0.3922942280769348
+            },
+            {
+              "name": "unique_name",
+              "path": "src/server/mod.rs",
+              "score": 0.3818654716014862
+            }
+          ]
+        },
+        {
+          "gold": "src/server/mod.rs:percent_decode",
+          "language": "id",
+          "query": "Menerjemahkan escape persen pada parameter URL dan tanda tambah menjadi spasi.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "percent_decode",
+              "path": "src/server/mod.rs",
+              "score": 0.4777878224849701
+            },
+            {
+              "name": "path_to_uri",
+              "path": "src/precise/map.rs",
+              "score": 0.4634188711643219
+            },
+            {
+              "name": "uri_to_path",
+              "path": "src/precise/map.rs",
+              "score": 0.43110111355781555
+            },
+            {
+              "name": "normalize_path",
+              "path": "src/dump/formatter.rs",
+              "score": 0.42729201912879944
+            },
+            {
+              "name": "shell_path",
+              "path": "src/commands/setup_integrations.rs",
+              "score": 0.408113569021225
+            }
+          ]
+        },
+        {
+          "gold": "src/server/mod.rs:percent_decode",
+          "language": "en",
+          "query": "Decode percent escapes in a URL parameter and turn plus signs into spaces.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "percent_decode",
+              "path": "src/server/mod.rs",
+              "score": 0.5367692112922668
+            },
+            {
+              "name": "uri_to_path",
+              "path": "src/precise/map.rs",
+              "score": 0.4087744951248169
+            },
+            {
+              "name": "path_to_uri",
+              "path": "src/precise/map.rs",
+              "score": 0.4084392488002777
+            },
+            {
+              "name": "normalize_path",
+              "path": "src/dump/formatter.rs",
+              "score": 0.3847825229167938
+            },
+            {
+              "name": "shell_path",
+              "path": "src/commands/setup_integrations.rs",
+              "score": 0.36883214116096497
+            }
+          ]
+        },
+        {
+          "gold": "src/server/mod.rs:unique_name",
+          "language": "id",
+          "query": "Membuat nama file hasil ekspor dengan akhiran acak dari sistem operasi.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "unique_name",
+              "path": "src/server/mod.rs",
+              "score": 0.5886715650558472
+            },
+            {
+              "name": "write_project_file",
+              "path": "src/server/mod.rs",
+              "score": 0.40044304728507996
+            },
+            {
+              "name": "resolve_target",
+              "path": "src/commands/digest/mod.rs",
+              "score": 0.3964751958847046
+            },
+            {
+              "name": "path_to_uri",
+              "path": "src/precise/map.rs",
+              "score": 0.39587774872779846
+            },
+            {
+              "name": "normalize_path",
+              "path": "src/dump/formatter.rs",
+              "score": 0.3941936194896698
+            }
+          ]
+        },
+        {
+          "gold": "src/server/mod.rs:unique_name",
+          "language": "en",
+          "query": "Generate an export filename with an operating-system random suffix.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "unique_name",
+              "path": "src/server/mod.rs",
+              "score": 0.6040076017379761
+            },
+            {
+              "name": "resolve_target",
+              "path": "src/commands/digest/mod.rs",
+              "score": 0.3687344491481781
+            },
+            {
+              "name": "path_to_uri",
+              "path": "src/precise/map.rs",
+              "score": 0.3639373779296875
+            },
+            {
+              "name": "external_id",
+              "path": "src/graph/mod.rs",
+              "score": 0.36264684796333313
+            },
+            {
+              "name": "write_project_file",
+              "path": "src/server/mod.rs",
+              "score": 0.36195334792137146
+            }
+          ]
+        },
+        {
+          "gold": "src/commands/search.rs:perform_grep_fallback",
+          "language": "id",
+          "query": "Mencari teks tanpa membedakan huruf besar kecil di baris file ketika pencarian simbol tidak cukup.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "perform_grep_fallback",
+              "path": "src/commands/search.rs",
+              "score": 0.5073457956314087
+            },
+            {
+              "name": "get_snippet",
+              "path": "src/commands/impact/traversal.rs",
+              "score": 0.49602198600769043
+            },
+            {
+              "name": "byte_offset",
+              "path": "src/precise/map.rs",
+              "score": 0.4416484534740448
+            },
+            {
+              "name": "symbol_at_byte",
+              "path": "src/precise/map.rs",
+              "score": 0.41962045431137085
+            },
+            {
+              "name": "method_of_type",
+              "path": "src/graph/resolve/refs.rs",
+              "score": 0.40892407298088074
+            }
+          ]
+        },
+        {
+          "gold": "src/commands/search.rs:perform_grep_fallback",
+          "language": "en",
+          "query": "Search file lines for case-insensitive text when declaration lookup is insufficient.",
+          "rank": 2,
+          "top5": [
+            {
+              "name": "get_snippet",
+              "path": "src/commands/impact/traversal.rs",
+              "score": 0.510918140411377
+            },
+            {
+              "name": "perform_grep_fallback",
+              "path": "src/commands/search.rs",
+              "score": 0.48521116375923157
+            },
+            {
+              "name": "method_of_type",
+              "path": "src/graph/resolve/refs.rs",
+              "score": 0.4658277928829193
+            },
+            {
+              "name": "exported_in",
+              "path": "src/graph/resolve/refs.rs",
+              "score": 0.4560801386833191
+            },
+            {
+              "name": "text",
+              "path": "src/analysis/kotlin.rs",
+              "score": 0.4393896758556366
+            }
+          ]
+        },
+        {
+          "gold": "src/cache/mutations.rs:invalidate_precise_generation",
+          "language": "id",
+          "query": "Membatalkan seluruh relasi language server dan menaikkan generasi cache sebelum ID simbol diganti.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "invalidate_precise_generation",
+              "path": "src/cache/mutations.rs",
+              "score": 0.5550441145896912
+            },
+            {
+              "name": "delete_file",
+              "path": "src/cache/mutations.rs",
+              "score": 0.5004181861877441
+            },
+            {
+              "name": "pop",
+              "path": "src/analysis/scope.rs",
+              "score": 0.43739408254623413
+            },
+            {
+              "name": "ensure_schema",
+              "path": "src/cache/mod.rs",
+              "score": 0.41145896911621094
+            },
+            {
+              "name": "drop",
+              "path": "src/precise/client.rs",
+              "score": 0.4104119837284088
+            }
+          ]
+        },
+        {
+          "gold": "src/cache/mutations.rs:invalidate_precise_generation",
+          "language": "en",
+          "query": "Invalidate language-server relationships across the project and advance the cache generation before symbol IDs change.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "invalidate_precise_generation",
+              "path": "src/cache/mutations.rs",
+              "score": 0.5331824421882629
+            },
+            {
+              "name": "sync_cache",
+              "path": "src/commands/sync.rs",
+              "score": 0.5130617618560791
+            },
+            {
+              "name": "delete_file",
+              "path": "src/cache/mutations.rs",
+              "score": 0.48197731375694275
+            },
+            {
+              "name": "ensure_schema",
+              "path": "src/cache/mod.rs",
+              "score": 0.4363081455230713
+            },
+            {
+              "name": "prune_unreferenced_externals",
+              "path": "src/graph/resolve/postprocess.rs",
+              "score": 0.41350123286247253
+            }
+          ]
+        },
+        {
+          "gold": "src/cache/mutations.rs:delete_file",
+          "language": "id",
+          "query": "Menghapus catatan sebuah file beserta simbol, impor, referensi, scope dan binding dari database.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "delete_file",
+              "path": "src/cache/mutations.rs",
+              "score": 0.6251429319381714
+            },
+            {
+              "name": "exported_in",
+              "path": "src/graph/resolve/refs.rs",
+              "score": 0.4533699154853821
+            },
+            {
+              "name": "method_of_type",
+              "path": "src/graph/resolve/refs.rs",
+              "score": 0.4439924359321594
+            },
+            {
+              "name": "get_snippet",
+              "path": "src/commands/impact/traversal.rs",
+              "score": 0.4224533140659332
+            },
+            {
+              "name": "remove_claude_hook",
+              "path": "src/commands/setup_integrations.rs",
+              "score": 0.41958287358283997
+            }
+          ]
+        },
+        {
+          "gold": "src/cache/mutations.rs:delete_file",
+          "language": "en",
+          "query": "Delete a file record together with its symbols, imports, references, scopes and bindings from the database.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "delete_file",
+              "path": "src/cache/mutations.rs",
+              "score": 0.6144379377365112
+            },
+            {
+              "name": "scope_row",
+              "path": "src/cache/mappers.rs",
+              "score": 0.4388596713542938
+            },
+            {
+              "name": "method_of_type",
+              "path": "src/graph/resolve/refs.rs",
+              "score": 0.4353120028972626
+            },
+            {
+              "name": "exported_in",
+              "path": "src/graph/resolve/refs.rs",
+              "score": 0.43308568000793457
+            },
+            {
+              "name": "sync_cache",
+              "path": "src/commands/sync.rs",
+              "score": 0.4135645925998688
+            }
+          ]
+        },
+        {
+          "gold": "src/cache/mod.rs:ensure_schema",
+          "language": "id",
+          "query": "Membangun ulang tabel cache ketika versi schema tersimpan berbeda dari versi yang diperlukan.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "ensure_schema",
+              "path": "src/cache/mod.rs",
+              "score": 0.6174353361129761
+            },
+            {
+              "name": "all",
+              "path": "src/cache/schema.rs",
+              "score": 0.44191378355026245
+            },
+            {
+              "name": "delete_file",
+              "path": "src/cache/mutations.rs",
+              "score": 0.42479702830314636
+            },
+            {
+              "name": "invalidate_precise_generation",
+              "path": "src/cache/mutations.rs",
+              "score": 0.42023393511772156
+            },
+            {
+              "name": "sync_cache",
+              "path": "src/commands/sync.rs",
+              "score": 0.42004331946372986
+            }
+          ]
+        },
+        {
+          "gold": "src/cache/mod.rs:ensure_schema",
+          "language": "en",
+          "query": "Rebuild cache tables when the persisted schema version differs from the required version.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "ensure_schema",
+              "path": "src/cache/mod.rs",
+              "score": 0.5941691994667053
+            },
+            {
+              "name": "sync_cache",
+              "path": "src/commands/sync.rs",
+              "score": 0.44823113083839417
+            },
+            {
+              "name": "invalidate_precise_generation",
+              "path": "src/cache/mutations.rs",
+              "score": 0.4154016673564911
+            },
+            {
+              "name": "all",
+              "path": "src/cache/schema.rs",
+              "score": 0.40217772126197815
+            },
+            {
+              "name": "delete_file",
+              "path": "src/cache/mutations.rs",
+              "score": 0.3821033835411072
+            }
+          ]
+        },
+        {
+          "gold": "src/commands/mcp/handlers.rs:bound_output",
+          "language": "id",
+          "query": "Mengecilkan respons terstruktur sampai sesuai batas byte dengan membuang item utuh dan mencatat pemangkasan.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "bound_output",
+              "path": "src/commands/mcp/handlers.rs",
+              "score": 0.5447471737861633
+            },
+            {
+              "name": "symbol_at_byte",
+              "path": "src/precise/map.rs",
+              "score": 0.5049071907997131
+            },
+            {
+              "name": "innermost_symbol",
+              "path": "src/cache/utils.rs",
+              "score": 0.4446016550064087
+            },
+            {
+              "name": "write_section",
+              "path": "src/commands/explain/render.rs",
+              "score": 0.4165317714214325
+            },
+            {
+              "name": "get_snippet",
+              "path": "src/commands/impact/traversal.rs",
+              "score": 0.4155339300632477
+            }
+          ]
+        },
+        {
+          "gold": "src/commands/mcp/handlers.rs:bound_output",
+          "language": "en",
+          "query": "Shrink a structured response to a byte budget by removing whole items and recording truncation.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "bound_output",
+              "path": "src/commands/mcp/handlers.rs",
+              "score": 0.6431881785392761
+            },
+            {
+              "name": "definition_targets",
+              "path": "src/precise/mod.rs",
+              "score": 0.4408459961414337
+            },
+            {
+              "name": "sync_cache",
+              "path": "src/commands/sync.rs",
+              "score": 0.4377845525741577
+            },
+            {
+              "name": "write_section",
+              "path": "src/commands/explain/render.rs",
+              "score": 0.4279228150844574
+            },
+            {
+              "name": "symbol_at_byte",
+              "path": "src/precise/map.rs",
+              "score": 0.42393603920936584
+            }
+          ]
+        },
+        {
+          "gold": "src/commands/mcp/inputs.rs:validate",
+          "language": "id",
+          "query": "Memeriksa argumen tool, batas angka, teks kosong, serta pilihan eksklusif simbol atau diff.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "validate",
+              "path": "src/commands/mcp/inputs.rs",
+              "score": 0.5461992025375366
+            },
+            {
+              "name": "cleaning_ipynb",
+              "path": "src/dump/ipynb.rs",
+              "score": 0.38366949558258057
+            },
+            {
+              "name": "get_snippet",
+              "path": "src/commands/impact/traversal.rs",
+              "score": 0.3823896646499634
+            },
+            {
+              "name": "language_selected",
+              "path": "src/precise/mod.rs",
+              "score": 0.38083595037460327
+            },
+            {
+              "name": "default",
+              "path": "src/config.rs",
+              "score": 0.36323434114456177
+            }
+          ]
+        },
+        {
+          "gold": "src/commands/mcp/inputs.rs:validate",
+          "language": "en",
+          "query": "Validate tool arguments, numeric limits, empty strings and the exclusive choice between a symbol and a diff.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "validate",
+              "path": "src/commands/mcp/inputs.rs",
+              "score": 0.604849636554718
+            },
+            {
+              "name": "resolve_project",
+              "path": "src/commands/mcp/handlers.rs",
+              "score": 0.4117412865161896
+            },
+            {
+              "name": "analyze",
+              "path": "src/commands/report.rs",
+              "score": 0.37614303827285767
+            },
+            {
+              "name": "default",
+              "path": "src/config.rs",
+              "score": 0.37446191906929016
+            },
+            {
+              "name": "kinds",
+              "path": "src/commands/mcp/inputs.rs",
+              "score": 0.36745354533195496
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/client.rs:wait_until_ready",
+          "language": "id",
+          "query": "Menunggu language server selesai indexing dengan memantau progress, masa tenang, timeout dan pembatalan.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "wait_until_ready",
+              "path": "src/precise/client.rs",
+              "score": 0.524115264415741
+            },
+            {
+              "name": "serve",
+              "path": "src/server/mod.rs",
+              "score": 0.4420844614505768
+            },
+            {
+              "name": "sync_cache",
+              "path": "src/commands/sync.rs",
+              "score": 0.404289573431015
+            },
+            {
+              "name": "report_precise",
+              "path": "src/commands/sync.rs",
+              "score": 0.3970964550971985
+            },
+            {
+              "name": "drop",
+              "path": "src/precise/client.rs",
+              "score": 0.3916400074958801
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/client.rs:wait_until_ready",
+          "language": "en",
+          "query": "Wait for language-server indexing by observing progress, a quiet period, timeout and cancellation.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "wait_until_ready",
+              "path": "src/precise/client.rs",
+              "score": 0.5659846663475037
+            },
+            {
+              "name": "sync_cache",
+              "path": "src/commands/sync.rs",
+              "score": 0.460430771112442
+            },
+            {
+              "name": "serve",
+              "path": "src/server/mod.rs",
+              "score": 0.4362482726573944
+            },
+            {
+              "name": "drop",
+              "path": "src/precise/client.rs",
+              "score": 0.4065854251384735
+            },
+            {
+              "name": "json",
+              "path": "src/output.rs",
+              "score": 0.39966052770614624
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/client.rs:drop",
+          "language": "id",
+          "query": "Memastikan proses anak language server dibunuh dan ditunggu saat objek client dihancurkan.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "drop",
+              "path": "src/precise/client.rs",
+              "score": 0.6282236576080322
+            },
+            {
+              "name": "wait_until_ready",
+              "path": "src/precise/client.rs",
+              "score": 0.43423357605934143
+            },
+            {
+              "name": "serve",
+              "path": "src/server/mod.rs",
+              "score": 0.4178680181503296
+            },
+            {
+              "name": "pop",
+              "path": "src/analysis/scope.rs",
+              "score": 0.41431349515914917
+            },
+            {
+              "name": "parent_is_class",
+              "path": "src/analysis/python/python.rs",
+              "score": 0.36177825927734375
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/client.rs:drop",
+          "language": "en",
+          "query": "Ensure the language-server child process is killed and reaped when its client is destroyed.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "drop",
+              "path": "src/precise/client.rs",
+              "score": 0.5406745672225952
+            },
+            {
+              "name": "serve",
+              "path": "src/server/mod.rs",
+              "score": 0.45615115761756897
+            },
+            {
+              "name": "default",
+              "path": "src/config.rs",
+              "score": 0.3991193175315857
+            },
+            {
+              "name": "command_for",
+              "path": "src/commands/setup.rs",
+              "score": 0.37140795588493347
+            },
+            {
+              "name": "wait_until_ready",
+              "path": "src/precise/client.rs",
+              "score": 0.3670860528945923
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/mod.rs:definition_targets",
+          "language": "id",
+          "query": "Menyeragamkan respons definisi language server yang dapat berupa array atau satu lokasi menjadi daftar target.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "definition_targets",
+              "path": "src/precise/mod.rs",
+              "score": 0.620214581489563
+            },
+            {
+              "name": "run_dump",
+              "path": "src/server/mod.rs",
+              "score": 0.450147807598114
+            },
+            {
+              "name": "resolve_locals",
+              "path": "src/analysis/scope.rs",
+              "score": 0.4457516372203827
+            },
+            {
+              "name": "resolve_project",
+              "path": "src/commands/mcp/handlers.rs",
+              "score": 0.44391578435897827
+            },
+            {
+              "name": "validate",
+              "path": "src/commands/mcp/inputs.rs",
+              "score": 0.43126532435417175
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/mod.rs:definition_targets",
+          "language": "en",
+          "query": "Normalize a language-server definition response containing either an array or a single location into a target list.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "definition_targets",
+              "path": "src/precise/mod.rs",
+              "score": 0.5968268513679504
+            },
+            {
+              "name": "resolve_locals",
+              "path": "src/analysis/scope.rs",
+              "score": 0.43597379326820374
+            },
+            {
+              "name": "resolve_project",
+              "path": "src/commands/mcp/handlers.rs",
+              "score": 0.430860310792923
+            },
+            {
+              "name": "resolve_rust_import",
+              "path": "src/graph/resolve/imports.rs",
+              "score": 0.4286210238933563
+            },
+            {
+              "name": "resolve_target",
+              "path": "src/commands/digest/mod.rs",
+              "score": 0.4212111234664917
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "dimensions": 256,
+      "metrics": {
+        "all": {
+          "mrr": 0.96875,
+          "queries": 32,
+          "recall_at_1": 0.9375,
+          "recall_at_5": 1.0
+        },
+        "en": {
+          "mrr": 0.96875,
+          "queries": 16,
+          "recall_at_1": 0.9375,
+          "recall_at_5": 1.0
+        },
+        "id": {
+          "mrr": 0.96875,
+          "queries": 16,
+          "recall_at_1": 0.9375,
+          "recall_at_5": 1.0
+        }
+      },
+      "queries": [
+        {
+          "gold": "src/precise/map.rs:byte_offset",
+          "language": "id",
+          "query": "Mengubah posisi baris dan kolom UTF-16 menjadi offset byte, serta menolak posisi di tengah surrogate pair.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "byte_offset",
+              "path": "src/precise/map.rs",
+              "score": 0.591082751750946
+            },
+            {
+              "name": "symbol_at_byte",
+              "path": "src/precise/map.rs",
+              "score": 0.5352353453636169
+            },
+            {
+              "name": "string_literal_row",
+              "path": "src/cache/mappers.rs",
+              "score": 0.5043846368789673
+            },
+            {
+              "name": "path_to_uri",
+              "path": "src/precise/map.rs",
+              "score": 0.4882289469242096
+            },
+            {
+              "name": "normalize_path",
+              "path": "src/dump/formatter.rs",
+              "score": 0.47487136721611023
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/map.rs:byte_offset",
+          "language": "en",
+          "query": "Convert a line and UTF-16 column to a byte offset while rejecting the middle of a surrogate pair.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "byte_offset",
+              "path": "src/precise/map.rs",
+              "score": 0.6344043016433716
+            },
+            {
+              "name": "symbol_at_byte",
+              "path": "src/precise/map.rs",
+              "score": 0.5673202276229858
+            },
+            {
+              "name": "innermost_symbol",
+              "path": "src/cache/utils.rs",
+              "score": 0.507794201374054
+            },
+            {
+              "name": "string_literal_row",
+              "path": "src/cache/mappers.rs",
+              "score": 0.47434163093566895
+            },
+            {
+              "name": "get_snippet",
+              "path": "src/commands/impact/traversal.rs",
+              "score": 0.47346168756484985
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/map.rs:symbol_at_byte",
+          "language": "id",
+          "query": "Memilih deklarasi dengan rentang terkecil yang mencakup suatu posisi byte.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "symbol_at_byte",
+              "path": "src/precise/map.rs",
+              "score": 0.6661748290061951
+            },
+            {
+              "name": "innermost_symbol",
+              "path": "src/cache/utils.rs",
+              "score": 0.6040794253349304
+            },
+            {
+              "name": "resolve_locals",
+              "path": "src/analysis/scope.rs",
+              "score": 0.6018975377082825
+            },
+            {
+              "name": "byte_offset",
+              "path": "src/precise/map.rs",
+              "score": 0.5588338375091553
+            },
+            {
+              "name": "collect_vars_and_consts",
+              "path": "src/analysis/go.rs",
+              "score": 0.5286481380462646
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/map.rs:symbol_at_byte",
+          "language": "en",
+          "query": "Choose the narrowest declaration range containing a byte position.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "symbol_at_byte",
+              "path": "src/precise/map.rs",
+              "score": 0.6529908180236816
+            },
+            {
+              "name": "innermost_symbol",
+              "path": "src/cache/utils.rs",
+              "score": 0.6275488138198853
+            },
+            {
+              "name": "byte_offset",
+              "path": "src/precise/map.rs",
+              "score": 0.5756725668907166
+            },
+            {
+              "name": "resolve_locals",
+              "path": "src/analysis/scope.rs",
+              "score": 0.5666061043739319
+            },
+            {
+              "name": "method_of_type",
+              "path": "src/graph/resolve/refs.rs",
+              "score": 0.535714864730835
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/map.rs:path_to_uri",
+          "language": "id",
+          "query": "Mengubah path filesystem menjadi URI file dan melakukan encoding karakter khusus.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "path_to_uri",
+              "path": "src/precise/map.rs",
+              "score": 0.6515800952911377
+            },
+            {
+              "name": "normalize_path",
+              "path": "src/dump/formatter.rs",
+              "score": 0.5923184752464294
+            },
+            {
+              "name": "uri_to_path",
+              "path": "src/precise/map.rs",
+              "score": 0.5912255644798279
+            },
+            {
+              "name": "write_project_file",
+              "path": "src/server/mod.rs",
+              "score": 0.5525867938995361
+            },
+            {
+              "name": "resolve_target",
+              "path": "src/commands/digest/mod.rs",
+              "score": 0.5288212895393372
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/map.rs:path_to_uri",
+          "language": "en",
+          "query": "Turn a filesystem path into a file URI with special characters encoded.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "path_to_uri",
+              "path": "src/precise/map.rs",
+              "score": 0.7238829731941223
+            },
+            {
+              "name": "uri_to_path",
+              "path": "src/precise/map.rs",
+              "score": 0.6349790096282959
+            },
+            {
+              "name": "normalize_path",
+              "path": "src/dump/formatter.rs",
+              "score": 0.6182186603546143
+            },
+            {
+              "name": "shell_path",
+              "path": "src/commands/setup_integrations.rs",
+              "score": 0.581989049911499
+            },
+            {
+              "name": "resolve_target",
+              "path": "src/commands/digest/mod.rs",
+              "score": 0.5768527984619141
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/map.rs:uri_to_path",
+          "language": "id",
+          "query": "Mengubah URI file dari language server kembali menjadi path lokal.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "uri_to_path",
+              "path": "src/precise/map.rs",
+              "score": 0.5704429149627686
+            },
+            {
+              "name": "path_to_uri",
+              "path": "src/precise/map.rs",
+              "score": 0.561803936958313
+            },
+            {
+              "name": "normalize_path",
+              "path": "src/dump/formatter.rs",
+              "score": 0.5591616630554199
+            },
+            {
+              "name": "shell_path",
+              "path": "src/commands/setup_integrations.rs",
+              "score": 0.543330729007721
+            },
+            {
+              "name": "get_snippet",
+              "path": "src/commands/impact/traversal.rs",
+              "score": 0.5101428627967834
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/map.rs:uri_to_path",
+          "language": "en",
+          "query": "Convert a language server file URI back into a local filesystem path.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "uri_to_path",
+              "path": "src/precise/map.rs",
+              "score": 0.6541966199874878
+            },
+            {
+              "name": "path_to_uri",
+              "path": "src/precise/map.rs",
+              "score": 0.6363837122917175
+            },
+            {
+              "name": "normalize_path",
+              "path": "src/dump/formatter.rs",
+              "score": 0.597794771194458
+            },
+            {
+              "name": "shell_path",
+              "path": "src/commands/setup_integrations.rs",
+              "score": 0.5964351296424866
+            },
+            {
+              "name": "resolve_target",
+              "path": "src/commands/digest/mod.rs",
+              "score": 0.5597012639045715
+            }
+          ]
+        },
+        {
+          "gold": "src/server/mod.rs:write_project_file",
+          "language": "id",
+          "query": "Menyimpan hasil ekspor hanya di dalam proyek dan menolak menimpa file yang sudah ada.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "write_project_file",
+              "path": "src/server/mod.rs",
+              "score": 0.5729625225067139
+            },
+            {
+              "name": "sync_cache",
+              "path": "src/commands/sync.rs",
+              "score": 0.5310043692588806
+            },
+            {
+              "name": "get_snippet",
+              "path": "src/commands/impact/traversal.rs",
+              "score": 0.5208629965782166
+            },
+            {
+              "name": "upsert_marked_block",
+              "path": "src/commands/setup_integrations.rs",
+              "score": 0.5201826095581055
+            },
+            {
+              "name": "resolve_project",
+              "path": "src/commands/mcp/handlers.rs",
+              "score": 0.5177364349365234
+            }
+          ]
+        },
+        {
+          "gold": "src/server/mod.rs:write_project_file",
+          "language": "en",
+          "query": "Save an export within the project directory and refuse to overwrite an existing file.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "write_project_file",
+              "path": "src/server/mod.rs",
+              "score": 0.6145415306091309
+            },
+            {
+              "name": "upsert_marked_block",
+              "path": "src/commands/setup_integrations.rs",
+              "score": 0.5445641875267029
+            },
+            {
+              "name": "json",
+              "path": "src/output.rs",
+              "score": 0.5351846218109131
+            },
+            {
+              "name": "sync_cache",
+              "path": "src/commands/sync.rs",
+              "score": 0.531176745891571
+            },
+            {
+              "name": "unique_name",
+              "path": "src/server/mod.rs",
+              "score": 0.5095235705375671
+            }
+          ]
+        },
+        {
+          "gold": "src/server/mod.rs:percent_decode",
+          "language": "id",
+          "query": "Menerjemahkan escape persen pada parameter URL dan tanda tambah menjadi spasi.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "percent_decode",
+              "path": "src/server/mod.rs",
+              "score": 0.5051981210708618
+            },
+            {
+              "name": "path_to_uri",
+              "path": "src/precise/map.rs",
+              "score": 0.4772877097129822
+            },
+            {
+              "name": "normalize_path",
+              "path": "src/dump/formatter.rs",
+              "score": 0.45512843132019043
+            },
+            {
+              "name": "uri_to_path",
+              "path": "src/precise/map.rs",
+              "score": 0.4485035836696625
+            },
+            {
+              "name": "shell_path",
+              "path": "src/commands/setup_integrations.rs",
+              "score": 0.4263855814933777
+            }
+          ]
+        },
+        {
+          "gold": "src/server/mod.rs:percent_decode",
+          "language": "en",
+          "query": "Decode percent escapes in a URL parameter and turn plus signs into spaces.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "percent_decode",
+              "path": "src/server/mod.rs",
+              "score": 0.5810015797615051
+            },
+            {
+              "name": "uri_to_path",
+              "path": "src/precise/map.rs",
+              "score": 0.4524851441383362
+            },
+            {
+              "name": "path_to_uri",
+              "path": "src/precise/map.rs",
+              "score": 0.42509573698043823
+            },
+            {
+              "name": "apply_focus",
+              "path": "src/graph/resolve/postprocess.rs",
+              "score": 0.4193676710128784
+            },
+            {
+              "name": "shell_path",
+              "path": "src/commands/setup_integrations.rs",
+              "score": 0.4089084267616272
+            }
+          ]
+        },
+        {
+          "gold": "src/server/mod.rs:unique_name",
+          "language": "id",
+          "query": "Membuat nama file hasil ekspor dengan akhiran acak dari sistem operasi.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "unique_name",
+              "path": "src/server/mod.rs",
+              "score": 0.6335179805755615
+            },
+            {
+              "name": "normalize_path",
+              "path": "src/dump/formatter.rs",
+              "score": 0.5226142406463623
+            },
+            {
+              "name": "write_project_file",
+              "path": "src/server/mod.rs",
+              "score": 0.5150065422058105
+            },
+            {
+              "name": "path_to_uri",
+              "path": "src/precise/map.rs",
+              "score": 0.49294814467430115
+            },
+            {
+              "name": "shell_path",
+              "path": "src/commands/setup_integrations.rs",
+              "score": 0.46922752261161804
+            }
+          ]
+        },
+        {
+          "gold": "src/server/mod.rs:unique_name",
+          "language": "en",
+          "query": "Generate an export filename with an operating-system random suffix.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "unique_name",
+              "path": "src/server/mod.rs",
+              "score": 0.6658573746681213
+            },
+            {
+              "name": "write_project_file",
+              "path": "src/server/mod.rs",
+              "score": 0.525830864906311
+            },
+            {
+              "name": "command_for",
+              "path": "src/commands/setup.rs",
+              "score": 0.4952666163444519
+            },
+            {
+              "name": "normalize_path",
+              "path": "src/dump/formatter.rs",
+              "score": 0.48631662130355835
+            },
+            {
+              "name": "extension",
+              "path": "src/graph/render/mod.rs",
+              "score": 0.48307958245277405
+            }
+          ]
+        },
+        {
+          "gold": "src/commands/search.rs:perform_grep_fallback",
+          "language": "id",
+          "query": "Mencari teks tanpa membedakan huruf besar kecil di baris file ketika pencarian simbol tidak cukup.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "perform_grep_fallback",
+              "path": "src/commands/search.rs",
+              "score": 0.5956149697303772
+            },
+            {
+              "name": "get_snippet",
+              "path": "src/commands/impact/traversal.rs",
+              "score": 0.5709685683250427
+            },
+            {
+              "name": "method_of_type",
+              "path": "src/graph/resolve/refs.rs",
+              "score": 0.5318792462348938
+            },
+            {
+              "name": "byte_offset",
+              "path": "src/precise/map.rs",
+              "score": 0.5294057726860046
+            },
+            {
+              "name": "symbol_at_byte",
+              "path": "src/precise/map.rs",
+              "score": 0.5262442827224731
+            }
+          ]
+        },
+        {
+          "gold": "src/commands/search.rs:perform_grep_fallback",
+          "language": "en",
+          "query": "Search file lines for case-insensitive text when declaration lookup is insufficient.",
+          "rank": 2,
+          "top5": [
+            {
+              "name": "method_of_type",
+              "path": "src/graph/resolve/refs.rs",
+              "score": 0.6021893620491028
+            },
+            {
+              "name": "perform_grep_fallback",
+              "path": "src/commands/search.rs",
+              "score": 0.5957960486412048
+            },
+            {
+              "name": "get_snippet",
+              "path": "src/commands/impact/traversal.rs",
+              "score": 0.5949597358703613
+            },
+            {
+              "name": "exported_in",
+              "path": "src/graph/resolve/refs.rs",
+              "score": 0.5760786533355713
+            },
+            {
+              "name": "resolve_locals",
+              "path": "src/analysis/scope.rs",
+              "score": 0.5646430253982544
+            }
+          ]
+        },
+        {
+          "gold": "src/cache/mutations.rs:invalidate_precise_generation",
+          "language": "id",
+          "query": "Membatalkan seluruh relasi language server dan menaikkan generasi cache sebelum ID simbol diganti.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "invalidate_precise_generation",
+              "path": "src/cache/mutations.rs",
+              "score": 0.6465045213699341
+            },
+            {
+              "name": "delete_file",
+              "path": "src/cache/mutations.rs",
+              "score": 0.5737026333808899
+            },
+            {
+              "name": "ensure_schema",
+              "path": "src/cache/mod.rs",
+              "score": 0.5628840327262878
+            },
+            {
+              "name": "pop",
+              "path": "src/analysis/scope.rs",
+              "score": 0.5534290671348572
+            },
+            {
+              "name": "drop",
+              "path": "src/precise/client.rs",
+              "score": 0.5319497585296631
+            }
+          ]
+        },
+        {
+          "gold": "src/cache/mutations.rs:invalidate_precise_generation",
+          "language": "en",
+          "query": "Invalidate language-server relationships across the project and advance the cache generation before symbol IDs change.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "invalidate_precise_generation",
+              "path": "src/cache/mutations.rs",
+              "score": 0.6486231088638306
+            },
+            {
+              "name": "ensure_schema",
+              "path": "src/cache/mod.rs",
+              "score": 0.5907437205314636
+            },
+            {
+              "name": "sync_cache",
+              "path": "src/commands/sync.rs",
+              "score": 0.582643449306488
+            },
+            {
+              "name": "delete_file",
+              "path": "src/cache/mutations.rs",
+              "score": 0.558758556842804
+            },
+            {
+              "name": "all",
+              "path": "src/cache/schema.rs",
+              "score": 0.5135407447814941
+            }
+          ]
+        },
+        {
+          "gold": "src/cache/mutations.rs:delete_file",
+          "language": "id",
+          "query": "Menghapus catatan sebuah file beserta simbol, impor, referensi, scope dan binding dari database.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "delete_file",
+              "path": "src/cache/mutations.rs",
+              "score": 0.6602368950843811
+            },
+            {
+              "name": "exported_in",
+              "path": "src/graph/resolve/refs.rs",
+              "score": 0.5709168314933777
+            },
+            {
+              "name": "method_of_type",
+              "path": "src/graph/resolve/refs.rs",
+              "score": 0.5484039783477783
+            },
+            {
+              "name": "relation_entries",
+              "path": "src/commands/dump.rs",
+              "score": 0.5272806882858276
+            },
+            {
+              "name": "invalidate_precise_generation",
+              "path": "src/cache/mutations.rs",
+              "score": 0.5107276439666748
+            }
+          ]
+        },
+        {
+          "gold": "src/cache/mutations.rs:delete_file",
+          "language": "en",
+          "query": "Delete a file record together with its symbols, imports, references, scopes and bindings from the database.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "delete_file",
+              "path": "src/cache/mutations.rs",
+              "score": 0.6770884990692139
+            },
+            {
+              "name": "exported_in",
+              "path": "src/graph/resolve/refs.rs",
+              "score": 0.553778886795044
+            },
+            {
+              "name": "method_of_type",
+              "path": "src/graph/resolve/refs.rs",
+              "score": 0.5399354696273804
+            },
+            {
+              "name": "invalidate_precise_generation",
+              "path": "src/cache/mutations.rs",
+              "score": 0.5337269902229309
+            },
+            {
+              "name": "scope_row",
+              "path": "src/cache/mappers.rs",
+              "score": 0.5242079496383667
+            }
+          ]
+        },
+        {
+          "gold": "src/cache/mod.rs:ensure_schema",
+          "language": "id",
+          "query": "Membangun ulang tabel cache ketika versi schema tersimpan berbeda dari versi yang diperlukan.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "ensure_schema",
+              "path": "src/cache/mod.rs",
+              "score": 0.6891813278198242
+            },
+            {
+              "name": "invalidate_precise_generation",
+              "path": "src/cache/mutations.rs",
+              "score": 0.512257993221283
+            },
+            {
+              "name": "all",
+              "path": "src/cache/schema.rs",
+              "score": 0.498678982257843
+            },
+            {
+              "name": "delete_file",
+              "path": "src/cache/mutations.rs",
+              "score": 0.498445987701416
+            },
+            {
+              "name": "sync_cache",
+              "path": "src/commands/sync.rs",
+              "score": 0.4834897220134735
+            }
+          ]
+        },
+        {
+          "gold": "src/cache/mod.rs:ensure_schema",
+          "language": "en",
+          "query": "Rebuild cache tables when the persisted schema version differs from the required version.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "ensure_schema",
+              "path": "src/cache/mod.rs",
+              "score": 0.6961876153945923
+            },
+            {
+              "name": "sync_cache",
+              "path": "src/commands/sync.rs",
+              "score": 0.5243982076644897
+            },
+            {
+              "name": "invalidate_precise_generation",
+              "path": "src/cache/mutations.rs",
+              "score": 0.5241947174072266
+            },
+            {
+              "name": "all",
+              "path": "src/cache/schema.rs",
+              "score": 0.4907177686691284
+            },
+            {
+              "name": "int_pk",
+              "path": "src/cache/mutations.rs",
+              "score": 0.482681542634964
+            }
+          ]
+        },
+        {
+          "gold": "src/commands/mcp/handlers.rs:bound_output",
+          "language": "id",
+          "query": "Mengecilkan respons terstruktur sampai sesuai batas byte dengan membuang item utuh dan mencatat pemangkasan.",
+          "rank": 2,
+          "top5": [
+            {
+              "name": "symbol_at_byte",
+              "path": "src/precise/map.rs",
+              "score": 0.6207625269889832
+            },
+            {
+              "name": "bound_output",
+              "path": "src/commands/mcp/handlers.rs",
+              "score": 0.5756036043167114
+            },
+            {
+              "name": "innermost_symbol",
+              "path": "src/cache/utils.rs",
+              "score": 0.5603573322296143
+            },
+            {
+              "name": "get_snippet",
+              "path": "src/commands/impact/traversal.rs",
+              "score": 0.5159458518028259
+            },
+            {
+              "name": "apply_focus",
+              "path": "src/graph/resolve/postprocess.rs",
+              "score": 0.5082679390907288
+            }
+          ]
+        },
+        {
+          "gold": "src/commands/mcp/handlers.rs:bound_output",
+          "language": "en",
+          "query": "Shrink a structured response to a byte budget by removing whole items and recording truncation.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "bound_output",
+              "path": "src/commands/mcp/handlers.rs",
+              "score": 0.6802986264228821
+            },
+            {
+              "name": "symbol_at_byte",
+              "path": "src/precise/map.rs",
+              "score": 0.5364875793457031
+            },
+            {
+              "name": "innermost_symbol",
+              "path": "src/cache/utils.rs",
+              "score": 0.533371090888977
+            },
+            {
+              "name": "sync_cache",
+              "path": "src/commands/sync.rs",
+              "score": 0.5324360728263855
+            },
+            {
+              "name": "get_snippet",
+              "path": "src/commands/impact/traversal.rs",
+              "score": 0.5153368711471558
+            }
+          ]
+        },
+        {
+          "gold": "src/commands/mcp/inputs.rs:validate",
+          "language": "id",
+          "query": "Memeriksa argumen tool, batas angka, teks kosong, serta pilihan eksklusif simbol atau diff.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "validate",
+              "path": "src/commands/mcp/inputs.rs",
+              "score": 0.5879347920417786
+            },
+            {
+              "name": "cleaning_ipynb",
+              "path": "src/dump/ipynb.rs",
+              "score": 0.4789208173751831
+            },
+            {
+              "name": "language_selected",
+              "path": "src/precise/mod.rs",
+              "score": 0.44709548354148865
+            },
+            {
+              "name": "get_snippet",
+              "path": "src/commands/impact/traversal.rs",
+              "score": 0.43624335527420044
+            },
+            {
+              "name": "analyze",
+              "path": "src/commands/report.rs",
+              "score": 0.4308306872844696
+            }
+          ]
+        },
+        {
+          "gold": "src/commands/mcp/inputs.rs:validate",
+          "language": "en",
+          "query": "Validate tool arguments, numeric limits, empty strings and the exclusive choice between a symbol and a diff.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "validate",
+              "path": "src/commands/mcp/inputs.rs",
+              "score": 0.6562341451644897
+            },
+            {
+              "name": "kinds",
+              "path": "src/commands/mcp/inputs.rs",
+              "score": 0.47333866357803345
+            },
+            {
+              "name": "resolve_project",
+              "path": "src/commands/mcp/handlers.rs",
+              "score": 0.4579046368598938
+            },
+            {
+              "name": "default",
+              "path": "src/config.rs",
+              "score": 0.4466976821422577
+            },
+            {
+              "name": "analyze",
+              "path": "src/commands/report.rs",
+              "score": 0.4454720914363861
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/client.rs:wait_until_ready",
+          "language": "id",
+          "query": "Menunggu language server selesai indexing dengan memantau progress, masa tenang, timeout dan pembatalan.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "wait_until_ready",
+              "path": "src/precise/client.rs",
+              "score": 0.5788904428482056
+            },
+            {
+              "name": "sync_cache",
+              "path": "src/commands/sync.rs",
+              "score": 0.5306104421615601
+            },
+            {
+              "name": "upsert_marked_block",
+              "path": "src/commands/setup_integrations.rs",
+              "score": 0.5232630968093872
+            },
+            {
+              "name": "json",
+              "path": "src/output.rs",
+              "score": 0.5022732019424438
+            },
+            {
+              "name": "report_precise",
+              "path": "src/commands/sync.rs",
+              "score": 0.48805153369903564
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/client.rs:wait_until_ready",
+          "language": "en",
+          "query": "Wait for language-server indexing by observing progress, a quiet period, timeout and cancellation.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "wait_until_ready",
+              "path": "src/precise/client.rs",
+              "score": 0.6495872139930725
+            },
+            {
+              "name": "sync_cache",
+              "path": "src/commands/sync.rs",
+              "score": 0.5811010599136353
+            },
+            {
+              "name": "drop",
+              "path": "src/precise/client.rs",
+              "score": 0.5100467205047607
+            },
+            {
+              "name": "json",
+              "path": "src/output.rs",
+              "score": 0.5075103640556335
+            },
+            {
+              "name": "upsert_marked_block",
+              "path": "src/commands/setup_integrations.rs",
+              "score": 0.5049383640289307
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/client.rs:drop",
+          "language": "id",
+          "query": "Memastikan proses anak language server dibunuh dan ditunggu saat objek client dihancurkan.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "drop",
+              "path": "src/precise/client.rs",
+              "score": 0.6666741967201233
+            },
+            {
+              "name": "wait_until_ready",
+              "path": "src/precise/client.rs",
+              "score": 0.5171416401863098
+            },
+            {
+              "name": "serve",
+              "path": "src/server/mod.rs",
+              "score": 0.5043125748634338
+            },
+            {
+              "name": "invalidate_precise_generation",
+              "path": "src/cache/mutations.rs",
+              "score": 0.479957640171051
+            },
+            {
+              "name": "sync_cache",
+              "path": "src/commands/sync.rs",
+              "score": 0.4754779040813446
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/client.rs:drop",
+          "language": "en",
+          "query": "Ensure the language-server child process is killed and reaped when its client is destroyed.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "drop",
+              "path": "src/precise/client.rs",
+              "score": 0.6319994330406189
+            },
+            {
+              "name": "serve",
+              "path": "src/server/mod.rs",
+              "score": 0.5228684544563293
+            },
+            {
+              "name": "wait_until_ready",
+              "path": "src/precise/client.rs",
+              "score": 0.5015888214111328
+            },
+            {
+              "name": "ensure_schema",
+              "path": "src/cache/mod.rs",
+              "score": 0.49574390053749084
+            },
+            {
+              "name": "remove_claude_hook",
+              "path": "src/commands/setup_integrations.rs",
+              "score": 0.4900586009025574
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/mod.rs:definition_targets",
+          "language": "id",
+          "query": "Menyeragamkan respons definisi language server yang dapat berupa array atau satu lokasi menjadi daftar target.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "definition_targets",
+              "path": "src/precise/mod.rs",
+              "score": 0.6769171953201294
+            },
+            {
+              "name": "run_dump",
+              "path": "src/server/mod.rs",
+              "score": 0.5501708984375
+            },
+            {
+              "name": "language_selected",
+              "path": "src/precise/mod.rs",
+              "score": 0.5393973588943481
+            },
+            {
+              "name": "collect_use",
+              "path": "src/analysis/rust/use_decl.rs",
+              "score": 0.5377610325813293
+            },
+            {
+              "name": "relation_entries",
+              "path": "src/commands/dump.rs",
+              "score": 0.5371477603912354
+            }
+          ]
+        },
+        {
+          "gold": "src/precise/mod.rs:definition_targets",
+          "language": "en",
+          "query": "Normalize a language-server definition response containing either an array or a single location into a target list.",
+          "rank": 1,
+          "top5": [
+            {
+              "name": "definition_targets",
+              "path": "src/precise/mod.rs",
+              "score": 0.6664370894432068
+            },
+            {
+              "name": "method_of_type",
+              "path": "src/graph/resolve/refs.rs",
+              "score": 0.5580310225486755
+            },
+            {
+              "name": "resolve_project",
+              "path": "src/commands/mcp/handlers.rs",
+              "score": 0.5529698729515076
+            },
+            {
+              "name": "bound_output",
+              "path": "src/commands/mcp/handlers.rs",
+              "score": 0.5513330101966858
+            },
+            {
+              "name": "resolve_locals",
+              "path": "src/analysis/scope.rs",
+              "score": 0.5377925038337708
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "fastembed_version": "7.5.0",
+  "inference_ms": 40843,
+  "load_ms": 2038,
+  "max_tokens": 512,
+  "model": "gemma1",
+  "quantization": "Q4",
+  "queries": 32,
+  "runtime": "ONNX Runtime 2.0.0-rc.15"
+}

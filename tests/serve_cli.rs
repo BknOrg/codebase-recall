@@ -1,3 +1,4 @@
+#![cfg(feature = "viewer")]
 //! End-to-end test for `code-rcl serve`: spin up the server against a fixture,
 //! talk to it over raw TCP, and confirm `/quit` makes the process exit.
 
@@ -38,9 +39,18 @@ fn copy_tree(from: &Path, to: &Path) {
 
 /// One HTTP/1.0 request over a fresh connection; returns `(status_line, body)`.
 fn http_get(port: u16, path: &str) -> (String, String) {
+    request(port, "GET", path, "", None)
+}
+fn request(
+    port: u16,
+    method: &str,
+    path: &str,
+    token: &str,
+    origin: Option<&str>,
+) -> (String, String) {
     let mut s = TcpStream::connect(("127.0.0.1", port)).expect("connect");
     s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
-    write!(s, "GET {path} HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n").unwrap();
+    write!(s, "{method} {path} HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\nX-Code-Rcl-Token: {token}\r\n{}Content-Length: 0\r\n\r\n", origin.map(|o| format!("Origin: {o}\r\n")).unwrap_or_default()).unwrap();
     let mut raw = String::new();
     s.read_to_string(&mut raw).unwrap();
     let (head, body) = raw.split_once("\r\n\r\n").unwrap_or((&raw, ""));
@@ -92,7 +102,10 @@ fn serve_starts_answers_and_quits() {
         body.contains("code-rcl graph") || body.contains("codebase recall graph"),
         "GET / body missing header"
     );
-    assert!(body.contains("toggleLeftPane"), "GET / body missing toggleLeftPane");
+    assert!(
+        body.contains("toggleLeftPane"),
+        "GET / body missing toggleLeftPane"
+    );
     assert!(
         body.contains(r#"id="graph-data""#),
         "GET / body missing data blob"
@@ -108,20 +121,55 @@ fn serve_starts_answers_and_quits() {
     let (status, _) = http_get(port, "/assets/graph-view.js");
     assert!(status.contains("200"), "graph-view.js status: {status}");
 
+    let token = body
+        .split("name=\"code-rcl-token\" content=\"")
+        .nth(1)
+        .expect("session token meta")
+        .split('"')
+        .next()
+        .unwrap();
+    assert!(
+        request(port, "GET", "/source?path=main.rs", "wrong", None)
+            .0
+            .contains("403")
+    );
+    assert!(
+        request(
+            port,
+            "GET",
+            "/source?path=main.rs",
+            token,
+            Some("http://example.invalid")
+        )
+        .0
+        .contains("403")
+    );
+    assert!(
+        request(port, "GET", "/dump?target=main", token, None)
+            .0
+            .contains("405")
+    );
+    assert!(http_get(port, "/dump?target=main").0.contains("405"));
     // Test /source endpoint
-    let (status, src) = http_get(port, "/source?path=main.rs");
-    assert!(status.contains("200"), "GET /source?path=main.rs status: {status}");
-    assert!(src.contains("fn main"), "GET /source?path=main.rs missing expected code: {src}");
+    let (status, src) = request(port, "GET", "/source?path=main.rs", token, None);
+    assert!(
+        status.contains("200"),
+        "GET /source?path=main.rs status: {status}"
+    );
+    assert!(
+        src.contains("fn main"),
+        "GET /source?path=main.rs missing expected code: {src}"
+    );
 
     // Test /source path traversal rejection
-    let (status, _) = http_get(port, "/source?path=../Cargo.toml");
+    let (status, _) = request(port, "GET", "/source?path=../Cargo.toml", token, None);
     assert!(
         status.contains("400") || status.contains("403") || status.contains("404"),
         "Path traversal was not rejected! Status: {status}"
     );
 
     // /quit asks the server to stop; it should exit on its own shortly after.
-    let _ = http_get(port, "/quit");
+    let _ = request(port, "POST", "/quit", token, None);
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         if reap.0.try_wait().unwrap().is_some() {

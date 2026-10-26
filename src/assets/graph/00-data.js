@@ -75,3 +75,5 @@
       }
     }
   }
+
+function apiHeaders() { return {"X-Code-Rcl-Token": document.querySelector('meta[name="code-rcl-token"]')?.content || ""}; }

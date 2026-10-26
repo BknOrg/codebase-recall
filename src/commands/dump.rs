@@ -46,6 +46,9 @@ pub fn run(args: DumpArgs) -> Result<()> {
     let (tree_paths, files) = walker::collect_files(&args.path, args.max_size_kb)?;
     let tree_view = formatter::build_tree_view(&tree_paths);
     let file_view = formatter::build_content_view(&tree_view, &files);
+    if let Some(parent) = output_file.parent() {
+        fs::create_dir_all(parent)?;
+    }
     fs::write(&output_file, &file_view)?;
     println!(
         "Codebase context successfully written to: {}",
@@ -62,6 +65,23 @@ pub fn generate_relation_bundle(
     max_size_kb: u64,
     no_sync: bool,
 ) -> Result<(String, usize)> {
+    let (tree_paths, files) = relation_entries(project, target, depth, max_size_kb, no_sync)?;
+    let tree_view = formatter::build_tree_view(&tree_paths);
+    let body = formatter::build_content_view(&tree_view, &files);
+    let header = format!(
+        "> **Targeted dump**: focused on `{}` with depth {}. \n\n",
+        target, depth
+    );
+    Ok((format!("{header}{body}"), files.len()))
+}
+
+pub fn relation_entries(
+    project: &Path,
+    target: &str,
+    depth: u32,
+    max_size_kb: u64,
+    no_sync: bool,
+) -> Result<(Vec<PathBuf>, Vec<walker::FileEntry>)> {
     let query = GraphQuery {
         project: project.to_path_buf(),
         scope: "both".to_string(),
@@ -93,13 +113,7 @@ pub fn generate_relation_bundle(
 
     let (tree_paths, files) =
         walker::collect_related_files(project, &target_rel_paths, max_size_kb);
-    let tree_view = formatter::build_tree_view(&tree_paths);
-    let body = formatter::build_content_view(&tree_view, &files);
-    let header = format!(
-        "> **Targeted dump**: focused on `{}` with depth {}. \n\n",
-        target, depth
-    );
-    Ok((format!("{header}{body}"), files.len()))
+    Ok((tree_paths, files))
 }
 
 /// Write a relation-aware ("dump -r") context bundle for `target` (a symbol name
@@ -115,6 +129,9 @@ pub fn relation_bundle(
     output: &Path,
 ) -> Result<(PathBuf, usize)> {
     let (content, n) = generate_relation_bundle(project, target, depth, max_size_kb, no_sync)?;
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent)?;
+    }
     fs::write(output, content)?;
     Ok((output.to_path_buf(), n))
 }

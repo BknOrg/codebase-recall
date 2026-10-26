@@ -1,6 +1,6 @@
 [package]
 name = "codebase-recall"
-version = "0.8.1"
+version = "0.9.0"
 edition = "2024"
 authors = ["Bkn Org"]
 description = "CLI based application for codebase dumper for LLMs and fast review/recall project"
@@ -16,8 +16,8 @@ path = "src/main.rs"
 clap = { version = "4.5", features = ["derive"] }
 ignore = "0.4"
 anyhow = "1.0"
-bkndb = "0.2.1"
-blake3 = "1"
+bkndb = { version = "0.3.0", features = ["redb-backend", "lsm-backend"] }
+blake3 = { version = "1", features = ["pure"] }
 tree-sitter = "0.25"
 tree-sitter-rust = "0.24"
 tree-sitter-javascript = "0.23"
@@ -28,13 +28,44 @@ tree-sitter-kotlin-ng = "1.1"
 tree-sitter-go = "0.23"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+schemars = "0.8"
+tempfile = "3"
+cap-std = "3"
+getrandom = "0.3"
 globset = "0.4"
-tiny_http = "0.12"
-webbrowser = "1.2"
-ctrlc = "3.5"
 toml = "0.8"
+toml_edit = "=0.22.27"
+
+# Interactive web browser viewer dependencies (optional)
+tiny_http = { version = "0.12", optional = true }
+webbrowser = { version = "1.2", optional = true }
+ctrlc = "3.5"
+
+fastembed = { version = "=7.5.0", default-features = false, features = ["ort-download-binaries-native-tls"], optional = true }
+tokenizers = { version = "=0.23.2", default-features = false, features = ["onig"], optional = true }
+sha2 = { version = "0.10", optional = true }
+ureq = { version = "3", features = ["native-tls"], default-features = false, optional = true }
+dirs = { version = "6", optional = true }
+
+[features]
+default = ["viewer", "embeddings"]
+embeddings = ["dep:fastembed", "dep:sha2", "dep:ureq", "dep:dirs", "dep:tokenizers"]
+viewer = ["dep:tiny_http", "dep:webbrowser"]
 
 # The profile that 'dist' will build with
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+[[test]]
+name = "mock_lsp"
+path = "tests/support/mock_lsp.rs"
+harness = false
+
+[[bench]]
+name = "search"
+path = "benches/search.rs"
+harness = false
+
+[dev-dependencies]
+shlex = "2"

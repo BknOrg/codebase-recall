@@ -52,7 +52,8 @@ impl<'a> Walker<'a> {
             let local = alias.clone().or_else(|| imported_name.clone());
             if wildcard {
                 let ns = path.rsplit("::").next().unwrap_or(&path).to_string();
-                self.sc.bind(&ns, "namespace", None, Some(import_index), None);
+                self.sc
+                    .bind(&ns, "namespace", None, Some(import_index), None);
             } else if let Some(l) = &local {
                 self.sc.bind(l, "import", None, Some(import_index), None);
             }
@@ -68,8 +69,8 @@ impl<'a> Walker<'a> {
 
     pub fn flatten_use(&self, node: Node, prefix: &str, out: &mut Vec<UsePath>) {
         match node.kind() {
-            "identifier" | "scoped_identifier" | "type_identifier" | "primitive_type"
-            | "self" | "super" | "crate" | "metavariable" => {
+            "identifier" | "scoped_identifier" | "type_identifier" | "primitive_type" | "self"
+            | "super" | "crate" | "metavariable" => {
                 out.push(UsePath::plain(join(prefix, self.text(node))));
             }
             "use_as_clause" => {

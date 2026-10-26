@@ -61,7 +61,11 @@ pub fn format_markdown_digest(report: &DigestReport) -> String {
                     }
                 }
                 for method in &t.methods {
-                    let m_diag = if method.has_diagram { " `[diagram]`" } else { "" };
+                    let m_diag = if method.has_diagram {
+                        " `[diagram]`"
+                    } else {
+                        ""
+                    };
                     md.push_str(&format!("  - `{}`{}\n", method.signature, m_diag));
                     if let Some(doc) = &method.doc {
                         for line in doc.lines() {

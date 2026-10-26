@@ -3,7 +3,6 @@ pub mod models;
 pub mod render;
 pub mod traversal;
 
-pub use diffscan::*;
 pub use models::*;
 pub use render::*;
 pub use traversal::*;
@@ -11,11 +10,10 @@ pub use traversal::*;
 use anyhow::{Context, Result};
 use std::collections::{HashMap, HashSet};
 
-use crate::cache::CacheDb;
 use crate::cli::ImpactArgs;
 use crate::commands::graph::build_graph;
+use crate::graph::Node;
 use crate::graph::query::{Adjacency, build_adjacency, find_targets};
-use crate::graph::{Node, symbol_id};
 
 /// Most targets a `--diff` run reports; a large working tree can touch hundreds
 /// of symbols, far more than anyone (or any MCP client) can read.
@@ -57,7 +55,10 @@ pub fn trim_diff_reports(reports: &mut Vec<ImpactReport>, limit: usize) -> DiffT
     });
     let over_limit = reports.len().saturating_sub(limit);
     reports.truncate(limit);
-    DiffTrim { isolated, over_limit }
+    DiffTrim {
+        isolated,
+        over_limit,
+    }
 }
 
 pub fn run(args: ImpactArgs) -> Result<()> {
@@ -67,8 +68,20 @@ pub fn run(args: ImpactArgs) -> Result<()> {
     } else {
         DiffTrim::default()
     };
+    crate::operation::omitted(trim.isolated + trim.over_limit);
+    if args.diff {
+        crate::operation::warning(
+            "diff excludes untracked files; baseline relationships use AST heuristics",
+        );
+    }
+    if !args.json && reports.is_empty() {
+        println!("No uncommitted changes detected affecting analyzed symbols.");
+    }
     if args.json {
-        println!("{}", render_json(&reports)?);
+        println!(
+            "{}",
+            crate::output::json(&args.project, args.no_sync, &reports)?
+        );
         // Keep stdout a valid JSON array; the note goes to the side channel.
         if let Some(note) = trim.note() {
             eprintln!("{note}");
@@ -76,8 +89,10 @@ pub fn run(args: ImpactArgs) -> Result<()> {
     } else {
         print!("{}", render_ascii(&reports));
         if let Some(note) = trim.note() {
-            println!("
-{note}");
+            println!(
+                "
+{note}"
+            );
         }
     }
     Ok(())
@@ -95,57 +110,26 @@ pub fn generate_reports(args: &ImpactArgs) -> Result<Vec<ImpactReport>> {
         anyhow::bail!("--diff cannot be combined with an explicit <SYMBOL>; pass one or the other");
     }
 
+    if args.diff {
+        return diffscan::generate_diff_reports(args);
+    }
     let query = crate::service::analysis_query(
         &args.project,
         args.kinds.clone(),
         args.no_sync,
         args.precise.clone(),
     );
-
-
     let graph = build_graph(&query).context("failed to build code graph for impact analysis")?;
+    let targets = find_targets(&graph, args.symbol.as_deref().expect("validated symbol"));
+    reports_for_graph(args, &graph, targets)
+}
+
+pub(super) fn reports_for_graph(
+    args: &ImpactArgs,
+    graph: &crate::graph::CodeGraph,
+    targets: Vec<&Node>,
+) -> Result<Vec<ImpactReport>> {
     let node_by_id: HashMap<&str, &Node> = graph.nodes.iter().map(|n| (n.id.as_str(), n)).collect();
-
-    let targets: Vec<&Node> = if args.diff {
-        let db = CacheDb::open(&args.project)?;
-        let ranges = scan_diff(&args.project)?;
-        if ranges.is_empty() {
-            if args.json {
-                return Ok(Vec::new());
-            }
-            println!("No uncommitted changes detected.");
-            return Ok(Vec::new());
-        }
-
-        let symbols = resolve_changed_symbols(&db, &ranges)?;
-        if symbols.is_empty() {
-            if args.json {
-                return Ok(Vec::new());
-            }
-            println!(
-                "No symbols affected by the current diff (only whitespace/deletions, or changed files are outside the synced project)."
-            );
-            return Ok(Vec::new());
-        }
-
-        let files = db.all_files()?;
-        let file_path_by_id: HashMap<i64, String> =
-            files.into_iter().map(|f| (f.id, f.path)).collect();
-
-        let target_ids: HashSet<String> = symbols
-            .iter()
-            .filter_map(|s| {
-                let path = file_path_by_id.get(&s.file_id)?;
-                Some(symbol_id(path, &s.name, s.start_line.unwrap_or(0)))
-            })
-            .collect();
-
-        graph.nodes.iter().filter(|n| target_ids.contains(&n.id)).collect()
-    } else {
-        let symbol = args.symbol.as_deref().expect("validated non-empty above");
-        find_targets(&graph, symbol)
-    };
-
     if targets.is_empty() {
         if args.json {
             return Ok(Vec::new());
@@ -157,10 +141,16 @@ pub fn generate_reports(args: &ImpactArgs) -> Result<Vec<ImpactReport>> {
     }
 
     let dir_norm = args.direction.to_ascii_lowercase();
-    let do_upstream = matches!(dir_norm.as_str(), "both" | "reverse" | "upstream" | "callers");
-    let do_downstream = matches!(dir_norm.as_str(), "both" | "forward" | "downstream" | "callees");
+    let do_upstream = matches!(
+        dir_norm.as_str(),
+        "both" | "reverse" | "upstream" | "callers"
+    );
+    let do_downstream = matches!(
+        dir_norm.as_str(),
+        "both" | "forward" | "downstream" | "callees"
+    );
 
-    let Adjacency { incoming, outgoing } = build_adjacency(&graph, &args.kinds);
+    let Adjacency { incoming, outgoing } = build_adjacency(graph, &args.kinds);
 
     let mut file_lines_cache: HashMap<String, Vec<String>> = HashMap::new();
     let community_labels: HashMap<u32, String> = graph
@@ -246,6 +236,7 @@ pub fn generate_reports(args: &ImpactArgs) -> Result<Vec<ImpactReport>> {
         count_risky(&callees, &mut risky_seen, &mut risky_affected_count);
 
         let report = ImpactReport {
+            change_kind: None,
             target_symbol: target.label.clone(),
             target_id: target.id.clone(),
             target_kind: target.kind.clone(),
@@ -260,7 +251,9 @@ pub fn generate_reports(args: &ImpactArgs) -> Result<Vec<ImpactReport>> {
             total_affected_count: all_affected.len(),
             total_affected_files,
             risky_affected_count,
-            target_community: target.community.and_then(|c| community_labels.get(&c).cloned()),
+            target_community: target
+                .community
+                .and_then(|c| community_labels.get(&c).cloned()),
             max_depth_reached,
         };
 
@@ -276,6 +269,7 @@ mod tests {
 
     fn report(name: &str, affected: usize) -> ImpactReport {
         ImpactReport {
+            change_kind: None,
             target_symbol: name.to_string(),
             target_id: name.to_string(),
             target_kind: "function".to_string(),
@@ -297,11 +291,22 @@ mod tests {
 
     #[test]
     fn diff_trim_drops_isolated_sorts_and_caps() {
-        let mut reports = vec![report("lone", 0), report("small", 1), report("big", 9), report("mid", 4)];
+        let mut reports = vec![
+            report("lone", 0),
+            report("small", 1),
+            report("big", 9),
+            report("mid", 4),
+        ];
         let trim = trim_diff_reports(&mut reports, 2);
         let names: Vec<_> = reports.iter().map(|r| r.target_symbol.as_str()).collect();
         assert_eq!(names, ["big", "mid"]);
-        assert_eq!(trim, DiffTrim { isolated: 1, over_limit: 1 });
+        assert_eq!(
+            trim,
+            DiffTrim {
+                isolated: 1,
+                over_limit: 1
+            }
+        );
         assert!(trim.note().is_some());
     }
 

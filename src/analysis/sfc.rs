@@ -144,12 +144,9 @@ fn find_tag_case_insensitive(source: &str, mut start: usize, tag: &str) -> Optio
     while start < len {
         // Check HTML comment start
         if start + 4 <= len && &bytes[start..start + 4] == b"<!--" {
-            if let Some(comment_end) = source[start + 4..].find("-->") {
-                start = start + 4 + comment_end + 3;
-                continue;
-            } else {
-                return None;
-            }
+            let comment_end = source[start + 4..].find("-->")?;
+            start = start + 4 + comment_end + 3;
+            continue;
         }
 
         if bytes[start] == b'<' && start + 1 + tag_len <= len {

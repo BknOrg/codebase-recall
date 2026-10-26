@@ -16,7 +16,15 @@ ARCH="$(uname -m)"
 
 case "$OS" in
   linux)
-    TARGET="x86_64-unknown-linux-musl"
+    case "$ARCH" in
+      x86_64|amd64) ;;
+      *) echo "Unsupported Linux architecture: $ARCH"; exit 1 ;;
+    esac
+    TARGET="x86_64-unknown-linux-gnu"
+    if [ "${CODE_RCL_LIGHTWEIGHT:-0}" = "1" ] || ldd --version 2>&1 | grep -qi musl; then
+      TARGET="x86_64-unknown-linux-musl"
+      echo "Using lightweight musl package (embeddings unavailable)."
+    fi
     ;;
   darwin)
     case "$ARCH" in
@@ -83,3 +91,4 @@ case ":$PATH:" in
 esac
 
 printf "\nDone! You can now run '%s --help' from any directory.\n" "$BIN_NAME"
+printf "Model setup is separate: %s embeddings setup; %s embeddings sync\n" "$BIN_NAME" "$BIN_NAME"

@@ -1,0 +1,4 @@
+# Frozen fixture checksums refer to these exact bytes on every CI platform.
+tests/fixtures/retrieval_bkndb/*.json text eol=lf
+tests/fixtures/retrieval_bkndb/*.gz binary
+tests/fixtures/kotlin/*.kt text eol=lf

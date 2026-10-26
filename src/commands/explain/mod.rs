@@ -17,7 +17,10 @@ const DOC_LINES: usize = 5;
 pub fn run(args: ExplainArgs) -> Result<()> {
     let reports = generate_reports(&args)?;
     if args.json {
-        println!("{}", render_json(&reports)?);
+        println!(
+            "{}",
+            crate::output::json(&args.project, args.no_sync, &reports)?
+        );
     } else {
         print!("{}", render_ascii(&reports));
     }
@@ -45,11 +48,10 @@ pub fn generate_reports(args: &ExplainArgs) -> Result<Vec<ExplainReport>> {
     let relations = impact::generate_reports(&impact_args)?;
 
     let db = CacheDb::open(&args.project)?;
-    let all_symbols = db.all_symbols()?;
 
     let mut out = Vec::with_capacity(relations.len());
     for report in relations {
-        out.push(build_report(args, &db, &all_symbols, report)?);
+        out.push(build_report(args, &db, report)?);
     }
     Ok(out)
 }
@@ -57,7 +59,6 @@ pub fn generate_reports(args: &ExplainArgs) -> Result<Vec<ExplainReport>> {
 fn build_report(
     args: &ExplainArgs,
     db: &CacheDb,
-    all_symbols: &[SymbolRow],
     relations: ImpactReport,
 ) -> Result<ExplainReport> {
     let located = locate_symbol(db, &relations)?;
@@ -89,8 +90,9 @@ fn build_report(
         );
         doc = d;
 
-        members = all_symbols
-            .iter()
+        members = db
+            .symbols_for_file(file.id)?
+            .into_iter()
             .filter(|s| {
                 s.parent_symbol_id == Some(sym.id)
                     || (s.kind == "method"
@@ -98,8 +100,8 @@ fn build_report(
                         && s.type_name.as_deref() == Some(sym.name.as_str()))
             })
             .map(|s| MemberInfo {
-                name: s.name.clone(),
-                kind: s.kind.clone(),
+                name: s.name,
+                kind: s.kind,
                 line: s.start_line,
                 is_exported: s.is_exported,
             })

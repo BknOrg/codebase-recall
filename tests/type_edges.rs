@@ -45,7 +45,7 @@ fn graph_json(work: &Path) -> Value {
         "graph failed: {}",
         String::from_utf8_lossy(&result.stderr)
     );
-    serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap()
+    support::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap()
 }
 
 /// Every `(source label, target label)` pair carried by edges of `kind`.
@@ -158,3 +158,5 @@ fn a_type_only_struct_is_no_longer_reported_as_dead_code() {
         "impact should name the function that takes RunArgs:\n{stdout}"
     );
 }
+
+mod support;

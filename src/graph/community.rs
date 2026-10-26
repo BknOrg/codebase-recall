@@ -78,7 +78,11 @@ pub fn file_graph(nodes: &[Node], edges: &[Edge]) -> BTreeMap<(String, String), 
         if a == b {
             continue;
         }
-        let key = if a < b { (a.clone(), b.clone()) } else { (b.clone(), a.clone()) };
+        let key = if a < b {
+            (a.clone(), b.clone())
+        } else {
+            (b.clone(), a.clone())
+        };
         *links.entry(key).or_insert(0) += 1;
     }
     links
@@ -96,7 +100,11 @@ pub fn detect(nodes: &[Node], edges: &[Edge]) -> Communities {
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
-    let index: HashMap<&str, usize> = ids.iter().enumerate().map(|(i, s)| (s.as_str(), i)).collect();
+    let index: HashMap<&str, usize> = ids
+        .iter()
+        .enumerate()
+        .map(|(i, s)| (s.as_str(), i))
+        .collect();
 
     let mut adj: Vec<BTreeMap<usize, f64>> = vec![BTreeMap::new(); ids.len()];
     for ((a, b), w) in &links {
@@ -139,10 +147,15 @@ fn louvain(adj: Vec<BTreeMap<usize, f64>>) -> Vec<usize> {
                 }
 
                 total[current] -= degree[i];
-                let gain = |c: usize, w: f64, total: &[f64]| w - RESOLUTION * total[c] * degree[i] / m2;
+                let gain =
+                    |c: usize, w: f64, total: &[f64]| w - RESOLUTION * total[c] * degree[i] / m2;
 
                 let mut best = current;
-                let mut best_gain = gain(current, to_comm.get(&current).copied().unwrap_or(0.0), &total);
+                let mut best_gain = gain(
+                    current,
+                    to_comm.get(&current).copied().unwrap_or(0.0),
+                    &total,
+                );
                 for (&c, &w) in &to_comm {
                     let g = gain(c, w, &total);
                     if g > best_gain + EPSILON {
@@ -201,7 +214,9 @@ fn louvain(adj: Vec<BTreeMap<usize, f64>>) -> Vec<usize> {
 
 fn dir_of(file_node_id: &str) -> String {
     let path = file_node_id.strip_prefix("file:").unwrap_or(file_node_id);
-    path.rfind('/').map(|i| path[..i].to_string()).unwrap_or_default()
+    path.rfind(['/', '\\'])
+        .map(|i| path[..i].to_string())
+        .unwrap_or_default()
 }
 
 fn common_dir_prefix(dirs: &[String]) -> String {
@@ -264,7 +279,11 @@ fn finalize(
 
     // Communities of one file are noise: leave those files unclustered.
     let mut kept: Vec<Vec<usize>> = groups.into_values().filter(|g| g.len() >= 2).collect();
-    kept.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| ids[a[0]].cmp(&ids[b[0]])));
+    kept.sort_by(|a, b| {
+        b.len()
+            .cmp(&a.len())
+            .then_with(|| ids[a[0]].cmp(&ids[b[0]]))
+    });
 
     let mut assignment: BTreeMap<String, u32> = BTreeMap::new();
     for (cid, members) in kept.iter().enumerate() {
@@ -334,7 +353,11 @@ fn finalize(
         });
     }
 
-    Communities { assignment, list, links: between }
+    Communities {
+        assignment,
+        list,
+        links: between,
+    }
 }
 
 #[cfg(test)]
@@ -381,7 +404,10 @@ mod tests {
     fn two_cliques() -> (Vec<&'static str>, Vec<Edge>) {
         let files = vec!["a/1.rs", "a/2.rs", "a/3.rs", "b/1.rs", "b/2.rs", "b/3.rs"];
         let mut edges = Vec::new();
-        for grp in [["a/1.rs", "a/2.rs", "a/3.rs"], ["b/1.rs", "b/2.rs", "b/3.rs"]] {
+        for grp in [
+            ["a/1.rs", "a/2.rs", "a/3.rs"],
+            ["b/1.rs", "b/2.rs", "b/3.rs"],
+        ] {
             edges.push(import(grp[0], grp[1]));
             edges.push(import(grp[1], grp[2]));
             edges.push(import(grp[2], grp[0]));
@@ -437,7 +463,10 @@ mod tests {
     #[test]
     fn duplicate_labels_are_made_unique() {
         let files = vec!["src/a.rs", "src/b.rs", "src/c.rs", "src/d.rs"];
-        let edges = vec![import("src/a.rs", "src/b.rs"), import("src/c.rs", "src/d.rs")];
+        let edges = vec![
+            import("src/a.rs", "src/b.rs"),
+            import("src/c.rs", "src/d.rs"),
+        ];
         let c = detect_graph(&graph(&files, edges));
         assert_eq!(c.list.len(), 2);
         let mut labels: Vec<&str> = c.list.iter().map(|x| x.label.as_str()).collect();
@@ -452,7 +481,10 @@ mod tests {
             file_of("sym:a/1.rs#foo@3", Some("a/1.rs")),
             Some("file:a/1.rs".to_string())
         );
-        assert_eq!(file_of("file:a/1.rs", Some("a/1.rs")), Some("file:a/1.rs".to_string()));
+        assert_eq!(
+            file_of("file:a/1.rs", Some("a/1.rs")),
+            Some("file:a/1.rs".to_string())
+        );
         assert_eq!(file_of("ext:serde", None), None);
         assert_eq!(file_of("dir:a", None), None);
     }

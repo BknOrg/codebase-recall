@@ -18,20 +18,15 @@ pub const SH_END: &str = "# code-rcl:end";
 
 pub const INSTRUCTIONS_BODY: &str = "## code-rcl (codebase graph tools)
 
-This project has `code-rcl` available (MCP tools `code_rcl_*`, or the `code-rcl` CLI).
-For structural questions prefer it over grep or reading whole files:
-
-- **Before editing a symbol or file:** run `impact <symbol>` to see its callers and
-  callees with risk flags. After editing, run `impact --diff` to see what your
-  uncommitted changes affect.
-- **Orienting in unfamiliar code:** read `.code-rcl/REPORT.md` (or run `report` /
-  `code_rcl_report`) for subsystems, hubs and the seams between them, then `digest` for
-  API outlines, instead of opening many files.
-- **Understanding one symbol:** run `explain <symbol>` (signature, docs, members,
-  direct callers and callees).
-- **How does A reach B:** run `path <from> <to>`.
-- Use grep only for plain-text searches (comments, strings, config values) that the
-  graph does not index.";
+Use code-rcl CLI or MCP code_rcl_* tools for architecture and relationship questions.
+Start with report for architecture, search/explain for a symbol, impact for callers
+and callees, impact --diff for tracked changes, or path for a connection.
+Check status, metadata warnings, freshness, and truncation before drawing conclusions.
+Empty results do not prove that no dependency exists. Read relevant source before
+editing; use text search for literal text, unsupported syntax, and missing evidence.
+Precise requests fail explicitly unless heuristic fallback is requested.
+When developing code-rcl itself, verify the current checkout with Cargo rather than
+an older installed binary.";
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Change {
@@ -55,12 +50,21 @@ impl Change {
 }
 
 fn newline_of(content: &str) -> &'static str {
-    if content.contains("\r\n") { "\r\n" } else { "\n" }
+    if content.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    }
 }
 
 /// Locate the marker block in `content`. `Ok(None)` when neither marker exists;
 /// an error when the markers are unpaired, repeated, or out of order.
-fn find_block(path: &Path, content: &str, begin: &str, end: &str) -> Result<Option<(usize, usize)>> {
+fn find_block(
+    path: &Path,
+    content: &str,
+    begin: &str,
+    end: &str,
+) -> Result<Option<(usize, usize)>> {
     let begins = content.matches(begin).count();
     let ends = content.matches(end).count();
     match (begins, ends) {
@@ -120,7 +124,11 @@ pub fn upsert_marked_block(path: &Path, begin: &str, end: &str, body: &str) -> R
             .with_context(|| format!("failed to create {}", parent.display()))?;
     }
     fs::write(path, &new_content).with_context(|| format!("failed to write {}", path.display()))?;
-    Ok(if existed { Change::Updated } else { Change::Created })
+    Ok(if existed {
+        Change::Updated
+    } else {
+        Change::Created
+    })
 }
 
 /// Remove the marker-delimited block from `path`, deleting the file if nothing else is left.
@@ -151,7 +159,8 @@ pub fn remove_marked_block(path: &Path, begin: &str, end: &str) -> Result<Change
     if remaining.trim().is_empty() {
         fs::remove_file(path).with_context(|| format!("failed to remove {}", path.display()))?;
     } else {
-        fs::write(path, remaining).with_context(|| format!("failed to write {}", path.display()))?;
+        fs::write(path, remaining)
+            .with_context(|| format!("failed to write {}", path.display()))?;
     }
     Ok(Change::Removed)
 }
@@ -161,9 +170,18 @@ pub fn instruction_files(base: &Path, global: bool, target: &str) -> Vec<PathBuf
     let target = target.to_lowercase();
     let claude = target == "all" || target == "claude";
     let gemini = target == "all" || target == "gemini" || target == "antigravity";
+    let codex = target == "all" || target == "codex";
 
     let mut files = Vec::new();
     if global {
+        if codex {
+            files.push(
+                std::env::var_os("CODEX_HOME")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| base.join(".codex"))
+                    .join("AGENTS.md"),
+            );
+        }
         if claude {
             files.push(base.join(".claude").join("CLAUDE.md"));
         }
@@ -176,6 +194,8 @@ pub fn instruction_files(base: &Path, global: bool, target: &str) -> Vec<PathBuf
         }
         if gemini {
             files.push(base.join("GEMINI.md"));
+        }
+        if gemini || codex {
             files.push(base.join("AGENTS.md"));
         }
     }
@@ -197,7 +217,11 @@ pub fn post_commit_hook_path(repo_dir: &Path) -> Result<PathBuf> {
     }
     let raw = String::from_utf8_lossy(&out.stdout).trim().to_string();
     let hooks = PathBuf::from(raw);
-    let hooks = if hooks.is_absolute() { hooks } else { repo_dir.join(hooks) };
+    let hooks = if hooks.is_absolute() {
+        hooks
+    } else {
+        repo_dir.join(hooks)
+    };
     Ok(hooks.join("post-commit"))
 }
 
@@ -223,13 +247,14 @@ pub fn install_git_hook(hook: &Path, exe_cmd: &str) -> Result<Change> {
     } else {
         let existing = fs::read_to_string(hook)
             .with_context(|| format!("failed to read {}", hook.display()))?;
-        if let Some(first) = existing.lines().next() {
-            if first.starts_with("#!") && (!first.contains("sh") || first.contains("fish")) {
-                bail!(
-                    "{} uses a non-POSIX-shell interpreter ('{first}'); add `code-rcl sync` to it by hand",
-                    hook.display()
-                );
-            }
+        if let Some(first) = existing.lines().next()
+            && first.starts_with("#!")
+            && (!first.contains("sh") || first.contains("fish"))
+        {
+            bail!(
+                "{} uses a non-POSIX-shell interpreter ('{first}'); add `code-rcl sync` to it by hand",
+                hook.display()
+            );
         }
     }
 
@@ -251,7 +276,8 @@ pub fn remove_git_hook(hook: &Path) -> Result<Change> {
     if change == Change::Removed && hook.exists() {
         let left = fs::read_to_string(hook).unwrap_or_default();
         if left.trim() == "#!/bin/sh" {
-            fs::remove_file(hook).with_context(|| format!("failed to remove {}", hook.display()))?;
+            fs::remove_file(hook)
+                .with_context(|| format!("failed to remove {}", hook.display()))?;
         }
     }
     Ok(change)
@@ -283,7 +309,10 @@ fn read_settings(path: &Path) -> Result<serde_json::Value> {
         )
     })?;
     if !value.is_object() {
-        bail!("{} must contain a JSON object; refusing to overwrite it", path.display());
+        bail!(
+            "{} must contain a JSON object; refusing to overwrite it",
+            path.display()
+        );
     }
     Ok(value)
 }
@@ -330,7 +359,10 @@ pub fn install_claude_hook(path: &Path, exe_cmd: &str) -> Result<Change> {
     };
     let session = hooks.entry("SessionStart").or_insert_with(|| json!([]));
     let Some(groups) = session.as_array_mut() else {
-        bail!("{}: \"hooks.SessionStart\" must be an array", path.display());
+        bail!(
+            "{}: \"hooks.SessionStart\" must be an array",
+            path.display()
+        );
     };
 
     let mut found = false;
@@ -355,7 +387,11 @@ pub fn install_claude_hook(path: &Path, exe_cmd: &str) -> Result<Change> {
         return Ok(Change::Unchanged);
     }
     write_settings(path, &root)?;
-    Ok(if existed { Change::Updated } else { Change::Created })
+    Ok(if existed {
+        Change::Updated
+    } else {
+        Change::Created
+    })
 }
 
 /// Remove only our hook handler; delete the file if that leaves it empty.
@@ -394,12 +430,19 @@ pub fn remove_claude_hook(path: &Path) -> Result<Change> {
     }
 
     let obj = root.as_object_mut().expect("checked in read_settings");
-    if let Some(hooks) = obj.get_mut("hooks").and_then(Value::as_object_mut) {
-        if hooks.get("SessionStart").and_then(Value::as_array).is_some_and(|a| a.is_empty()) {
-            hooks.remove("SessionStart");
-        }
+    if let Some(hooks) = obj.get_mut("hooks").and_then(Value::as_object_mut)
+        && hooks
+            .get("SessionStart")
+            .and_then(Value::as_array)
+            .is_some_and(|a| a.is_empty())
+    {
+        hooks.remove("SessionStart");
     }
-    if obj.get("hooks").and_then(Value::as_object).is_some_and(|h| h.is_empty()) {
+    if obj
+        .get("hooks")
+        .and_then(Value::as_object)
+        .is_some_and(|h| h.is_empty())
+    {
         obj.remove("hooks");
     }
 
@@ -416,7 +459,8 @@ mod tests {
     use super::*;
 
     fn tmp(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("code-rcl-setup-{name}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("code-rcl-setup-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
@@ -428,15 +472,24 @@ mod tests {
         let f = dir.join("CLAUDE.md");
         fs::write(&f, "# My notes\n\nkeep me\n").unwrap();
 
-        assert_eq!(upsert_marked_block(&f, MD_BEGIN, MD_END, "hello").unwrap(), Change::Updated);
+        assert_eq!(
+            upsert_marked_block(&f, MD_BEGIN, MD_END, "hello").unwrap(),
+            Change::Updated
+        );
         let first = fs::read_to_string(&f).unwrap();
         assert!(first.starts_with("# My notes\n\nkeep me\n"));
         assert!(first.contains("hello"));
 
-        assert_eq!(upsert_marked_block(&f, MD_BEGIN, MD_END, "hello").unwrap(), Change::Unchanged);
+        assert_eq!(
+            upsert_marked_block(&f, MD_BEGIN, MD_END, "hello").unwrap(),
+            Change::Unchanged
+        );
         assert_eq!(fs::read_to_string(&f).unwrap(), first);
 
-        assert_eq!(upsert_marked_block(&f, MD_BEGIN, MD_END, "changed").unwrap(), Change::Updated);
+        assert_eq!(
+            upsert_marked_block(&f, MD_BEGIN, MD_END, "changed").unwrap(),
+            Change::Updated
+        );
         let updated = fs::read_to_string(&f).unwrap();
         assert!(updated.contains("changed") && !updated.contains("hello"));
         assert_eq!(updated.matches(MD_BEGIN).count(), 1);
@@ -450,16 +503,25 @@ mod tests {
         fs::write(&f, original).unwrap();
 
         upsert_marked_block(&f, MD_BEGIN, MD_END, "body").unwrap();
-        assert_eq!(remove_marked_block(&f, MD_BEGIN, MD_END).unwrap(), Change::Removed);
+        assert_eq!(
+            remove_marked_block(&f, MD_BEGIN, MD_END).unwrap(),
+            Change::Removed
+        );
         assert_eq!(fs::read_to_string(&f).unwrap(), original);
-        assert_eq!(remove_marked_block(&f, MD_BEGIN, MD_END).unwrap(), Change::NotPresent);
+        assert_eq!(
+            remove_marked_block(&f, MD_BEGIN, MD_END).unwrap(),
+            Change::NotPresent
+        );
     }
 
     #[test]
     fn remove_deletes_file_we_created() {
         let dir = tmp("created");
         let f = dir.join("GEMINI.md");
-        assert_eq!(upsert_marked_block(&f, MD_BEGIN, MD_END, "body").unwrap(), Change::Created);
+        assert_eq!(
+            upsert_marked_block(&f, MD_BEGIN, MD_END, "body").unwrap(),
+            Change::Created
+        );
         remove_marked_block(&f, MD_BEGIN, MD_END).unwrap();
         assert!(!f.exists());
     }
@@ -483,13 +545,19 @@ mod tests {
         fs::write(&f, "line one\r\nline two\r\n").unwrap();
         upsert_marked_block(&f, MD_BEGIN, MD_END, "a\nb").unwrap();
         let out = fs::read_to_string(&f).unwrap();
-        assert!(!out.replace("\r\n", "").contains('\n'), "mixed line endings: {out:?}");
+        assert!(
+            !out.replace("\r\n", "").contains('\n'),
+            "mixed line endings: {out:?}"
+        );
     }
 
     #[test]
     fn instruction_files_follow_target() {
         let base = Path::new("base");
-        assert_eq!(instruction_files(base, false, "claude"), vec![base.join("CLAUDE.md")]);
+        assert_eq!(
+            instruction_files(base, false, "claude"),
+            vec![base.join("CLAUDE.md")]
+        );
         assert_eq!(instruction_files(base, false, "all").len(), 3);
         assert_eq!(
             instruction_files(base, true, "gemini"),
@@ -513,15 +581,26 @@ mod tests {
         });
         fs::write(&f, serde_json::to_string_pretty(&original).unwrap()).unwrap();
 
-        assert_eq!(install_claude_hook(&f, "code-rcl").unwrap(), Change::Updated);
-        assert_eq!(install_claude_hook(&f, "code-rcl").unwrap(), Change::Unchanged);
-        let merged: serde_json::Value = serde_json::from_str(&fs::read_to_string(&f).unwrap()).unwrap();
+        assert_eq!(
+            install_claude_hook(&f, "code-rcl").unwrap(),
+            Change::Updated
+        );
+        assert_eq!(
+            install_claude_hook(&f, "code-rcl").unwrap(),
+            Change::Unchanged
+        );
+        let merged: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&f).unwrap()).unwrap();
         assert_eq!(merged["model"], "opus");
-        assert_eq!(merged["hooks"]["PostToolUse"], original["hooks"]["PostToolUse"]);
+        assert_eq!(
+            merged["hooks"]["PostToolUse"],
+            original["hooks"]["PostToolUse"]
+        );
         assert_eq!(merged["hooks"]["SessionStart"].as_array().unwrap().len(), 2);
 
         assert_eq!(remove_claude_hook(&f).unwrap(), Change::Removed);
-        let restored: serde_json::Value = serde_json::from_str(&fs::read_to_string(&f).unwrap()).unwrap();
+        let restored: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&f).unwrap()).unwrap();
         assert_eq!(restored, original);
     }
 
@@ -544,7 +623,10 @@ mod tests {
         assert!(content.contains("echo existing"));
         assert!(content.contains("\"C:/bin/code-rcl.exe\" sync"));
         assert_eq!(remove_git_hook(&hook).unwrap(), Change::Removed);
-        assert_eq!(fs::read_to_string(&hook).unwrap(), "#!/bin/sh\necho existing\n");
+        assert_eq!(
+            fs::read_to_string(&hook).unwrap(),
+            "#!/bin/sh\necho existing\n"
+        );
 
         let py = dir.join("py-hook");
         fs::write(&py, "#!/usr/bin/env python\nprint(1)\n").unwrap();

@@ -14,7 +14,7 @@
   function hide() {
     if (statusEl) statusEl.classList.remove("show");
   }
-  var es = new EventSource("/live");
+  var es = new EventSource("/live?token=" + encodeURIComponent(document.querySelector('meta[name="code-rcl-token"]').content));
   es.addEventListener("open", hide);
   es.addEventListener("error", function () {
     // EventSource auto-reconnects; if the server is really gone this just keeps firing.

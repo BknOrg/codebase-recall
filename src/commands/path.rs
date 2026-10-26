@@ -72,7 +72,10 @@ fn parse_direction(raw: &str) -> Result<Direction> {
 pub fn run(args: PathArgs) -> Result<()> {
     let reports = generate_reports(&args)?;
     if args.json {
-        println!("{}", render_json(&reports)?);
+        println!(
+            "{}",
+            crate::output::json(&args.project, args.no_sync, &reports)?
+        );
     } else {
         print!("{}", render_ascii(&reports));
     }
@@ -158,8 +161,12 @@ pub fn generate_reports(args: &PathArgs) -> Result<Vec<PathReport>> {
                 let snippet_path = node_by_id
                     .get(step.edge.source.as_str())
                     .and_then(|n| n.path.as_deref());
-                let snippet =
-                    get_snippet(&args.project, &mut file_lines_cache, snippet_path, step.edge.line);
+                let snippet = get_snippet(
+                    &args.project,
+                    &mut file_lines_cache,
+                    snippet_path,
+                    step.edge.line,
+                );
                 report.hops.push(PathHop {
                     id: node.id.clone(),
                     label: node.label.clone(),
@@ -204,7 +211,7 @@ fn proximity(from: &Node, to: &Node) -> u8 {
 }
 
 fn parent_dir(path: &str) -> &str {
-    path.rfind('/').map(|i| &path[..i]).unwrap_or("")
+    path.rfind(['/', '\\']).map(|i| &path[..i]).unwrap_or("")
 }
 
 fn hop_for_start(node: &Node) -> PathHop {
@@ -245,6 +252,9 @@ fn shortest_path<'a>(
     queue.push_back((start, 0));
 
     while let Some((current, depth)) = queue.pop_front() {
+        if crate::operation::cancelled() {
+            return None;
+        }
         if current == to.id {
             return Some(rebuild(parent, current, start));
         }
@@ -254,23 +264,23 @@ fn shortest_path<'a>(
 
         // (next node, node we came from, edge, followed against its direction)
         let mut neighbors: Vec<(&'a str, &'a str, &'a Edge, bool)> = Vec::new();
-        if matches!(direction, Direction::Forward | Direction::Any) {
-            if let Some(edges) = adjacency.outgoing.get(current) {
-                neighbors.extend(
-                    edges
-                        .iter()
-                        .map(|e| (e.target.as_str(), e.source.as_str(), *e, false)),
-                );
-            }
+        if matches!(direction, Direction::Forward | Direction::Any)
+            && let Some(edges) = adjacency.outgoing.get(current)
+        {
+            neighbors.extend(
+                edges
+                    .iter()
+                    .map(|e| (e.target.as_str(), e.source.as_str(), *e, false)),
+            );
         }
-        if matches!(direction, Direction::Reverse | Direction::Any) {
-            if let Some(edges) = adjacency.incoming.get(current) {
-                neighbors.extend(
-                    edges
-                        .iter()
-                        .map(|e| (e.source.as_str(), e.target.as_str(), *e, true)),
-                );
-            }
+        if matches!(direction, Direction::Reverse | Direction::Any)
+            && let Some(edges) = adjacency.incoming.get(current)
+        {
+            neighbors.extend(
+                edges
+                    .iter()
+                    .map(|e| (e.source.as_str(), e.target.as_str(), *e, true)),
+            );
         }
 
         for (next, prev, edge, reversed) in neighbors {

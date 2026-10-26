@@ -74,10 +74,7 @@ fn dir_components(rel: &str) -> Vec<String> {
 }
 
 fn first_existing(path_set: &HashSet<String>, candidates: &[String]) -> Option<String> {
-    candidates
-        .iter()
-        .find(|c| path_set.contains(*c))
-        .cloned()
+    candidates.iter().find(|c| path_set.contains(*c)).cloned()
 }
 
 fn resolve_rust_import(
@@ -130,7 +127,10 @@ fn resolve_rust_import(
         let cands = [
             format!("{joined}.rs"),
             format!("{joined}/mod.rs"),
-            joined.strip_prefix("src/").map(|s| format!("{s}.rs")).unwrap_or_default(),
+            joined
+                .strip_prefix("src/")
+                .map(|s| format!("{s}.rs"))
+                .unwrap_or_default(),
         ];
         if let Some(hit) = first_existing(path_set, &cands) {
             return Some(hit);
@@ -153,11 +153,7 @@ fn normalize_join(dir: &[String], spec: &str) -> Vec<String> {
     out
 }
 
-fn resolve_js_import(
-    importer_rel: &str,
-    spec: &str,
-    path_set: &HashSet<String>,
-) -> Option<String> {
+fn resolve_js_import(importer_rel: &str, spec: &str, path_set: &HashSet<String>) -> Option<String> {
     if !(spec.starts_with("./") || spec.starts_with("../") || spec.starts_with('/')) {
         return None; // bare specifier -> external
     }
@@ -238,9 +234,12 @@ fn resolve_python_import(
 pub(super) fn external_root(spec: &str, lang_group: &str) -> String {
     match lang_group {
         "rust" => spec.split("::").next().unwrap_or(spec).to_string(),
-        "python" | "java" | "kotlin" => {
-            spec.trim_start_matches('.').split('.').next().unwrap_or(spec).to_string()
-        }
+        "python" | "java" | "kotlin" => spec
+            .trim_start_matches('.')
+            .split('.')
+            .next()
+            .unwrap_or(spec)
+            .to_string(),
         _ => {
             if let Some(scoped) = spec.strip_prefix('@') {
                 let mut it = scoped.split('/');

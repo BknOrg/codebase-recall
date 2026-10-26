@@ -60,9 +60,7 @@ impl<'a> Walker<'a> {
                 // `mod foo;` (no inline body) pulls in a sibling file.
                 let has_body = node.child_by_field_name("body").is_some()
                     || child_of_kind(node, "declaration_list").is_some();
-                if !has_body
-                    && let Some(n) = node.child_by_field_name("name")
-                {
+                if !has_body && let Some(n) = node.child_by_field_name("name") {
                     let name = self.text(n).to_string();
                     let import_index = self.out.imports.len();
                     // `mod foo;` makes `foo` usable as a module path prefix.
@@ -119,8 +117,12 @@ impl<'a> Walker<'a> {
                 self.sc.bind(&name, "symbol", Some(i), None, None);
             }
             self.stack.push(i);
-            self.sc
-                .push(scope_kind, Some(i), node.start_byte() as i64, node.end_byte() as i64);
+            self.sc.push(
+                scope_kind,
+                Some(i),
+                node.start_byte() as i64,
+                node.end_byte() as i64,
+            );
 
             match node.kind() {
                 "function_item" => self.bind_signature(node),
@@ -169,9 +171,9 @@ impl<'a> Walker<'a> {
     }
 
     pub fn parent_is_impl_or_trait(&self) -> bool {
-        self.stack.last().is_some_and(|&i| {
-            matches!(self.out.symbols[i].kind.as_str(), "impl" | "trait")
-        })
+        self.stack
+            .last()
+            .is_some_and(|&i| matches!(self.out.symbols[i].kind.as_str(), "impl" | "trait"))
     }
 
     /// Simple name of the type the current `impl`/`trait` scope is for.
@@ -287,14 +289,16 @@ use anyhow::*;
         assert!(p.imports.iter().any(|i| i.raw_specifier == "anyhow"));
 
         // `w` is bound as an import; `anyhow::*` as a namespace.
-        assert!(p
-            .bindings
-            .iter()
-            .any(|b| b.binding_kind == "import" && b.name == "w"));
-        assert!(p
-            .bindings
-            .iter()
-            .any(|b| b.binding_kind == "namespace" && b.name == "anyhow"));
+        assert!(
+            p.bindings
+                .iter()
+                .any(|b| b.binding_kind == "import" && b.name == "w")
+        );
+        assert!(
+            p.bindings
+                .iter()
+                .any(|b| b.binding_kind == "namespace" && b.name == "anyhow")
+        );
     }
 
     #[test]
@@ -306,11 +310,7 @@ enum CommandError {}
 pub fn cmd_run(args: &RunArgs) -> Result<(), CommandError> { todo!() }
 "#;
         let p = parse(src);
-        let type_ref = |n: &str| {
-            p.refs
-                .iter()
-                .find(|r| r.ref_kind == "type" && r.name == n)
-        };
+        let type_ref = |n: &str| p.refs.iter().find(|r| r.ref_kind == "type" && r.name == n);
 
         // A struct used only as a parameter type is not dead code.
         let args = type_ref("RunArgs").expect("param type ref");
@@ -485,6 +485,9 @@ fn test_func() {
         assert!(p.parse_ok);
         let vals: Vec<&str> = p.string_literals.iter().map(|s| s.value.as_str()).collect();
         assert!(vals.contains(&"verbose"), "should index 'verbose' call arg");
-        assert!(vals.contains(&"world_target"), "should index 'world_target' macro arg");
+        assert!(
+            vals.contains(&"world_target"),
+            "should index 'world_target' macro arg"
+        );
     }
 }

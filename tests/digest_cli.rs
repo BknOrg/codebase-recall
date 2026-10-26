@@ -72,7 +72,7 @@ fn digest_json_format_is_valid() {
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
     let val: serde_json::Value =
-        serde_json::from_str(&stdout).expect("expected valid json from digest --json");
+        support::from_str(&stdout).expect("expected valid json from digest --json");
     assert!(val.get("project").is_some());
     assert!(val.get("total_files").is_some());
     assert!(val.get("modules").is_some());
@@ -107,7 +107,10 @@ fn digest_project_flag_works_like_positional_path() {
 
     let flag_out = String::from_utf8_lossy(&via_flag.stdout);
     let positional_out = String::from_utf8_lossy(&via_positional.stdout);
-    assert_eq!(flag_out, positional_out, "--project and positional path should agree");
+    assert_eq!(
+        flag_out, positional_out,
+        "--project and positional path should agree"
+    );
     assert!(flag_out.contains("pub fn greet"));
 }
 
@@ -128,3 +131,5 @@ fn digest_output_file_flag_works() {
     assert!(content.contains("# Architecture Digest:"));
     assert!(content.contains("pub fn greet"));
 }
+
+mod support;

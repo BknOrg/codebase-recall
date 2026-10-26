@@ -1,19 +1,28 @@
-use anyhow::Result;
+#[cfg(feature = "viewer")]
+mod enabled {
+    use anyhow::Result;
 
-use crate::cli::ServeArgs;
-use crate::commands::graph::build_graph;
-use crate::server::{self, ServeOptions};
+    use crate::cli::ServeArgs;
+    use crate::commands::graph::build_graph;
+    use crate::server::{self, ServeOptions};
 
-pub fn run(mut args: ServeArgs) -> Result<()> {
-    crate::config::ProjectConfig::load(&args.query.project)?
-        .apply_precise_default(&mut args.query.precise);
-    let graph = build_graph(&args.query)?;
-    server::serve(
-        &graph,
-        ServeOptions {
-            port: args.port,
-            open: !args.no_open,
-            project: args.query.project.clone(),
-        },
-    )
+    pub fn run(mut args: ServeArgs) -> Result<()> {
+        crate::config::ProjectConfig::load(&args.query.project)?
+            .apply_precise_default(&mut args.query.precise);
+        let graph = build_graph(&args.query)?;
+        server::serve(
+            &graph,
+            ServeOptions {
+                port: args.port,
+                open: !args.no_open,
+                project: args.query.project.clone(),
+            },
+        )
+    }
+}
+#[cfg(feature = "viewer")]
+pub use enabled::run;
+#[cfg(not(feature = "viewer"))]
+pub fn run(_: crate::cli::ServeArgs) -> anyhow::Result<()> {
+    anyhow::bail!("viewer support is disabled; rebuild with --features viewer")
 }

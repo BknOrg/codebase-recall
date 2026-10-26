@@ -11,17 +11,17 @@ impl<'a> Walker<'a> {
             return;
         };
         let (name_node, receiver) = self.callee_parts(func);
-        let name = name_node.map(|n| self.text(n).to_string()).unwrap_or_default();
+        let name = name_node
+            .map(|n| self.text(n).to_string())
+            .unwrap_or_default();
         if name.is_empty() {
             return;
         }
         let receiver_kind = classify_rust_receiver(func.kind(), receiver.as_deref());
-        let arg_count = node
-            .child_by_field_name("arguments")
-            .map(|a| {
-                let mut c = a.walk();
-                a.named_children(&mut c).count() as i64
-            });
+        let arg_count = node.child_by_field_name("arguments").map(|a| {
+            let mut c = a.walk();
+            a.named_children(&mut c).count() as i64
+        });
         if let Some(args_node) = node.child_by_field_name("arguments") {
             let args: Vec<Node> = {
                 let mut c = args_node.walk();
@@ -83,7 +83,8 @@ impl<'a> Walker<'a> {
         // `token_tree` is a child kind in tree-sitter-rust, not a field name.
         let token_tree = {
             let mut c = node.walk();
-            node.named_children(&mut c).find(|n| n.kind() == "token_tree")
+            node.named_children(&mut c)
+                .find(|n| n.kind() == "token_tree")
         };
         if let Some(token_tree) = token_tree {
             let mut c = token_tree.walk();

@@ -97,13 +97,13 @@ impl<'a> Walker<'a> {
         // wrapper prefix contains a newline.
         let line_base = token_tree.start_position().row as i64;
         let content_span = prefix_len..prefix_len + content.len();
+        let shift = |b: i64| inner_start as i64 + (b - prefix_len as i64);
 
         for mut rf in sub.out.refs {
             let start = rf.start_byte as usize;
             if !content_span.contains(&start) {
                 continue; // a node belonging to the wrapper itself
             }
-            let shift = |b: i64| inner_start as i64 + (b - prefix_len as i64);
             rf.start_byte = shift(rf.start_byte);
             // `--precise` sends this offset to the language server, so it has
             // to land on the real token in the real file.

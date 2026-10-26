@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 
-use crate::assets;
 use crate::cache::CacheDb;
 use crate::cli::{GraphArgs, GraphQuery, SyncArgs};
 use crate::commands::sync;
@@ -22,6 +21,7 @@ pub fn build_graph(query: &GraphQuery) -> Result<CodeGraph> {
 
     if !query.no_sync {
         let sync_args = SyncArgs {
+            json: false,
             project: project.clone(),
             max_file_kb: None,
             language: Vec::new(),
@@ -41,6 +41,12 @@ pub fn build_graph(query: &GraphQuery) -> Result<CodeGraph> {
             // compiler-grade one that was asked for.
             let stats = sync::run_precise(&mut db, &sync_args)?;
             sync::report_precise(&stats);
+            if !stats.errors.is_empty() && !query.precise.allow_heuristic_fallback {
+                anyhow::bail!("precise resolution failed: {}", stats.errors.join("; "));
+            }
+            if !stats.errors.is_empty() {
+                crate::operation::partial();
+            }
         }
     }
 
@@ -101,11 +107,12 @@ pub fn run(mut args: GraphArgs) -> Result<()> {
     let has_stdout = targets.iter().any(|(_, p)| p.as_os_str() == "-");
 
     for (format, path) in targets {
+        let body = if format == Format::Json {
+            crate::output::json(&project, args.query.no_sync, &graph)?
+        } else {
+            render::render(&graph, format)?
+        };
         if path.as_os_str() == "-" {
-            if format == Format::Html {
-                anyhow::bail!("cannot stream separated HTML bundle to stdout; specify an output file path");
-            }
-            let body = render::render(&graph, format)?;
             println!("{body}");
             continue;
         }
@@ -114,38 +121,8 @@ pub fn run(mut args: GraphArgs) -> Result<()> {
             fs::create_dir_all(parent).ok();
         }
 
-        if format == Format::Html {
-            let data = serde_json::to_string(&graph).unwrap_or_else(|_| "{}".to_string());
-            let stat = format!(
-                "{} nodes \u{00b7} {} edges",
-                graph.nodes.len(),
-                graph.edges.len()
-            );
-            let bundle = assets::graph_separated_bundle(&data, &stat);
-
-            let dir = path.parent().unwrap_or(std::path::Path::new("."));
-            fs::create_dir_all(dir.join("js"))
-                .with_context(|| format!("creating js directory in {}", dir.display()))?;
-            fs::write(&path, &bundle.html)
-                .with_context(|| format!("writing {}", path.display()))?;
-            fs::write(dir.join("style.css"), bundle.css)
-                .with_context(|| format!("writing {}/style.css", dir.display()))?;
-            fs::write(dir.join("data.js"), &bundle.data_js)
-                .with_context(|| format!("writing {}/data.js", dir.display()))?;
-            fs::write(dir.join("js").join("d3.min.js"), bundle.d3_js)
-                .with_context(|| format!("writing {}/js/d3.min.js", dir.display()))?;
-            fs::write(dir.join("js").join("graph-view.js"), &bundle.graph_view_js)
-                .with_context(|| format!("writing {}/js/graph-view.js", dir.display()))?;
-
-            println!(
-                "wrote {} and separated assets (style.css, data.js, js/d3.min.js, js/graph-view.js)",
-                path.display()
-            );
-        } else {
-            let body = render::render(&graph, format)?;
-            fs::write(&path, body).with_context(|| format!("writing {}", path.display()))?;
-            println!("wrote {} ({} format)", path.display(), format.extension());
-        }
+        fs::write(&path, body).with_context(|| format!("writing {}", path.display()))?;
+        println!("wrote {} ({} format)", path.display(), format.extension());
     }
 
     if has_stdout {

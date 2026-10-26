@@ -64,7 +64,8 @@
       const s = l.source;
       const t = l.target;
       if (!s || !t || s.x == null || t.x == null) continue;
-      const d = distToSegment(wx, wy, s.x, s.y, t.x, t.y);
+      const g = edgeGeometry(l);
+      const d = distToSegment(wx, wy, g.sx, g.sy, g.tx, g.ty);
       if (d < minDist) {
         minDist = d;
         closest = l;
