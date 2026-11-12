@@ -1,4 +1,4 @@
-# Embeddings — 0.10.0
+# Embeddings — 0.9.1
 
 Use lexical search for identifiers, semantic for behavior descriptions, and
 hybrid when both are present. CLI examples:

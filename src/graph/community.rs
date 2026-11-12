@@ -366,6 +366,7 @@ mod tests {
 
     fn file_node(path: &str) -> Node {
         Node {
+            semantic: None,
             id: file_id(path),
             kind: "file".into(),
             label: path.into(),
@@ -381,6 +382,7 @@ mod tests {
 
     fn import(from: &str, to: &str) -> Edge {
         Edge {
+            resolution: None,
             source: file_id(from),
             target: file_id(to),
             kind: "imports".into(),
@@ -392,7 +394,9 @@ mod tests {
 
     fn graph(files: &[&str], edges: Vec<Edge>) -> CodeGraph {
         CodeGraph {
-            version: 2,
+            precision: Default::default(),
+            resolution_summary: Default::default(),
+            version: 3,
             root: ".".into(),
             generated_at: 0,
             nodes: files.iter().map(|p| file_node(p)).collect(),

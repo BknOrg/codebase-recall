@@ -39,7 +39,13 @@ pub enum Readiness {
 }
 
 pub struct LspClient {
-    child: Child,
+    diagnostics: std::collections::HashMap<String, Vec<Value>>,
+    child: Arc<Mutex<Child>>,
+    process: Arc<super::process::ProcessTree>,
+    deadline: Option<Instant>,
+    watchdog: Arc<(Mutex<bool>, std::sync::Condvar)>,
+    bridge: Option<Box<LspClient>>,
+    capabilities: Value,
     stdin: ChildStdin,
     inbox: Receiver<Value>,
     stderr_tail: Arc<Mutex<Vec<String>>>,
@@ -54,8 +60,15 @@ pub struct LspClient {
 
 impl Drop for LspClient {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        if let Ok(mut stop) = self.watchdog.0.lock() {
+            *stop = true;
+            self.watchdog.1.notify_all();
+        }
+        self.process.terminate();
+        if let Ok(mut child) = self.child.lock() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
     }
 }
 
@@ -69,6 +82,7 @@ impl LspClient {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
+        super::process::configure(&mut command);
         let mut child = command.spawn().with_context(|| {
             format!(
                 "starting language server `{}`.\n  \
@@ -80,6 +94,14 @@ impl LspClient {
             )
         })?;
 
+        let process = match super::process::ProcessTree::new(&child) {
+            Ok(p) => Arc::new(p),
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(e.into());
+            }
+        };
         let stdin = child
             .stdin
             .take()
@@ -104,8 +126,18 @@ impl LspClient {
             move || drain_stderr(stderr, tail)
         });
 
+        crate::operation::memo_set(
+            "precision_server_starts".into(),
+            (server_starts() + 1).to_string(),
+        );
         Ok(Self {
-            child,
+            diagnostics: std::collections::HashMap::new(),
+            child: Arc::new(Mutex::new(child)),
+            process,
+            deadline: None,
+            watchdog: Arc::new((Mutex::new(false), std::sync::Condvar::new())),
+            bridge: None,
+            capabilities: Value::Null,
             stdin,
             inbox,
             stderr_tail,
@@ -117,8 +149,73 @@ impl LspClient {
         })
     }
 
+    fn cap(&self, timeout: Duration) -> Duration {
+        self.deadline.map_or(timeout, |d| {
+            timeout.min(d.saturating_duration_since(Instant::now()))
+        })
+    }
+    fn limit(&self, deadline: Instant) -> Instant {
+        self.deadline.map_or(deadline, |d| d.min(deadline))
+    }
+    pub fn set_deadline(&mut self, deadline: Instant) {
+        self.deadline = Some(deadline);
+        let process = Arc::clone(&self.process);
+        let stop = Arc::clone(&self.watchdog);
+        let cancel = crate::operation::cancel_token();
+        thread::spawn(move || {
+            loop {
+                let Ok(guard) = stop.0.lock() else {
+                    return;
+                };
+                if *guard {
+                    return;
+                }
+                let wait = deadline
+                    .saturating_duration_since(Instant::now())
+                    .min(Duration::from_millis(50));
+                let Ok((guard, _)) = stop.1.wait_timeout(guard, wait) else {
+                    return;
+                };
+                if *guard {
+                    return;
+                }
+                if Instant::now() >= deadline
+                    || cancel
+                        .as_ref()
+                        .is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed))
+                {
+                    process.terminate();
+                    return;
+                }
+            }
+        });
+    }
+
+    pub fn attach_bridge(&mut self, bridge: LspClient) {
+        self.bridge = Some(Box::new(bridge));
+    }
+    pub fn supports_command(&self, command: &str) -> bool {
+        self.capabilities["executeCommandProvider"]["commands"]
+            .as_array()
+            .is_some_and(|v| v.iter().any(|v| v.as_str() == Some(command)))
+    }
+    pub fn open_bridge(&mut self, uri: &str, language: &str, text: &str) -> Result<()> {
+        if let Some(bridge) = &mut self.bridge {
+            bridge.did_open(uri, language, text)?;
+        }
+        Ok(())
+    }
     pub fn name(&self) -> &str {
         &self.name
+    }
+    pub fn errors(&self, uri: &str) -> Vec<String> {
+        self.diagnostics
+            .get(uri)
+            .into_iter()
+            .flatten()
+            .filter(|d| d.get("severity").and_then(Value::as_u64) == Some(1))
+            .filter_map(|d| d.get("message").and_then(Value::as_str).map(str::to_owned))
+            .collect()
     }
 
     /// The tail of the server's own log output, for error messages.
@@ -131,7 +228,16 @@ impl LspClient {
 
     /// `initialize` + `initialized`. Must be the first thing sent.
     pub fn initialize(&mut self, root: &Path, timeout: Duration) -> Result<()> {
+        self.initialize_with(root, timeout, json!({}))
+    }
+    pub fn initialize_with(
+        &mut self,
+        root: &Path,
+        timeout: Duration,
+        options: Value,
+    ) -> Result<()> {
         let params = json!({
+            "initializationOptions": options,
             "processId": std::process::id(),
             "clientInfo": { "name": "code-rcl", "version": env!("CARGO_PKG_VERSION") },
             "rootUri": self.root,
@@ -161,8 +267,14 @@ impl LspClient {
             },
         });
 
-        self.request("initialize", params, timeout)
+        let response = self
+            .request("initialize", params, timeout)
             .with_context(|| format!("handshaking with language server `{}`", self.name))?;
+        self.capabilities = response.get("capabilities").cloned().unwrap_or(Value::Null);
+        anyhow::ensure!(
+            self.capabilities.get("definitionProvider") != Some(&Value::Bool(false)),
+            "unsupported_capability: server does not provide definitions"
+        );
         self.notify("initialized", json!({}))?;
         Ok(())
     }
@@ -172,6 +284,7 @@ impl LspClient {
     /// Querying before that returns empty answers, which would silently look
     /// like "nothing resolves" — so this is a correctness step, not a nicety.
     pub fn wait_until_ready(&mut self, max: Duration) -> Readiness {
+        let max = self.cap(max);
         let start = Instant::now();
         // Servers that never report progress at all shouldn't be waited on for
         // the full budget, so give progress a short window to show up.
@@ -238,6 +351,7 @@ impl LspClient {
         positions: &[(u32, u32)],
         timeout: Duration,
     ) -> Result<Vec<Value>> {
+        let timeout = self.cap(timeout);
         let mut answers: Vec<Option<Value>> = vec![None; positions.len()];
         for (chunk_index, chunk) in positions.chunks(DEFINITION_WINDOW).enumerate() {
             let base = chunk_index * DEFINITION_WINDOW;
@@ -257,7 +371,7 @@ impl LspClient {
             self.next_id += chunk.len() as i64;
 
             let mut pending = chunk.len();
-            let mut deadline = Instant::now() + timeout;
+            let mut deadline = self.limit(Instant::now() + timeout);
             while pending > 0 {
                 crate::operation::check()?;
                 let remaining = deadline.saturating_duration_since(Instant::now());
@@ -284,7 +398,7 @@ impl LspClient {
                         if cell.is_none() {
                             *cell = Some(result);
                             pending -= 1;
-                            deadline = Instant::now() + timeout;
+                            deadline = self.limit(Instant::now() + timeout);
                         }
                     }
                 }
@@ -296,28 +410,121 @@ impl LspClient {
             .collect())
     }
 
-    /// Ask the server to stop, then make sure it actually did.
-    pub fn shutdown(mut self) {
-        let _ = self.request("shutdown", Value::Null, Duration::from_secs(5));
-        let _ = self.notify("exit", Value::Null);
-
-        // Give it a moment to leave on its own before forcing the issue, so a
-        // server flushing caches to disk isn't cut off mid-write.
-        let deadline = Instant::now() + Duration::from_secs(5);
-        while Instant::now() < deadline {
-            match self.child.try_wait() {
-                Ok(Some(_)) => return,
-                Ok(None) => thread::sleep(Duration::from_millis(50)),
-                Err(_) => break,
+    /// Selective batches preserve successful responses when another request fails.
+    pub fn definitions_partial(
+        &mut self,
+        uri: &str,
+        positions: &[(u32, u32)],
+        timeout: Duration,
+    ) -> Result<Vec<std::result::Result<Value, String>>> {
+        let mut answers = vec![Err("pending".to_owned()); positions.len()];
+        for (chunk_index, chunk) in positions.chunks(DEFINITION_WINDOW).enumerate() {
+            crate::operation::check()?;
+            let base = chunk_index * DEFINITION_WINDOW;
+            let first = self.next_id;
+            self.next_id += chunk.len() as i64;
+            let mut pending: HashSet<i64> = (first..first + chunk.len() as i64).collect();
+            for (offset, (line, character)) in chunk.iter().enumerate() {
+                if let Err(e)=self.send(json!({"jsonrpc":"2.0","id":first+offset as i64,"method":"textDocument/definition","params":{"textDocument":{"uri":uri},"position":{"line":line,"character":character}}})) {
+                    for answer in answers.iter_mut().skip(base).take(chunk.len()){*answer=Err(format!("server_crash: {e:#}"));}return Ok(answers);
+                }
+            }
+            let mut deadline = self.limit(Instant::now() + timeout);
+            while !pending.is_empty() {
+                crate::operation::check()?;
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    for id in &pending {
+                        answers[base + (*id - first) as usize] =
+                            Err("timeout: definition deadline exceeded".into());
+                    }
+                    break;
+                }
+                let message = match self
+                    .inbox
+                    .recv_timeout(remaining.min(Duration::from_millis(100)))
+                {
+                    Ok(value) => value,
+                    Err(RecvTimeoutError::Timeout) => continue,
+                    Err(e) => {
+                        for answer in answers
+                            .iter_mut()
+                            .skip(base)
+                            .take(chunk.len())
+                            .filter(|a| a.as_ref().is_err_and(|e| e == "pending"))
+                        {
+                            *answer = Err(format!("server_crash: {e}"));
+                        }
+                        return Ok(answers);
+                    }
+                };
+                if let Some(id) = message.get("id").and_then(Value::as_i64)
+                    && pending.contains(&id)
+                    && message.get("error").is_some()
+                {
+                    answers[base + (id - first) as usize] =
+                        Err(format!("request_error: {}", message["error"]));
+                    pending.remove(&id);
+                    continue;
+                }
+                match self.dispatch(&message) {
+                    Ok(Some((id, value))) if pending.remove(&id) => {
+                        answers[base + (id - first) as usize] = Ok(value);
+                        deadline = self.limit(Instant::now() + timeout);
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        for id in &pending {
+                            answers[base + (*id - first) as usize] =
+                                Err(format!("protocol_error: {e:#}"));
+                        }
+                        return Ok(answers);
+                    }
+                }
+            }
+            if self.deadline.is_some_and(|d| Instant::now() >= d) {
+                break;
             }
         }
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        Ok(answers)
     }
 
-    // ----- protocol plumbing ------------------------------------------------
+    /// Ask the server to stop, then make sure it actually did.
+    pub fn shutdown(mut self) {
+        if self.deadline.is_none_or(|d| d > Instant::now()) {
+            let _ = self.request(
+                "shutdown",
+                Value::Null,
+                self.cap(Duration::from_millis(if self.deadline.is_some() {
+                    100
+                } else {
+                    5000
+                })),
+            );
+            let _ = self.notify("exit", json!({}));
+        }
+        let until = Instant::now()
+            + Duration::from_millis(if self.deadline.is_some() { 100 } else { 5000 });
+        while Instant::now() < until {
+            if self
+                .child
+                .lock()
+                .ok()
+                .and_then(|mut c| c.try_wait().ok().flatten())
+                .is_some()
+            {
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
 
-    fn request(&mut self, method: &str, params: Value, timeout: Duration) -> Result<Value> {
+    pub(super) fn request(
+        &mut self,
+        method: &str,
+        params: Value,
+        timeout: Duration,
+    ) -> Result<Value> {
         let id = self.next_id;
         self.next_id += 1;
         self.send(json!({
@@ -326,7 +533,7 @@ impl LspClient {
             "method": method,
             "params": params,
         }))?;
-        let deadline = Instant::now() + timeout;
+        let deadline = self.limit(Instant::now() + timeout);
         match self.pump(Some(id), deadline)? {
             Some(result) => Ok(result),
             None => Err(anyhow!(
@@ -403,6 +610,9 @@ impl LspClient {
         let method = message.get("method").and_then(Value::as_str);
         let id = message.get("id");
 
+        if method == Some("code-rcl/protocolError") {
+            bail!("protocol_error: {}", message["params"]);
+        }
         match (method, id) {
             // A request from the server.
             (Some(method), Some(id)) => {
@@ -410,6 +620,34 @@ impl LspClient {
                 self.send(json!({ "jsonrpc": "2.0", "id": id, "result": reply }))?;
             }
             // A notification.
+            (Some("tsserver/request"), None) => {
+                let params = message
+                    .get("params")
+                    .and_then(Value::as_array)
+                    .context("invalid tsserver/request bridge payload")?;
+                let batches: Vec<&Vec<Value>> = if params.first().is_some_and(Value::is_array) {
+                    params
+                        .iter()
+                        .map(|p| {
+                            p.as_array()
+                                .context("invalid tsserver/request bridge batch")
+                        })
+                        .collect::<Result<_>>()?
+                } else {
+                    vec![params]
+                };
+                for values in batches {
+                    anyhow::ensure!(values.len() >= 3, "invalid tsserver/request bridge payload");
+                    let timeout = self.cap(Duration::from_secs(15));
+                    let bridge = self
+                        .bridge
+                        .as_mut()
+                        .context("missing Vue TypeScript companion")?;
+                    let response=bridge.request("workspace/executeCommand",json!({"command":"typescript.tsserverRequest","arguments":[values[1],values[2],{"isAsync":true,"expectsResult":true}]}),timeout)?;
+                    let body = response.get("body").unwrap_or(&response);
+                    self.notify("tsserver/response", json!([values[0], body]))?;
+                }
+            }
             (Some(method), None) => {
                 self.handle_notification(method, message.get("params"));
             }
@@ -455,6 +693,20 @@ impl LspClient {
 
     fn handle_notification(&mut self, method: &str, params: Option<&Value>) {
         match method {
+            "textDocument/publishDiagnostics" => {
+                if let Some(params) = params
+                    && let Some(uri) = params.get("uri").and_then(Value::as_str)
+                {
+                    self.diagnostics.insert(
+                        uri.to_owned(),
+                        params
+                            .get("diagnostics")
+                            .and_then(Value::as_array)
+                            .cloned()
+                            .unwrap_or_default(),
+                    );
+                }
+            }
             "$/progress" => {
                 let Some(params) = params else { return };
                 let Some(token) = params.get("token") else {
@@ -527,6 +779,11 @@ fn read_messages(stdout: ChildStdout, tx: Sender<Value>) {
 
         // Without a length there is no way to find the next message boundary.
         let Some(length) = length else { return };
+        if length > 64 * 1024 * 1024 {
+            let _ =
+                tx.send(json!({"method":"code-rcl/protocolError","params":"oversized LSP frame"}));
+            return;
+        }
         let mut body = vec![0u8; length];
         if reader.read_exact(&mut body).is_err() {
             return;
@@ -534,7 +791,11 @@ fn read_messages(stdout: ChildStdout, tx: Sender<Value>) {
         match serde_json::from_slice(&body) {
             // A message we cannot parse is skipped rather than fatal: the frame
             // boundary is still known, so the stream stays usable.
-            Err(_) => continue,
+            Err(error) => {
+                let _ =
+                    tx.send(json!({"method":"code-rcl/protocolError","params":error.to_string()}));
+                return;
+            }
             Ok(value) => {
                 if tx.send(value).is_err() {
                     return; // client gone
@@ -554,4 +815,10 @@ fn drain_stderr(stderr: ChildStderr, tail: Arc<Mutex<Vec<String>>>) {
             tail.push(line);
         }
     }
+}
+
+pub(super) fn server_starts() -> usize {
+    crate::operation::memo("precision_server_starts")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0)
 }

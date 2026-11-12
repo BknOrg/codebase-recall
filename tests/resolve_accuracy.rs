@@ -138,6 +138,16 @@ fn check_accuracy(name: &str, precise: bool) {
     let work = workdir(name, if precise { "__precise" } else { "" });
     let g = graph_json(&work, precise);
     let edges = call_edges(&g);
+    let ambiguous = g["edges"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["resolution"]["ambiguous"] == true)
+        .count();
+    println!(
+        "  ambiguous edges: {ambiguous}; unresolved references: {}",
+        g["resolution_summary"]["unresolved"]
+    );
     let expected: Value =
         serde_json::from_slice(&std::fs::read(fixture(name).join("expected-edges.json")).unwrap())
             .unwrap();
@@ -197,6 +207,24 @@ fn precise_opted_in(servers: &str) -> bool {
 #[test]
 fn resolve_app_accuracy() {
     check_accuracy("resolve_app", false);
+}
+
+#[test]
+fn all_language_family_accuracy() {
+    for name in [
+        "semantic_c_app",
+        "semantic_cpp_app",
+        "semantic_java_app",
+        "semantic_kotlin_app",
+        "semantic_go_app",
+        "semantic_js_app",
+        "semantic_ts_app",
+        "semantic_vue_app",
+        "semantic_svelte_app",
+        "semantic_overload_app",
+    ] {
+        check_accuracy(name, false);
+    }
 }
 
 #[test]

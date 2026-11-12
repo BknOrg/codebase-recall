@@ -1,0 +1,1 @@
+<script lang="ts">import { work } from './helper'; function start() { work(); }</script><p>hi</p>

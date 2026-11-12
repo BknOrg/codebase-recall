@@ -101,6 +101,7 @@ fn source_match(
         .nth(1600)
         .map_or(end, |(i, _)| start + i);
     Match {
+        semantic: None,
         path: path.into(),
         name: name.into(),
         kind: kind.into(),
@@ -202,7 +203,13 @@ fn relations(db: &CacheDb, project: &Path) -> Result<Arc<Relations>> {
         };
         let key = embeddings::chunk::symbol_key(path, &s);
         ids.insert(
-            crate::graph::symbol_id(path, &s.name, s.start_line.unwrap_or(1)),
+            crate::graph::declaration_id(
+                path,
+                &s.name,
+                s.start_byte.unwrap_or(0),
+                s.end_byte.unwrap_or(0),
+                &s.kind,
+            ),
             key.clone(),
         );
         symbols.insert(key, (s, path.clone()));
@@ -257,7 +264,10 @@ fn relations(db: &CacheDb, project: &Path) -> Result<Arc<Relations>> {
 }
 fn accepts(args: &SearchArgs, selection: &Selection, s: &SymbolRow, path: &str) -> bool {
     selection.accepts(path)
-        && args.kind.as_ref().is_none_or(|k| k == &s.kind)
+        && args
+            .kind
+            .as_ref()
+            .is_none_or(|k| k.as_str() == s.kind.as_str())
         && (!args.exported || s.is_exported)
 }
 fn merge(branches: Vec<Vec<Match>>) -> Vec<Match> {
@@ -323,7 +333,7 @@ fn supports(
         result.push(SupportingLocation {
             path: path.clone(),
             name: s.name.clone(),
-            kind: s.kind.clone(),
+            kind: s.kind.to_string(),
             line: related.line,
             end_line: source[..finish].bytes().filter(|b| *b == b'\n').count() + 1,
             start_byte: related.start_byte,
@@ -647,6 +657,7 @@ fn execute_traced(
     crate::operation::retrieval(
         json!({"mode":if hybrid{"hybrid"}else{"semantic"},"selection_reason":super::mode_reason(args,true),"ranking_model":embeddings::MODEL,"ranking_revision":embeddings::REVISION,"ranking_method":"gemma_source_and_purpose","context_version":embeddings::context::VERSION,"context_tokens":options.context_tokens,"ranking":options.ranking,"semantic_candidates":semantic_count,"content_candidates":content_count,"lexical_candidates":lexical_count,"graph_candidates":graph_count,"fused_candidates":total,"candidate_limit_per_branch":CANDIDATES,"total_matches_scope":"candidate_pool","quality":quality,"index_refresh":base_refresh,"context_refresh":purpose_refresh,"source_verified":!args.no_sync,"scope_complete":scope_pending==0&&scope_blocked==0&&context_pending==0,"scope_pending_files":scope_pending,"scope_blocked_files":scope_blocked,"scope_pending_context_files":context_pending}),
     );
+    embeddings::attach_facts(db, &mut hits)?;
     Ok(SearchResult {
         matches: Some(hits),
         total_matches: total,

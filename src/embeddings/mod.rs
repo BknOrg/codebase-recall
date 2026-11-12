@@ -372,6 +372,8 @@ pub(crate) fn index_selected_with(
 }
 #[derive(Debug, Clone, Serialize)]
 pub struct Match {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub semantic: Option<crate::analysis::semantic::SymbolFacts>,
     pub path: String,
     pub name: String,
     pub kind: String,
@@ -534,6 +536,7 @@ pub(crate) fn semantic_context_with(
         }
         let score = cosine(&query, &r.vector)?;
         let mut item = Match {
+            semantic: None,
             path: c.path,
             name: c.name,
             kind: c.kind,
@@ -601,7 +604,42 @@ pub(crate) fn semantic_context_with(
     });
     crate::operation::omitted_for(hits.len().saturating_sub(limit), "candidate_limit");
     hits.truncate(limit);
+    attach_facts(db, &mut hits)?;
     Ok(hits)
+}
+/// Attach source facts by declaration key, never by the first same-named symbol.
+pub(crate) fn attach_facts(db: &CacheDb, hits: &mut [Match]) -> Result<()> {
+    let mut files: HashMap<String, Vec<crate::cache::models::SymbolRow>> = HashMap::new();
+    for hit in hits {
+        if !files.contains_key(&hit.path) {
+            let symbols = if let Some(file) = db.file_by_path(&hit.path)? {
+                db.symbols_for_file(file.id)?
+            } else {
+                vec![]
+            };
+            files.insert(hit.path.clone(), symbols);
+        }
+        let symbols = &files[&hit.path];
+        if let Some(symbol) = symbols
+            .iter()
+            .find(|s| chunk::symbol_key(&hit.path, s) == hit.symbol_key)
+        {
+            hit.semantic = Some(symbol.semantic.clone());
+        } else {
+            let candidates: Vec<_> = symbols
+                .iter()
+                .filter(|s| {
+                    s.name == hit.name
+                        && s.start_byte.is_some_and(|lo| lo < hit.end_byte as i64)
+                        && s.end_byte.is_some_and(|hi| hi > hit.start_byte as i64)
+                })
+                .collect();
+            if let [symbol] = candidates.as_slice() {
+                hit.semantic = Some(symbol.semantic.clone());
+            }
+        }
+    }
+    Ok(())
 }
 fn tie(a: &Match, b: &Match) -> std::cmp::Ordering {
     a.path
@@ -705,7 +743,7 @@ pub fn run(args: crate::cli::EmbeddingsArgs) -> Result<()> {
                     if json {
                         println!(
                             "{}",
-                            json!({"schema_version":1,"status":"error","data":null,"metadata":{"project":p,"operation":null,"warnings":[format!("{error:#}")]}})
+                            json!({"schema_version":2,"status":"error","data":null,"metadata":{"project":p,"operation":null,"warnings":[format!("{error:#}")]}})
                         );
                     }
                     return Err(error);
@@ -728,7 +766,7 @@ pub fn run(args: crate::cli::EmbeddingsArgs) -> Result<()> {
                     if json {
                         println!(
                             "{}",
-                            json!({"schema_version":1,"status":"error","data":null,"metadata":{"operation":operation,"warnings":[format!("{error:#}")]}})
+                            json!({"schema_version":2,"status":"error","data":null,"metadata":{"operation":operation,"warnings":[format!("{error:#}")]}})
                         );
                     }
                     return Err(error);
@@ -765,7 +803,7 @@ pub fn run(args: crate::cli::EmbeddingsArgs) -> Result<()> {
                         if let Some(path) = path.as_deref() {
                             data["path_scope"] = crate::health::inspect_path(&p, path)?;
                         }
-                        let envelope = json!({"schema_version":1,"status":"partial","data":data,"metadata":{"project":p,"freshness":"unverified","warnings":[format!("{error:#}")]}});
+                        let envelope = json!({"schema_version":2,"status":"partial","data":data,"metadata":{"project":p,"freshness":"unverified","warnings":[format!("{error:#}")]}});
                         if json {
                             println!("{envelope}");
                         } else {

@@ -10,6 +10,9 @@ use serde::Serialize;
 /// A resolved code relation graph ready to render.
 #[derive(Debug, Serialize)]
 pub struct CodeGraph {
+    /// Per-reference verification coverage; selective completion is not full verification.
+    pub precision: serde_json::Value,
+    pub resolution_summary: ResolutionSummary,
     pub version: u32,
     pub root: String,
     pub generated_at: u64,
@@ -31,6 +34,8 @@ pub struct CommunityInfo {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Node {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub semantic: Option<crate::analysis::semantic::SymbolFacts>,
     pub id: String,
     /// dir | file | function | method | struct | enum | trait | type | variable | module | impl | macro | external
     pub kind: String,
@@ -57,6 +62,8 @@ pub struct Node {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Edge {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolution: Option<crate::graph::resolve::refs::Resolution>,
     pub source: String,
     pub target: String,
     /// imports | calls | references | contains
@@ -78,12 +85,24 @@ pub fn dir_id(rel_dir: &str) -> String {
     format!("dir:{rel_dir}")
 }
 
-/// Stable node id for a symbol.
-pub fn symbol_id(rel_path: &str, name: &str, start_line: i64) -> String {
-    format!("sym:{rel_path}#{name}@{start_line}")
+/// A declaration identity includes byte range and kind, including same-line overloads.
+pub fn declaration_id(path: &str, name: &str, start: i64, end: i64, kind: &str) -> String {
+    format!("sym:{path}#{name}@{start}:{end}:{kind}")
 }
 
 /// Stable node id for an unresolved external module.
 pub fn external_id(specifier: &str) -> String {
     format!("ext:{specifier}")
+}
+
+/// Counts cover references in the requested path/edge-kind scope, before node caps.
+#[derive(Debug, Default, Clone, Serialize)]
+pub struct ResolutionSummary {
+    pub eligible: usize,
+    pub resolved: usize,
+    pub ambiguous: usize,
+    pub unresolved: usize,
+    pub local_only: usize,
+    pub external: usize,
+    pub below_min_confidence: usize,
 }

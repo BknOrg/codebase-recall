@@ -29,6 +29,29 @@
     });
   }
 
+  const familiesEl = $("symbolFamilies");
+  if (familiesEl) {
+    const present = new Set(DATA.nodes.filter(n => isSymId(n.id)).map(n => nodeFamily(n.kind)));
+    for (const [key, family] of Object.entries(NODE_FAMILIES)) {
+      if (!present.has(key)) continue;
+      const label = document.createElement("label");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = true;
+      cb.addEventListener("change", () => {
+        cb.checked ? state.hiddenFamilies.delete(key) : state.hiddenFamilies.add(key);
+        rebuild(0.4);
+      });
+      label.append(cb, " " + family.label);
+      familiesEl.appendChild(label);
+    }
+  }
+  const ambiguousToggle = $("showAmbiguous");
+  if (ambiguousToggle) ambiguousToggle.addEventListener("change", () => {
+    state.showAmbiguous = ambiguousToggle.checked;
+    rebuild(0.4);
+  });
+
   // The "expand all" checkbox is the only expand/collapse control: checking it
   // opens every file, unchecking it collapses everything (and drops any focus).
   $("expandAll").addEventListener("change", (e) => {

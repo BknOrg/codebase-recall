@@ -32,6 +32,7 @@ pub fn run(args: McpArgs) -> Result<()> {
     let pending = Arc::new(Mutex::new(HashMap::<String, Arc<AtomicBool>>::new()));
     let (sender, receiver) = mpsc::channel::<JsonRpcRequest>();
     let project = args.project.unwrap_or_default();
+    let validation_project = project.clone();
     let worker_output = output.clone();
     let worker_pending = pending.clone();
     let worker = std::thread::spawn(move || -> Result<()> {
@@ -144,7 +145,9 @@ pub fn run(args: McpArgs) -> Result<()> {
                 .get("arguments")
                 .cloned()
                 .unwrap_or_else(|| json!({}));
-            if let Err(error) = inputs::validate(name, &args) {
+            if let Err(error) = configured_args(&validation_project, name, &args)
+                .and_then(|configured| inputs::validate(name, &configured))
+            {
                 Some(rpc_error(request.id, -32602, error.to_string()))
             } else {
                 let key = request.id.as_ref().unwrap().to_string();
@@ -213,7 +216,7 @@ pub fn handle_request(
                     "name": SERVER_NAME,
                     "version": SERVER_VERSION
                 },
-                "instructions": "Start with report for architecture or search/explain for a symbol. Inspect metadata warnings, freshness, resolution_mode, and truncated before drawing conclusions. Empty graph results do not prove absence of dependencies. Read relevant source before editing."
+                "instructions": "Start with report for architecture or search/explain for a symbol. Tool envelopes use schema_version=2; graph data uses version=3. Inspect metadata warnings, freshness, resolution_mode and truncated, plus resolution_summary and per-relation resolution.ambiguous. Guesses are capped at confidence 0.35; alternatives are not extra edges. Use qualified names or returned declaration IDs to disambiguate; IDs contain byte ranges, not line numbers. Unknown semantic facts and empty graph results do not prove absence. Stale semantic caches require sync without no_sync. C/C++ precise uses installed clangd and requires compile_commands.json or compile_flags.txt; shared headers use one active context. Build-context changes require sync even without source edits. Default analysis uses heuristics and valid cached LSP answers. Opt into precise_selective:true on sync/graph/explain/impact/path for uncertain/risky reference sites with one shared 30-second LSP budget by default; it reuses valid per-reference answers and retains remaining heuristics on failure. Report/search/digest consume cached evidence and do not accept that parameter. Inspect metadata.precision.languages for candidates/cache_hits/queried/verified/unresolved/skipped/failed/pending and selection_reasons; selective complete:true does not verify all references. resolution_mode reports actual heuristic/mixed/precise_cached evidence. Full precise:true is strict and mutually exclusive. Force with sync full:true alongside the chosen mode (not precise_full); selective budget still applies. Missing LSPs/dependencies are never installed automatically; read recovery hints, and respect the 60-second failure cooldown rather than retrying in a loop. If tools/list lacks precise_selective, upgrade/restart the server. Read relevant source before editing."
             });
             Some(JsonRpcResponse {
                 jsonrpc: "2.0",

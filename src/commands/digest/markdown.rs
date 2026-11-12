@@ -60,6 +60,9 @@ pub fn format_markdown_digest(report: &DigestReport) -> String {
                         md.push_str(&format!("  > {line}\n"));
                     }
                 }
+                for member in &t.members {
+                    md.push_str(&format!("  - `{}` ({})\n", member.signature, member.kind));
+                }
                 for method in &t.methods {
                     let m_diag = if method.has_diagram {
                         " `[diagram]`"
@@ -98,6 +101,9 @@ pub fn format_markdown_digest(report: &DigestReport) -> String {
                         }
                     }
                 }
+            }
+            for item in &f.declarations {
+                md.push_str(&format!("- `{}` ({})\n", item.signature, item.kind));
             }
             md.push('\n');
         }

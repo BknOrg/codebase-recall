@@ -200,6 +200,48 @@ mod tests {
     }
 
     #[test]
+    fn semantic_migration_from_twelve_preserves_source_and_rejects_stale_reads() {
+        let (dir, mut db, file) = fixture();
+        let before = db.source_snapshot(&file).unwrap();
+        db.set_precise_results(file.id, &[]).unwrap();
+        db.meta_set("historical_baseline", "preserve-this-baseline")
+            .unwrap();
+        db.meta_set("schema_version", "12").unwrap();
+        drop(db);
+        let mut db = CacheDb::open(dir.path()).unwrap();
+        assert_eq!(db.source_snapshot(&file).unwrap(), before);
+        assert_eq!(
+            db.meta_get("historical_baseline").unwrap().as_deref(),
+            Some("preserve-this-baseline")
+        );
+        assert_eq!(db.all_files().unwrap()[0].id, file.id);
+        assert!(db.all_files().unwrap()[0].precise_synced_at.is_none());
+        assert!(db.all_symbols().unwrap().is_empty());
+        assert!(db.all_refs().unwrap().is_empty());
+        assert!(
+            crate::health::ensure_current(&db)
+                .unwrap_err()
+                .to_string()
+                .contains("code-rcl sync")
+        );
+        let stats = service::auto_sync(&mut db, dir.path()).unwrap();
+        assert_eq!(stats.changed, 1);
+        assert!(crate::health::ensure_current(&db).is_ok());
+        assert!(
+            db.all_symbols()
+                .unwrap()
+                .iter()
+                .all(|s| !s.semantic.qualified_name.is_empty())
+        );
+        drop(db);
+        let mut db = CacheDb::open(dir.path()).unwrap();
+        assert_eq!(
+            service::auto_sync(&mut db, dir.path()).unwrap().unchanged,
+            1
+        );
+    }
+
+    #[test]
     fn interrupted_migration_rolls_back_new_table_and_schema_version() {
         let (dir, db, file) = fixture();
         db.db
@@ -242,7 +284,7 @@ mod tests {
         let db = CacheDb::open(dir.path()).unwrap();
         assert_eq!(
             db.meta_get("schema_version").unwrap().as_deref(),
-            Some("12")
+            Some("13")
         );
     }
 
@@ -342,5 +384,54 @@ mod tests {
             .unwrap_or_else(|_| "target/source-snapshot-corpus-audit.json".into());
         fs::write(output, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
         println!("{report}");
+    }
+    #[test]
+    fn conflicting_content_identity_preserves_previous_snapshot_and_rows() {
+        let (_dir, mut db, file) = fixture();
+        let before = db.source_snapshot(&file).unwrap();
+        let symbol_count = db.all_symbols().unwrap().len();
+        db.meta_set("embedding_file:lib.rs", "preserve-embedding")
+            .unwrap();
+        db.meta_set("historical_baseline", "preserve-baseline")
+            .unwrap();
+        let source = "pub fn conflicting() {}";
+        let parsed = crate::analysis::parse_file(crate::analysis::Language::Rust, source);
+        let mut symbols = parsed.symbols.clone();
+        let mut conflict = symbols[0].clone();
+        conflict.is_exported = false;
+        symbols.push(conflict);
+        let error = db
+            .replace_file_analysis(
+                "lib.rs",
+                "rust",
+                blake3::hash(source.as_bytes()).to_hex().as_str(),
+                None,
+                Some(source.len() as i64),
+                true,
+                &symbols,
+                &parsed.imports,
+                &parsed.refs,
+                &parsed.scopes,
+                &parsed.bindings,
+                &parsed.string_literals,
+                Some(source.as_bytes()),
+            )
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("conflicting search document identity")
+        );
+        assert_eq!(db.source_snapshot(&file).unwrap(), before);
+        assert_eq!(db.all_symbols().unwrap().len(), symbol_count);
+        assert_eq!(db.all_files().unwrap()[0].content_hash, file.content_hash);
+        assert_eq!(
+            db.meta_get("embedding_file:lib.rs").unwrap().as_deref(),
+            Some("preserve-embedding")
+        );
+        assert_eq!(
+            db.meta_get("historical_baseline").unwrap().as_deref(),
+            Some("preserve-baseline")
+        );
     }
 }

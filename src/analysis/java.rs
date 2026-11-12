@@ -91,13 +91,13 @@ impl<'a> Walker<'a> {
         if let Some(i) = idx {
             let (name, real_kind) = {
                 let s = &self.out.symbols[i];
-                (s.name.clone(), s.kind.clone())
+                (s.name.clone(), s.kind)
             };
             let scope_kind = match real_kind.as_str() {
                 "method" => "method",
                 _ => "class",
             };
-            if real_kind != "method" {
+            if node.kind() != "constructor_declaration" {
                 self.sc.bind(&name, "symbol", Some(i), None, None);
             }
             self.stack.push(i);
@@ -194,8 +194,9 @@ impl<'a> Walker<'a> {
         };
 
         self.out.symbols.push(NewSymbol {
+            semantic: Default::default(),
             name,
-            kind: kind.to_string(),
+            kind: kind.into(),
             parent_index: self.stack.last().copied(),
             is_exported: self.is_public(node) || kind != "method" && self.stack.is_empty(),
             start_line: self.line(node),
@@ -310,8 +311,9 @@ impl<'a> Walker<'a> {
             a.named_children(&mut c).count() as i64
         });
         self.out.refs.push(NewRef {
+            argument_types: None,
             name,
-            ref_kind: "call".to_string(),
+            ref_kind: "call".into(),
             receiver,
             start_line: self.line(node),
             start_byte: node.start_byte() as i64,
@@ -335,14 +337,15 @@ impl<'a> Walker<'a> {
             a.named_children(&mut c).count() as i64
         });
         self.out.refs.push(NewRef {
+            argument_types: None,
             name,
-            ref_kind: "call".to_string(),
+            ref_kind: "call".into(),
             receiver: None,
             start_line: self.line(node),
             start_byte: node.start_byte() as i64,
             name_start_byte: Some(last_type_identifier(ty).start_byte() as i64),
             arg_count,
-            receiver_kind: "none".to_string(),
+            receiver_kind: "none".into(),
             ..Default::default()
         });
     }

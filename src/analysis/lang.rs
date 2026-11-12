@@ -4,6 +4,8 @@ use std::path::Path;
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Language {
     Rust,
+    C,
+    Cpp,
     JavaScript,
     Jsx,
     TypeScript,
@@ -29,9 +31,16 @@ pub fn is_config_group(group: &str) -> bool {
 impl Language {
     /// Detect from a file extension. Returns `None` for unsupported files.
     pub fn from_path(path: &Path) -> Option<Language> {
-        let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+        let raw = path.extension()?.to_str()?;
+        if raw == "C" {
+            return Some(Language::Cpp);
+        }
+        let ext = raw.to_ascii_lowercase();
         Some(match ext.as_str() {
             "rs" => Language::Rust,
+            "c" | "h" => Language::C,
+            "cc" | "cpp" | "cxx" | "c++" | "hpp" | "hh" | "hxx" | "h++" | "ipp" | "tpp" | "ixx"
+            | "cppm" => Language::Cpp,
             "js" | "mjs" | "cjs" => Language::JavaScript,
             "jsx" => Language::Jsx,
             "ts" | "mts" | "cts" => Language::TypeScript,
@@ -51,6 +60,8 @@ impl Language {
     pub fn group(&self) -> &'static str {
         match self {
             Language::Rust => "rust",
+            Language::C => "c",
+            Language::Cpp => "cpp",
             Language::JavaScript | Language::Jsx => "javascript",
             Language::TypeScript | Language::Tsx => "typescript",
             Language::Python => "python",
@@ -72,6 +83,7 @@ impl Language {
     pub fn matches_filter(&self, token: &str) -> bool {
         let t = token.trim().to_ascii_lowercase();
         match t.as_str() {
+            "c++" => self.group() == "cpp",
             "js" => self.group() == "javascript",
             "ts" => self.group() == "typescript",
             "py" => self.group() == "python",

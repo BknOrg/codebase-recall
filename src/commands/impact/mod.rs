@@ -272,7 +272,7 @@ mod tests {
             change_kind: None,
             target_symbol: name.to_string(),
             target_id: name.to_string(),
-            target_kind: "function".to_string(),
+            target_kind: "function".into(),
             target_path: None,
             direction: "both".to_string(),
             direct_callers_count: 0,

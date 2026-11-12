@@ -15,6 +15,7 @@ pub fn run(mut args: SyncArgs) -> Result<()> {
     let project = args.project.clone();
     let cfg = ProjectConfig::load(&project)?;
     cfg.apply_precise_default(&mut args.precise);
+    args.precise.validate()?;
     let settings = config::resolve_sync(&args, &cfg);
     if settings.languages_from_config {
         eprintln!(
@@ -47,7 +48,7 @@ pub fn run(mut args: SyncArgs) -> Result<()> {
         }
     }
 
-    if args.precise.precise {
+    if args.precise.requested() {
         let precise = run_precise(&mut db, &args)?;
         report_precise(&precise);
         // The user asked for compiler-grade resolution explicitly, so a pass
@@ -56,7 +57,10 @@ pub fn run(mut args: SyncArgs) -> Result<()> {
         if !precise.errors.is_empty() {
             crate::operation::partial();
         }
-        if !precise.errors.is_empty() && !args.precise.allow_heuristic_fallback {
+        if !precise.errors.is_empty()
+            && !args.precise.allow_heuristic_fallback
+            && !args.precise.precise_selective
+        {
             bail!("`--precise` did not finish for every language (see the errors above)");
         }
     }
@@ -67,7 +71,11 @@ pub fn run(mut args: SyncArgs) -> Result<()> {
 
     if !args.no_report {
         // A stale or missing report must never fail a sync that itself succeeded.
-        match crate::commands::report::refresh_after_sync(&project, &stats, args.precise.precise) {
+        match crate::commands::report::refresh_after_sync(
+            &project,
+            &stats,
+            args.precise.requested(),
+        ) {
             Ok(Some(path)) if !args.json => println!("report: refreshed {}", path.display()),
             Ok(Some(_)) => {}
             Ok(None) => {}
@@ -94,6 +102,8 @@ pub fn precise_options(
     cfg: &ProjectConfig,
 ) -> Result<PreciseOptions> {
     Ok(PreciseOptions {
+        selective: args.precise_selective,
+        budget: Duration::from_secs(cfg.precise.selective_budget_secs),
         full: args.precise_full,
         request_timeout: Duration::from_secs(config::resolve_precise_timeout(args, cfg).max(1)),
         language_filter: language_filter.to_vec(),
@@ -146,6 +156,7 @@ pub struct SyncStats {
 /// `graph`'s auto-sync.
 pub fn sync_cache(db: &mut CacheDb, args: &SyncArgs) -> Result<SyncStats> {
     let _time = crate::operation::time("source_sync");
+    crate::precise::state::prepare(db)?;
     let project = &args.project;
     let cfg = ProjectConfig::load(project)?;
     let settings = config::resolve_sync(args, &cfg);
@@ -155,9 +166,19 @@ pub fn sync_cache(db: &mut CacheDb, args: &SyncArgs) -> Result<SyncStats> {
     // Current source files on disk.
     let mut on_disk: Vec<DiskFile> = Vec::new();
     let mut out_of_scope: HashSet<String> = HashSet::new();
-    for abs in walker::collect_source_files(project)? {
+    let source_paths = walker::collect_source_files(project)?;
+    let c_context = source_paths
+        .iter()
+        .any(|p| matches!(Language::from_path(p), Some(Language::C | Language::Cpp)))
+        .then(|| crate::c_family::BuildContext::load_cached(project, &cfg, db))
+        .transpose()?;
+    for abs in source_paths {
         crate::operation::check()?;
-        let Some(language) = Language::from_path(&abs) else {
+        let Some(language) = c_context
+            .as_ref()
+            .and_then(|c| c.language(&abs))
+            .or_else(|| Language::from_path(&abs))
+        else {
             continue;
         };
         // Skip minified / vendored bundles (e.g. `d3.min.js`). They aren't
@@ -246,9 +267,17 @@ pub fn sync_cache(db: &mut CacheDb, args: &SyncArgs) -> Result<SyncStats> {
             db.meta_set(&scope_key, "false")?;
         }
 
-        let analyzer = crate::health::revision(file.language);
+        let analyzer = if matches!(file.language, Language::C | Language::Cpp) {
+            format!(
+                "{}:{}",
+                crate::health::revision(file.language),
+                c_context.as_ref().unwrap().fingerprint
+            )
+        } else {
+            crate::health::revision(file.language)
+        };
         let analyzer_key = format!("analyzer:{}", file.rel);
-        if existing.is_some_and(|f| f.content_hash == hash)
+        if existing.is_some_and(|f| f.content_hash == hash && f.language == file.language.group())
             && db.meta_get(&analyzer_key)?.as_deref() == Some(analyzer.as_str())
         {
             if file.language.is_supported() {
@@ -273,8 +302,37 @@ pub fn sync_cache(db: &mut CacheDb, args: &SyncArgs) -> Result<SyncStats> {
         let source = String::from_utf8_lossy(&bytes);
         crate::progress::phase("parsing");
         let parse_timer = crate::operation::time("parsing");
-        let parsed = analysis::parse_file(file.language, &source);
+        let mut parsed = analysis::parse_file(file.language, &source);
+        analysis::qualify_file(&mut parsed, &file.rel, file.language);
+        if matches!(file.language, Language::C | Language::Cpp)
+            && let Some(context) = &c_context
+        {
+            let header = context.headers.get(&crate::c_family::absolute(&file.abs));
+            if header.is_some_and(|h| !h.clear) {
+                let header = header.unwrap();
+                parsed.diagnostics.push(serde_json::json!({"kind":"header_language_uncertain","language":file.language.group(),"source":header.language_source,"message":"language is inferred; configure c_family.header_language_overrides before precise"}));
+                crate::operation::analysis_partial();
+                crate::operation::warning(format!(
+                    "{}: header language is uncertain; configure c_family.header_language_overrides before precise",
+                    file.rel
+                ));
+            }
+            for symbol in &mut parsed.symbols {
+                symbol.semantic.language_details.insert("build_context".into(), serde_json::json!({"fingerprint":context.fingerprint,"header_language_clear":header.map(|h|h.clear),"header_language_source":header.map(|h|h.language_source),"includer":header.and_then(|h|h.includer.as_ref()).map(|p|p.to_string_lossy())}));
+            }
+        }
         drop(parse_timer);
+        if parsed
+            .diagnostics
+            .iter()
+            .any(|d| d["kind"] == "unsupported_construct")
+        {
+            crate::operation::analysis_partial();
+            crate::operation::warning(format!(
+                "{}: source includes namespace alias/using constructs requiring precise lookup",
+                file.rel
+            ));
+        }
         stats.symbols += parsed.symbols.len();
         stats.imports += parsed.imports.len();
         if !parsed.parse_ok {
@@ -324,6 +382,9 @@ pub fn sync_cache(db: &mut CacheDb, args: &SyncArgs) -> Result<SyncStats> {
         .unwrap_or(0);
     crate::operation::check()?;
     db.meta_set("last_sync", &now.to_string())?;
+    if let Some(context) = &c_context {
+        db.meta_set("c_family_context", &context.fingerprint)?;
+    }
     if stats.content_backfilled > 0 {
         crate::operation::reason(
             "content_index_updated",

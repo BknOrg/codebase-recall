@@ -61,7 +61,7 @@ pub fn terms(text: &str) -> Vec<String> {
         .collect()
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Document {
     pub key: String,
     pub path: String,
@@ -75,18 +75,20 @@ pub struct Document {
     pub source_hash: String,
     pub length: usize,
 }
-pub struct Prepared {
+pub struct Prepared<'a> {
+    identities: HashMap<String, (Document, &'a str)>,
     documents: Vec<Properties>,
     postings: Vec<Properties>,
     length: usize,
 }
-pub fn prepare(
+pub fn prepare<'a>(
     path: &str,
     hash: &str,
-    source: Option<&[u8]>,
+    source: Option<&'a [u8]>,
     symbols: &[NewSymbol],
-) -> Result<Prepared> {
+) -> Result<Prepared<'a>> {
     let mut batch = Prepared {
+        identities: HashMap::new(),
         documents: vec![],
         postings: vec![],
         length: 0,
@@ -111,7 +113,7 @@ pub fn prepare(
                 key,
                 path: path.into(),
                 name: s.name.clone(),
-                kind: s.kind.clone(),
+                kind: s.kind.to_string(),
                 is_exported: s.is_exported,
                 start_byte: start,
                 end_byte: hi,
@@ -156,8 +158,22 @@ pub fn prepare(
     }
     Ok(batch)
 }
-impl Prepared {
-    fn add(&mut self, mut doc: Document, source: &str) -> Result<()> {
+impl<'a> Prepared<'a> {
+    fn add(&mut self, mut doc: Document, source: &'a str) -> Result<()> {
+        if let Some((previous, text)) = self.identities.get(&doc.key) {
+            anyhow::ensure!(
+                previous == &doc && *text == source,
+                "conflicting search document identity {:?} in {} (kind {}, bytes {}..{}); analysis was not committed",
+                doc.key,
+                doc.path,
+                doc.kind,
+                doc.start_byte,
+                doc.end_byte
+            );
+            return Ok(());
+        }
+        self.identities
+            .insert(doc.key.clone(), (doc.clone(), source));
         let mut counts = BTreeMap::<String, usize>::new();
         for term in terms(&format!("{} {} {source}", doc.path, doc.name)) {
             *counts.entry(term).or_default() += 1;
@@ -269,6 +285,7 @@ impl CacheDb {
             .symbols_for_file(file.id)?
             .into_iter()
             .map(|s| NewSymbol {
+                semantic: Default::default(),
                 name: s.name,
                 kind: s.kind,
                 is_exported: s.is_exported,
@@ -395,5 +412,51 @@ impl CacheDb {
                 Ok(hits)
             })
             .context("searching source content index")
+    }
+}
+
+#[cfg(test)]
+mod duplicate_tests {
+    use super::*;
+    #[test]
+    fn identical_documents_are_counted_once_but_conflicts_are_rejected() {
+        let source = "pub fn known() {}";
+        let parsed = crate::analysis::parse_file(crate::analysis::Language::Rust, source);
+        let one = prepare("lib.rs", "hash", Some(source.as_bytes()), &parsed.symbols).unwrap();
+        let mut symbols = parsed.symbols.clone();
+        symbols.extend(parsed.symbols.clone());
+        let duplicate = prepare("lib.rs", "hash", Some(source.as_bytes()), &symbols).unwrap();
+        assert_eq!(one.documents, duplicate.documents);
+        assert_eq!(one.postings, duplicate.postings);
+        assert_eq!(one.length, duplicate.length);
+        symbols.last_mut().unwrap().is_exported = false;
+        assert!(
+            prepare("lib.rs", "hash", Some(source.as_bytes()), &symbols)
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("conflicting search document identity")
+        );
+        let doc = Document {
+            key: "test".into(),
+            path: "lib.rs".into(),
+            name: "known".into(),
+            kind: "function".into(),
+            is_exported: false,
+            start_byte: 0,
+            end_byte: 1,
+            line: 1,
+            end_line: 1,
+            source_hash: "hash".into(),
+            length: 0,
+        };
+        let mut batch = Prepared {
+            identities: HashMap::new(),
+            documents: vec![],
+            postings: vec![],
+            length: 0,
+        };
+        batch.add(doc.clone(), "alpha").unwrap();
+        assert!(batch.add(doc, "bravo").is_err());
     }
 }

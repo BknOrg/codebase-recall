@@ -9,6 +9,8 @@ pub fn parse(path: &str, source: &str) -> Option<Bodies> {
 pub(crate) fn parse_tree(path: &str, source: &str) -> Option<tree_sitter::Tree> {
     let language = Language::from_path(Path::new(path))?;
     let grammar: tree_sitter::Language = match language {
+        Language::C => tree_sitter_c::LANGUAGE.into(),
+        Language::Cpp => tree_sitter_cpp::LANGUAGE.into(),
         Language::Rust => tree_sitter_rust::LANGUAGE.into(),
         Language::JavaScript | Language::Jsx => tree_sitter_javascript::LANGUAGE.into(),
         Language::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),

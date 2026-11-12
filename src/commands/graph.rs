@@ -14,6 +14,7 @@ use crate::graph::resolve::{self, GraphOptions, Scope};
 /// Auto-sync (unless disabled) and resolve the graph selected by `query`.
 /// Shared by `graph` (file output) and `serve` (browser).
 pub fn build_graph(query: &GraphQuery) -> Result<CodeGraph> {
+    query.precise.validate()?;
     let project = query.project.clone();
     let cfg = ProjectConfig::load(&project)?;
     let settings = config::resolve_graph(query, &cfg);
@@ -34,14 +35,17 @@ pub fn build_graph(query: &GraphQuery) -> Result<CodeGraph> {
             s.added, s.changed, s.unchanged, s.removed, s.symbols
         );
 
-        if query.precise.precise {
+        if query.precise.requested() {
             // Unlike `sync --precise`, a failure here is reported but does not
             // abort: the graph built from heuristic edges is still worth
             // rendering, and `report_precise` makes clear it is not the
             // compiler-grade one that was asked for.
             let stats = sync::run_precise(&mut db, &sync_args)?;
             sync::report_precise(&stats);
-            if !stats.errors.is_empty() && !query.precise.allow_heuristic_fallback {
+            if !stats.errors.is_empty()
+                && !query.precise.allow_heuristic_fallback
+                && !query.precise.precise_selective
+            {
                 anyhow::bail!("precise resolution failed: {}", stats.errors.join("; "));
             }
             if !stats.errors.is_empty() {

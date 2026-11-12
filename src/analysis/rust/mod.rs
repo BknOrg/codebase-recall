@@ -109,7 +109,7 @@ impl<'a> Walker<'a> {
         if let Some(i) = idx {
             let (name, kind) = {
                 let s = &self.out.symbols[i];
-                (s.name.clone(), s.kind.clone())
+                (s.name.clone(), s.kind)
             };
             // A bare `foo()` can reach a free function or a tuple-struct ctor,
             // never a method or an `impl` block.

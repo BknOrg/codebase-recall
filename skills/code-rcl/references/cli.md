@@ -1,4 +1,4 @@
-# CLI reference - 0.10.0
+# CLI reference - 0.9.1
 
 Discover parameters with `code-rcl COMMAND --help`.
 
@@ -12,16 +12,30 @@ code-rcl path main parse --max-depth 8 --json
 code-rcl explain CacheDb --json
 code-rcl dump -r CacheDb --depth 2 -o context.md
 code-rcl graph --format json -o graph.json
+code-rcl sync --precise-selective
+code-rcl sync --precise-selective --precise-full
+code-rcl explain CacheDb --precise-selective --json
 code-rcl sync --precise
 ```
 
 JSON results use `schema_version`, `status`, `data`, and `metadata`. Former
-root-level arrays/fields are now inside `data`; graph data retains `version: 2`.
+root-level arrays/fields are inside `data`. Envelope `schema_version` is 2;
+graph data uses `version: 3`.
 Impact depth is 1-8, path 1-20, focused dump/graph 1-5 for MCP.
 `--allow-heuristic-fallback` explicitly permits partial precise results.
-`--no-sync` skips refresh and marks freshness unverified.
-The cache is `.code-rcl/cache.bkndb`; schemas 10/11 migrate additively to 12,
-preserving analysis and valid vectors. Older incompatible layouts are rebuilt.
+`--no-sync` skips refresh and marks freshness unverified, but rejects stale semantic
+generations. The cache is `.code-rcl/cache.bkndb`; schemas 10–12 migrate to 13,
+preserving source snapshots and invalidating derived analysis/search/vectors.
+Run normal source sync with the upgraded build; analyzer revisions trigger reparse.
+See [symbol semantics](symbols.md) for identity, uncertainty and migration behavior.
+
+```sh
+code-rcl graph --kinds calls,inherits,overrides --min-confidence 0.5 --format json -o graph.json
+```
+
+CLI graph defaults to minimum confidence 0.3 unless configured otherwise.
+Ambiguous guesses are capped at 0.35; inspect edge resolution evidence/alternatives
+and resolution_summary before treating a result as a dependency.
 
 Search supports `--match-mode exact|prefix|substring` (MCP: `match_mode`); exact and prefix use the normalized-name index. Default is substring.
 
@@ -29,7 +43,7 @@ Search supports `--match-mode exact|prefix|substring` (MCP: `match_mode`); exact
 `total_matches` counts eligible items before that limit, with `match_counts`
 per group. Automatic task retrieval remains release-gated; see embeddings.md.
 
-For semantic/hybrid retrieval and explicit model/index setup in 0.10.0, read
+For semantic/hybrid retrieval and explicit model/index setup in 0.9.1, read
 [embeddings.md](embeddings.md). Source and embedding freshness are separate.
 
 Long embedding syncs: --progress auto|plain|off controls stderr rendering; JSON
@@ -57,3 +71,17 @@ code-rcl uninstall --global --target all
 Use the same command for Codex, Claude Code, and Antigravity/Gemini. Uninstall
 removes related managed extras too; component selectors restrict removal.
 Shared and unknown legacy ownership is preserved for single-target removal.
+
+
+For bounded verification of uncertain references, use `--precise-selective` or
+MCP `precise_selective: true`; see [selective verification](precise-selective.md).
+Inspect `metadata.precision`; selective failures keep heuristics and return partial.
+
+
+Selective CLI flags are supported by sync, graph, serve, explain, impact and path.
+Report/digest/search consume stored evidence; sync first when verification is
+needed. The 30-second selective budget is configured by `[precise]
+selective_budget_secs`, whereas `--precise-timeout` bounds an individual request.
+`--precise-full` forces the selected mode; it does not mean a full source reparse.
+With no mode configured, plain sync starts no LSP. Project `[precise] selective=true`
+opts CLI sync/graph/serve into selective mode; an explicit --precise overrides it.

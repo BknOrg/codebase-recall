@@ -37,7 +37,7 @@ if __name__=='__main__':
     p=argparse.ArgumentParser()
     p.add_argument('--results',required=True)
     p.add_argument('--dataset',default='tests/fixtures/retrieval_bkndb')
-    p.add_argument('--binary-version',default='codebase-recall 0.10.0')
+    p.add_argument('--binary-version',default='codebase-recall 0.9.1')
     p.add_argument('--validation-note',required=True,help='Original postcheck outcome; never imply a failed check passed')
     a=p.parse_args()
     root=Path(a.results)

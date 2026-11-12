@@ -21,8 +21,10 @@ pub const KOTLIN_SERVERS: [&str; 3] = ["jetbrains", "fwcd", "auto"];
 pub const STORAGE_BACKENDS: [&str; 1] = ["bkndb"];
 
 /// Every language a `[sync] languages` token may name.
-const ALL_LANGUAGES: [Language; 10] = [
+const ALL_LANGUAGES: [Language; 12] = [
     Language::Rust,
+    Language::C,
+    Language::Cpp,
     Language::JavaScript,
     Language::TypeScript,
     Language::Python,
@@ -43,6 +45,7 @@ pub struct ProjectConfig {
     pub sync: SyncConfig,
     pub graph: GraphConfig,
     pub precise: PreciseConfig,
+    pub c_family: CFamilyConfig,
     pub embeddings: EmbeddingsConfig,
     pub scope: ScopeConfig,
     pub search: SearchConfig,
@@ -56,6 +59,7 @@ impl Default for ProjectConfig {
             sync: SyncConfig::default(),
             graph: GraphConfig::default(),
             precise: PreciseConfig::default(),
+            c_family: CFamilyConfig::default(),
             embeddings: EmbeddingsConfig::default(),
             scope: ScopeConfig::default(),
             search: SearchConfig::default(),
@@ -107,7 +111,7 @@ pub struct GraphConfig {
 impl Default for GraphConfig {
     fn default() -> Self {
         Self {
-            min_confidence: 0.4,
+            min_confidence: 0.3,
             include_external: false,
             max_nodes: 4000,
             depth: 2,
@@ -123,18 +127,51 @@ impl Default for GraphConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct PreciseConfig {
     pub enabled: bool,
+    pub selective: bool,
+    pub selective_budget_secs: u64,
     pub timeout_secs: u64,
     pub kotlin: KotlinConfig,
+    pub clangd: ClangdConfig,
+    pub vue: VueConfig,
 }
 
 impl Default for PreciseConfig {
     fn default() -> Self {
         Self {
             enabled: false,
+            selective: false,
+            selective_budget_secs: 30,
             timeout_secs: 15,
             kotlin: KotlinConfig::default(),
+            clangd: ClangdConfig::default(),
+            vue: VueConfig::default(),
         }
     }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct VueConfig {
+    pub tsdk: Option<std::path::PathBuf>,
+    pub plugin_path: Option<std::path::PathBuf>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, serde::Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct CFamilyConfig {
+    pub compilation_database_dir: Option<std::path::PathBuf>,
+    pub header_language_overrides: Vec<HeaderLanguageOverride>,
+}
+#[derive(Debug, Clone, PartialEq, Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct HeaderLanguageOverride {
+    pub pattern: String,
+    pub language: String,
+}
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, serde::Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ClangdConfig {
+    pub query_drivers: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -168,7 +205,10 @@ impl ProjectConfig {
 
     /// `[precise] enabled` acts like passing `--precise` (flag OR config).
     pub fn apply_precise_default(&self, precise: &mut PreciseArgs) {
-        precise.precise = precise.precise || self.precise.enabled;
+        if !precise.requested() {
+            precise.precise = self.precise.enabled;
+            precise.precise_selective = self.precise.selective;
+        }
     }
 
     /// Parse and validate `text`; `source` is only used in error messages.
@@ -182,6 +222,19 @@ impl ProjectConfig {
 
 fn validate(cfg: &ProjectConfig, source: &Path) -> Result<()> {
     let file = source.display();
+    for rule in &cfg.c_family.header_language_overrides {
+        anyhow::ensure!(
+            ["c", "cpp"].contains(&rule.language.as_str()),
+            "header override language must be c or cpp"
+        );
+        globset::Glob::new(&rule.pattern)?;
+    }
+    for driver in &cfg.precise.clangd.query_drivers {
+        anyhow::ensure!(
+            !driver.is_empty() && !driver.contains([',', '\n', '\r']),
+            "query_drivers entries must be nonempty paths/globs without commas or newlines"
+        );
+    }
     let e = &cfg.embeddings;
     anyhow::ensure!(
         e.model == "embeddinggemma-300m-q4",
@@ -217,6 +270,14 @@ fn validate(cfg: &ProjectConfig, source: &Path) -> Result<()> {
             cfg.sync.max_file_kb
         );
     }
+    anyhow::ensure!(
+        !(cfg.precise.enabled && cfg.precise.selective),
+        "[precise] enabled and selective are mutually exclusive"
+    );
+    anyhow::ensure!(
+        (1..=3600).contains(&cfg.precise.selective_budget_secs),
+        "selective_budget_secs must be 1..=3600"
+    );
     let t = cfg.precise.timeout_secs;
     if !(1..=86400).contains(&t) {
         anyhow::bail!(

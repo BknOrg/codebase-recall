@@ -41,7 +41,7 @@ Persistent state lives only in `<project>/.code-rcl/cache.bkndb` (plus a generat
 | `Language` | `src/analysis/lang.rs` | Supported language detection |
 | `CodeGraph` / `Node` / `Edge` | `src/graph/mod.rs` | Resolved dependency graph with communities |
 | `GraphQuery`, `SyncArgs`, `PreciseArgs` | `src/cli.rs` | Shared CLI argument groups |
-| `CacheDb` | `src/cache/mod.rs` | bkndb access; table definitions in `src/cache/schema.rs`. Schemas 10/11 upgrade additively to 12; other incompatible layouts are rebuilt |
+| `CacheDb` | `src/cache/mod.rs` | bkndb access; table definitions in `src/cache/schema.rs`. Schemas 10–12 migrate to 13, preserving file identities/source snapshots and invalidating derived semantic indexes |
 | service helpers | `src/service.rs` | Shared auto-sync and `GraphQuery` builders; use these rather than rebuilding setup in each command |
 
 Languages analyzed: Rust, Python, JavaScript/TypeScript (including single-file components), Java, Kotlin, Go, and TOML config keys. Notebook cleanup is a dump feature; `.ipynb` is not an AST-indexed language.
@@ -71,7 +71,7 @@ skills/             code-rcl agent skill
 - Edges start as AST heuristics; valid cached LSP answers override them. Requested precise failures are errors unless partial heuristic fallback is explicit. Any analysis change invalidates the project-wide precise generation.
 - Errors propagate as `anyhow::Result` to `main`.
 
-## 0.9.0 interfaces
+## 0.9.1 interfaces
 
 output.rs supplies the shared JSON result envelope; operation.rs holds per-request
 warnings, truncation counts, partial status, and cooperative cancellation state.
@@ -106,10 +106,12 @@ before processing and commit remain freshness checks; they do not supply chunk
 text. Source sync requires no embedding runtime or tokenizer. Delete removes the
 file's snapshot; existing scope/ignore/size rules remain authoritative.
 
-Schemas 10/11 to 12 add missing snapshot and content-index tables and change the
-version atomically. Graph and vector tables are preserved; the next source sync
-backfills original bytes and content postings. Older executables may rebuild a
-schema-12 cache, so rollback requires care.
+Schemas 10–12 migrate atomically to 13. File identities, available source
+snapshots, configuration and historical metadata are preserved. Derived semantic,
+content, purpose and vector tables are invalidated; normal source sync reparses
+files even if their source hash is unchanged. Stale semantic generations cannot
+be queried with `no_sync`. Older executables may rebuild an incompatible cache;
+use the upgraded executable for sync and restart MCP after updating its binary.
 `source_snapshot_read` and `source_snapshot_fill` use existing operation timings.
 
 Chunks and float32 vectors share cache.bkndb with the AST tables. Semantic search
@@ -159,3 +161,7 @@ and subsystem colors, and dims unrelated nodes to grey. Red outgoing and blue
 incoming edges keep source-to-target arrow direction. Reciprocal edges use
 separate lanes shared with hit-testing; node layout and backend graph data stay
 unchanged. Inline HTML and the server use the same assets.
+
+
+Selective LSP verification is opt-in: `sync --precise-selective` (MCP
+`precise_selective: true`). See [selective precise mode](PRECISE-SELECTIVE.md) for coverage, backend setup, deadlines and cache recovery.

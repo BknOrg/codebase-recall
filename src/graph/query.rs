@@ -17,7 +17,9 @@ pub fn find_targets<'a>(graph: &'a CodeGraph, query: &str) -> Vec<&'a Node> {
         .nodes
         .iter()
         .filter(|n| {
-            n.label == query
+            n.semantic.as_ref().is_some_and(|s| {
+                s.qualified_name == query || s.qualified_name.replace("::", ".") == query
+            }) || n.label == query
                 || n.id == query
                 || n.id.ends_with(&format!("::{query}"))
                 || n.path.as_deref() == Some(query)

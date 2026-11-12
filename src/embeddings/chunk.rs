@@ -207,7 +207,7 @@ pub fn visit_profile(
                 path: path.into(),
                 name: s.name.clone(),
                 owner: owner.clone(),
-                kind: s.kind.clone(),
+                kind: s.kind.to_string(),
                 is_exported: s.is_exported,
                 symbol_key: symbol_key(path, s),
                 chunk_index: ordinal,

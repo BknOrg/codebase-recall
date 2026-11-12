@@ -414,22 +414,12 @@ fn dimension_change_requires_explicit_rebuild() {
 }
 
 #[test]
-fn schema_10_migration_and_partial_snapshot_backfill_preserve_vectors_and_symbol_ids() {
+fn schema_10_migration_invalidates_derived_vectors_and_rebuilds_semantics() {
     let (dir, mut db) = fixture();
     fs::write(dir.path().join("other.rs"), "pub fn other() {}\n").unwrap();
     crate::service::auto_sync(&mut db, dir.path()).unwrap();
     let mut model = Mock::default();
     index_with(&mut db, dir.path(), false, &mut model).unwrap();
-    let rows_before = db.embedding_chunks(None).unwrap();
-    let ids_before = db
-        .all_files()
-        .unwrap()
-        .iter()
-        .flat_map(|f| db.symbols_for_file(f.id).unwrap())
-        .map(|s| s.id)
-        .collect::<Vec<_>>();
-    let generation = db.meta_get("generation").unwrap();
-    let embedding_generation = db.meta_get("embedding_generation").unwrap();
     db.db
         .write_tx(|b| {
             let mut rel = b.relational();
@@ -451,7 +441,7 @@ fn schema_10_migration_and_partial_snapshot_backfill_preserve_vectors_and_symbol
     let db = CacheDb::open(dir.path()).unwrap();
     assert_eq!(
         db.meta_get("schema_version").unwrap().as_deref(),
-        Some("12")
+        Some("13")
     );
     let files = db.all_files().unwrap();
     assert!(files.iter().all(|f| db.source_snapshot(f).is_err()));
@@ -464,42 +454,18 @@ fn schema_10_migration_and_partial_snapshot_backfill_preserve_vectors_and_symbol
     drop(db);
     let mut db = CacheDb::open(dir.path()).unwrap();
     let stats = crate::service::auto_sync(&mut db, dir.path()).unwrap();
-    assert_eq!((stats.changed, stats.unchanged), (0, 2));
+    assert_eq!((stats.changed, stats.unchanged), (2, 0));
+    assert!(db.embedding_chunks(None).unwrap().is_empty());
     let calls = model.calls;
     index_with(&mut db, dir.path(), false, &mut model).unwrap();
-    assert_eq!(calls, model.calls);
-    assert_eq!(generation, db.meta_get("generation").unwrap());
-    assert_eq!(
-        embedding_generation,
-        db.meta_get("embedding_generation").unwrap()
-    );
-    let ids_after = db
-        .all_files()
-        .unwrap()
-        .iter()
-        .flat_map(|f| db.symbols_for_file(f.id).unwrap())
-        .map(|s| s.id)
-        .collect::<Vec<_>>();
-    assert_eq!(ids_before, ids_after);
-    let fingerprints = |rows: Vec<crate::cache::embeddings::StoredChunk>| {
-        let mut values = rows
-            .into_iter()
-            .map(|r| {
-                (
-                    r.chunk.input_hash,
-                    r.valid,
-                    r.config_key,
-                    r.vector.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
-                )
-            })
-            .collect::<Vec<_>>();
-        values.sort();
-        values
-    };
-    assert_eq!(
-        fingerprints(rows_before),
-        fingerprints(db.embedding_chunks(None).unwrap())
-    );
+    assert!(model.calls > calls);
+    assert!(crate::health::ensure_current(&db).is_ok());
+    for file in db.all_files().unwrap() {
+        assert_eq!(
+            db.source_snapshot(&file).unwrap().as_bytes(),
+            fs::read(dir.path().join(&file.path)).unwrap()
+        );
+    }
 }
 
 #[test]

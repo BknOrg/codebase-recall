@@ -144,6 +144,7 @@ pub fn execute_impact(default_project: &Path, args: &Value) -> Result<String> {
             .and_then(Value::as_bool)
             .unwrap_or(false),
         precise: PreciseArgs {
+            precise_selective: args["precise_selective"] == true,
             allow_heuristic_fallback: args
                 .get("allow_heuristic_fallback")
                 .and_then(Value::as_bool)
@@ -384,12 +385,13 @@ pub fn execute_sync(default_project: &Path, args: &Value) -> Result<String> {
         language: languages,
         no_report: false,
         precise: PreciseArgs {
+            precise_selective: args["precise_selective"] == true,
             allow_heuristic_fallback: args
                 .get("allow_heuristic_fallback")
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
             precise,
-            precise_full: precise && full,
+            precise_full: (precise || args["precise_selective"] == true) && full,
             precise_timeout: None,
         },
     };
@@ -403,12 +405,12 @@ pub fn execute_sync(default_project: &Path, args: &Value) -> Result<String> {
     }
     let (total_symbols, total_imports) = db.totals()?;
 
-    if precise {
+    if sync_args.precise.requested() {
         crate::progress::phase("precise_resolution");
         let precise_stats = sync::run_precise(&mut db, &sync_args)?;
         sync::report_precise(&precise_stats);
         if !precise_stats.errors.is_empty() {
-            if !sync_args.precise.allow_heuristic_fallback {
+            if !sync_args.precise.allow_heuristic_fallback && !sync_args.precise.precise_selective {
                 anyhow::bail!("precise failed: {}", precise_stats.errors.join("; "));
             }
             crate::operation::partial();
@@ -418,7 +420,7 @@ pub fn execute_sync(default_project: &Path, args: &Value) -> Result<String> {
     // The report reopens the cache to build its graph, and bkndb allows one
     // open handle per file, so release ours first.
     drop(db);
-    if let Err(e) = report::refresh_after_sync(&project, &stats, precise) {
+    if let Err(e) = report::refresh_after_sync(&project, &stats, sync_args.precise.requested()) {
         eprintln!("warning: could not refresh the code report: {e:#}");
     }
 
@@ -455,15 +457,20 @@ pub fn execute_graph(default_project: &Path, args: &Value) -> Result<String> {
     let query = GraphQuery {
         project,
         scope,
-        kinds: vec![
-            "imports".to_string(),
-            "calls".to_string(),
-            "contains".to_string(),
-        ],
+        kinds: args["kinds"]
+            .as_array()
+            .map(|kinds| {
+                kinds
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_else(|| vec!["imports".into(), "calls".into(), "contains".into()]),
         path: None,
         focus,
         depth: Some(depth),
-        min_confidence: Some(0.0),
+        min_confidence: Some(args["min_confidence"].as_f64().unwrap_or(0.0) as f32),
         include_external: Some(false),
         max_nodes: Some(
             args.get("max_nodes")
@@ -475,6 +482,7 @@ pub fn execute_graph(default_project: &Path, args: &Value) -> Result<String> {
             .and_then(Value::as_bool)
             .unwrap_or(false),
         precise: PreciseArgs {
+            precise_selective: args["precise_selective"] == true,
             allow_heuristic_fallback: args
                 .get("allow_heuristic_fallback")
                 .and_then(Value::as_bool)
@@ -491,33 +499,41 @@ pub fn execute_graph(default_project: &Path, args: &Value) -> Result<String> {
 
 fn precise_args(args: &Value) -> PreciseArgs {
     PreciseArgs {
+        precise_selective: args["precise_selective"] == true,
         precise: args["precise"] == true,
         allow_heuristic_fallback: args["allow_heuristic_fallback"] == true,
         ..Default::default()
     }
 }
 
+pub fn configured_args(default_project: &Path, name: &str, args: &Value) -> Result<Value> {
+    anyhow::ensure!(args.is_object(), "tool arguments must be an object");
+    let mut configured = args.clone();
+    let project = resolve_project(default_project, args);
+    if matches!(name, "code_rcl_sync" | "code_rcl_graph")
+        && args["no_sync"] != true
+        && args.get("precise").is_none()
+        && args.get("precise_selective").is_none()
+        && project.is_dir()
+    {
+        let cfg = crate::config::ProjectConfig::load(&project)?;
+        configured["precise"] = json!(cfg.precise.enabled);
+        configured["precise_selective"] = json!(cfg.precise.selective);
+    }
+    Ok(configured)
+}
+
 pub fn call_tool(default_project: &Path, name: &str, args: &Value) -> Value {
     let mut operation_snapshot = Value::Null;
     let result = (|| -> Result<Value> {
-        let caller_precise = args.get("precise").and_then(Value::as_bool);
-        let mut args = super::inputs::validate(name, args)?;
+        let configured = configured_args(default_project, name, args)?;
+        let mut args = super::inputs::validate(name, &configured)?;
         anyhow::ensure!(
             args["project"].is_string() || !default_project.as_os_str().is_empty(),
             "project is required when server has no --project"
         );
         let project = resolve_project(default_project, &args);
         anyhow::ensure!(project.is_dir(), "project must be an existing directory");
-        if matches!(name, "code_rcl_sync" | "code_rcl_graph")
-            && args["no_sync"] != true
-            && caller_precise.is_none()
-        {
-            args["precise"] = json!(
-                crate::config::ProjectConfig::load(&project)?
-                    .precise
-                    .enabled
-            );
-        }
         let budget = args["max_output_kb"].as_u64().unwrap_or(256) as usize * 1024;
         args["json"] = Value::Bool(true);
         let mut observer = if name == "code_rcl_sync" && args["embeddings"] == true {
@@ -557,9 +573,6 @@ pub fn call_tool(default_project: &Path, name: &str, args: &Value) -> Value {
         if let Some(operation) = operation {
             envelope["metadata"]["operation"] = operation;
         }
-        if args["precise"] == true && envelope["status"] != "partial" {
-            envelope["metadata"]["resolution_mode"] = json!("precise");
-        }
         if args["diff"] == true {
             envelope["metadata"]["untracked_included"] = json!(false);
         }
@@ -582,7 +595,7 @@ pub fn call_tool(default_project: &Path, name: &str, args: &Value) -> Value {
     let (mut envelope, error) = match result {
         Ok(value) => (value, false),
         Err(error) => (
-            json!({"schema_version":1,"status":"error","data":null,"metadata":{"operation":operation_snapshot,"warnings":[format!("{error:#}")]}}),
+            json!({"schema_version":2,"status":"error","data":null,"metadata":{"operation":operation_snapshot,"warnings":[format!("{error:#}")]}}),
             true,
         ),
     };

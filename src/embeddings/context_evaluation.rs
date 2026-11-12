@@ -276,6 +276,7 @@ fn gemma_historical_evaluation() -> Result<()> {
                 .into_iter()
                 .enumerate()
                 .map(|(i, s)| crate::cache::models::SymbolRow {
+                    semantic: Default::default(),
                     id: i as i64,
                     file_id: 0,
                     name: s.name,
@@ -300,6 +301,7 @@ fn gemma_historical_evaluation() -> Result<()> {
                     "untruncated historical declaration absent"
                 );
                 symbols.push(crate::cache::models::SymbolRow {
+                    semantic: Default::default(),
                     id: -1,
                     file_id: 0,
                     name: name.into(),

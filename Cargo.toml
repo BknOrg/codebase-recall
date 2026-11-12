@@ -1,6 +1,6 @@
 [package]
 name = "codebase-recall"
-version = "0.9.0"
+version = "0.9.1"
 edition = "2024"
 authors = ["Bkn Org"]
 description = "CLI based application for codebase dumper for LLMs and fast review/recall project"
@@ -26,6 +26,8 @@ tree-sitter-python = "0.23"
 tree-sitter-java = "0.23"
 tree-sitter-kotlin-ng = "1.1"
 tree-sitter-go = "0.23"
+tree-sitter-c = "0.24.2"
+tree-sitter-cpp = "0.23.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 schemars = "0.8"
@@ -69,3 +71,9 @@ harness = false
 
 [dev-dependencies]
 shlex = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

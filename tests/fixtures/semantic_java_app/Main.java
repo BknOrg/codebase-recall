@@ -1,0 +1,1 @@
+package p; import p.Helper; public class Main { public void start() { Helper.work(); } }

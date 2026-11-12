@@ -121,6 +121,11 @@ const BODY: &str = r#"<div id="app">
             <label><input type="checkbox" data-kind="imports" checked> imports</label>
             <label><input type="checkbox" data-kind="calls" checked> calls</label>
             <label><input type="checkbox" data-kind="references"> references</label>
+            <label><input type="checkbox" data-kind="inherits"> inherits</label>
+            <label><input type="checkbox" data-kind="implements"> implements</label>
+            <label><input type="checkbox" data-kind="overrides"> overrides</label>
+            <label><input type="checkbox" id="showAmbiguous" checked> show ambiguous guesses</label>
+            <fieldset id="symbolFamilies"><legend>Symbol families</legend></fieldset>
             <label><input type="checkbox" id="expandAll"> expand all</label>
             <label><input type="checkbox" id="colorByCommunity"> color by subsystem</label>
             <button id="fitBtn" type="button">fit</button>
@@ -138,7 +143,7 @@ const BODY: &str = r#"<div id="app">
     <div id="stage">
       <canvas id="scene"></canvas>
       <aside id="sidePanel" hidden></aside>
-      <div class="legend" id="legend"></div>
+      <details class="legend" open><summary>Graph legend</summary><div id="legend" aria-live="polite"></div></details>
       <div id="status"></div>
     </div>
   </div>

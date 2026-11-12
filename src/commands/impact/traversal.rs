@@ -132,6 +132,7 @@ pub fn traverse_tree(
                 let snippet = get_snippet(project_root, file_lines_cache, snippet_path, edge.line);
 
                 items.push(ImpactItem {
+                    resolution: edge.resolution.clone(),
                     id: next_node.id.clone(),
                     label: next_node.label.clone(),
                     kind: next_node.kind.clone(),

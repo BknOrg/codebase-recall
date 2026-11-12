@@ -21,6 +21,11 @@ pub(super) fn collapse_to_files(
 
     let mut seen: HashSet<(String, String, String)> = HashSet::new();
     let mut out = Vec::new();
+    edges.sort_by(|a, b| {
+        b.confidence
+            .total_cmp(&a.confidence)
+            .then_with(|| a.line.cmp(&b.line))
+    });
     for e in edges.drain(..) {
         if e.kind == "contains" {
             continue;
@@ -38,6 +43,7 @@ pub(super) fn collapse_to_files(
         }
         if seen.insert((s.clone(), t.clone(), e.kind.clone())) {
             out.push(Edge {
+                resolution: e.resolution,
                 source: s,
                 target: t,
                 kind: e.kind,
@@ -193,6 +199,7 @@ pub(super) fn rollup_directories(nodes: &mut Vec<Node>, edges: &mut Vec<Edge>) {
 
     for d in &dirs {
         nodes.push(Node {
+            semantic: None,
             id: dir_id(d),
             kind: "dir".into(),
             label: d.clone(),
@@ -210,6 +217,7 @@ pub(super) fn rollup_directories(nodes: &mut Vec<Node>, edges: &mut Vec<Edge>) {
     for (parent, child) in contains {
         if seen.insert((parent.clone(), child.clone())) {
             edges.push(Edge {
+                resolution: None,
                 source: parent,
                 target: child,
                 kind: "contains".into(),

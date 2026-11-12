@@ -26,6 +26,7 @@
         out.push(n);
         continue;
       }
+      if (state.hiddenFamilies.has(nodeFamily(n.kind))) continue;
       const f = fileOf(n.id);
       if (f && expanded.has(f)) out.push(n);
     }
@@ -39,21 +40,23 @@
 
   function buildLinks() {
     const out = new Map();
-    const add = (s, t, kind) => {
+    const add = (s, t, kind, resolution) => {
       if (!s || !t || s === t) return;
+      if (!state.showAmbiguous && resolution && resolution.ambiguous) return;
       const key = s + "\x1f" + t + "\x1f" + kind;
       let l = out.get(key);
       if (!l) out.set(key, (l = { id: key, source: s, target: t, kind, count: 0 }));
       l.count++;
+      l.ambiguous = l.ambiguous || !!(resolution && resolution.ambiguous);
     };
 
     if (state.kinds.has("imports"))
-      for (const e of importEdges) add(repFile(e.source), repFile(e.target), "imports");
+      for (const e of importEdges) add(repFile(e.source), repFile(e.target), "imports", e.resolution);
 
     for (const e of crossEdges) {
       if (!state.kinds.has(e.kind)) continue;
       if (!inFileRegime) {
-        add(dirOf(e.srcFile), dirOf(e.tgtFile), e.kind);
+        add(dirOf(e.srcFile), dirOf(e.tgtFile), e.kind, e.resolution);
         continue;
       }
       const aExp = expanded.has(e.srcFile);
@@ -61,7 +64,7 @@
       if (!aExp && !bExp) continue; // calls stay hidden until a file is opened
       const s = aExp && isSymId(e.source) && nodeById.has(e.source) ? e.source : e.srcFile;
       const t = bExp && isSymId(e.target) && nodeById.has(e.target) ? e.target : e.tgtFile;
-      add(s, t, e.kind);
+      add(s, t, e.kind, e.resolution);
     }
 
     // containment tethers

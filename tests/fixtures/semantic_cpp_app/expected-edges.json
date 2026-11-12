@@ -1,0 +1,4 @@
+{
+  "must_have": [["main.cpp", "start", "api.h", "helper"], ["other.cpp", "other", "other.cpp", "helper"], ["main.cpp", "ambiguous", "main.cpp", "same"]],
+  "must_not_have": [["main.cpp", "start", "other.cpp", "helper"], ["other.cpp", "other", "api.h", "helper"]]
+}

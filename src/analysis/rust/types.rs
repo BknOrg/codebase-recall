@@ -29,13 +29,14 @@ impl<'a> Walker<'a> {
                 return;
             }
             self.out.refs.push(NewRef {
+                argument_types: None,
                 name,
-                ref_kind: "type".to_string(),
+                ref_kind: "type".into(),
                 receiver: None,
                 start_line: self.line(ty),
                 start_byte: ty.start_byte() as i64,
                 name_start_byte: Some(ty.start_byte() as i64),
-                receiver_kind: "none".to_string(),
+                receiver_kind: "none".into(),
                 ..Default::default()
             });
             return;

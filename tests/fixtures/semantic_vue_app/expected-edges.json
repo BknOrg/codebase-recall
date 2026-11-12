@@ -1,0 +1,11 @@
+{
+  "must_have": [
+    [
+      "Main.vue",
+      "start",
+      "helper.ts",
+      "work"
+    ]
+  ],
+  "must_not_have": []
+}

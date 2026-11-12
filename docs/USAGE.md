@@ -1,4 +1,4 @@
-# Usage guide — 0.10.0
+# Usage guide — 0.9.1
 
 Run commands from the target project, or pass `--project /absolute/path` to
 commands that support it. Examples use `CacheDb` as a placeholder symbol; search
@@ -63,7 +63,7 @@ search result shows the shape; paths, counts, and values depend on the project:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "status": "ok",
   "data": {
     "query": "UnknownSymbol",
@@ -87,7 +87,7 @@ search result shows the shape; paths, counts, and values depend on the project:
 
 Read former root-level arrays/fields through `data`. For example, impact returns
 an array under `data`, and graph nodes are under `data.nodes`. Graph payloads
-retain `data.version: 2`; the envelope version is independently `schema_version: 1`.
+retain `data.version: 3`; the envelope version is independently `schema_version: 2`.
 
 - `status`: `ok` or `partial`; MCP execution failures return `error` and
   `isError: true`. CLI failures use a nonzero exit code and stderr.
@@ -128,6 +128,25 @@ code-rcl graph --format html,json,dot -o build/graph
 ```
 
 The viewer prints a loopback URL and uses a session token for API requests.
+Node colors group types (blue), callables (purple), data members (amber),
+modules/namespaces/impls (slate), components (teal), and macros (pink).
+Shapes identify families; zooming in reveals abbreviations for exact kinds,
+such as `C` for class, `I` for interface, `m` for method, and `new` for constructor.
+The collapsible legend follows the visible nodes and relations in either theme.
+Expand a family to see its exact symbol kinds, glyphs and visible counts.
+Relation entries explain arrow direction, while the certainty key distinguishes
+ambiguity from evidence strength: a solid line alone does not imply precise resolution.
+Subsystem coloring retains these shapes and abbreviations.
+
+Relation colors distinguish calls, imports, references, containment, inheritance,
+implementation, and overrides, including while a node is selected. Arrows show
+source to target; containment uses a plain tether. Dashed links include ambiguous
+guesses, which can be hidden in Filters alongside individual symbol families
+and relation kinds. Filtering guesses preserves resolved relations in mixed
+aggregates. Select a node to inspect evidence, reasons, heuristic scores, and
+alternatives; alternatives do not create additional edges. Structural relation
+filters are available only when those kinds were included in the generated graph.
+
 Export actions use POST. Blank output names receive unique names; an explicit
 existing filename returns HTTP 409, so choose a different filename. Traversal
 and links outside the project are rejected. Static HTML exports work without
@@ -184,3 +203,13 @@ Run `code-rcl embeddings sync`; the same setting applies to MCP embedding sync.
 Switching batching does not need `--full` and does not reduce source coverage.
 Existing complete indexes do no inference. See [benchmarking](INDEXING-BENCHMARK.md)
 for cold-run comparisons and the separate experimental compact profile.
+
+## C and C++
+
+Use `--language c,cpp` to select C17/C23 and C++23 source. Precise uses clangd
+and requires compilation context, rather than choosing a build compiler for you.
+See [C/C++ setup, header rules and limits](C-CPLUSPLUS.md).
+
+
+Selective LSP verification is opt-in: `sync --precise-selective` (MCP
+`precise_selective: true`). See [selective precise mode](PRECISE-SELECTIVE.md) for coverage, backend setup, deadlines and cache recovery.

@@ -118,7 +118,7 @@ impl<'a> Walker<'a> {
         if let Some(i) = idx {
             let (name, real_kind) = {
                 let s = &self.out.symbols[i];
-                (s.name.clone(), s.kind.clone())
+                (s.name.clone(), s.kind)
             };
             let scope_kind = if real_kind == "method" {
                 "method"
@@ -259,8 +259,9 @@ impl<'a> Walker<'a> {
         };
 
         self.out.symbols.push(NewSymbol {
+            semantic: Default::default(),
             name,
-            kind: kind.to_string(),
+            kind: kind.into(),
             parent_index: self.stack.last().copied(),
             is_exported: self.is_exported(node),
             start_line: self.line(node),
@@ -300,8 +301,9 @@ impl<'a> Walker<'a> {
 
         if at_module {
             self.out.symbols.push(NewSymbol {
+                semantic: Default::default(),
                 name: name.clone(),
-                kind: "variable".to_string(),
+                kind: "variable".into(),
                 parent_index: None,
                 is_exported: self.is_exported(node),
                 start_line: self.line(node),
@@ -416,8 +418,9 @@ impl<'a> Walker<'a> {
             a.named_children(&mut c).count() as i64
         });
         self.out.refs.push(NewRef {
+            argument_types: None,
             name,
-            ref_kind: "call".to_string(),
+            ref_kind: "call".into(),
             receiver,
             start_line: self.line(node),
             start_byte: node.start_byte() as i64,

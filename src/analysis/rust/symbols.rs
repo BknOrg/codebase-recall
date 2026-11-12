@@ -46,8 +46,9 @@ impl<'a> Walker<'a> {
             (None, None)
         };
         self.out.symbols.push(NewSymbol {
+            semantic: Default::default(),
             name,
-            kind: kind.to_string(),
+            kind: kind.into(),
             parent_index,
             is_exported: self.has_pub(node),
             start_line: node.start_position().row as i64 + 1,

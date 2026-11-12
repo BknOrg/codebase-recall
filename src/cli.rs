@@ -126,30 +126,51 @@ pub struct SyncArgs {
 
 /// Opt-in compiler-grade resolution, shared by `sync`, `graph`, `serve`, and `impact`.
 #[derive(Parser, Debug, Clone, Default)]
+#[group(skip)]
 pub struct PreciseArgs {
     /// Return explicitly partial heuristic results when requested LSP resolution fails.
-    #[arg(long, requires = "precise")]
+    #[arg(long, requires = "precision_mode")]
     pub allow_heuristic_fallback: bool,
     /// Resolve references through the real language server for each language
-    /// (rust-analyzer, pyright, jdtls, typescript-language-server, and for
+    /// (clangd for C/C++, rust-analyzer, pyright, jdtls, typescript-language-server, and for
     /// Kotlin JetBrains' intellij-server by default or fwcd's kotlin-language-server
     /// when `[precise.kotlin] server` in .code-rcl/config.toml says so) instead
     /// of guessing from the AST. Needs those servers installed; any that are
     /// missing are reported and their language keeps its heuristic edges.
     /// `[precise] enabled = true` in config.toml makes this flag implicit for
     /// sync, graph and serve.
-    #[arg(long)]
+    #[arg(long, group = "precision_mode")]
     pub precise: bool,
+    /// Ask installed language servers only about uncertain/risky references (bounded, graceful fallback).
+    #[arg(long, conflicts_with = "precise", group = "precision_mode")]
+    pub precise_selective: bool,
 
     /// Re-ask the language servers about every file, not just the ones with no
     /// answer yet. Use after edits whose effects reach other files.
-    #[arg(long, requires = "precise")]
+    #[arg(long)]
     pub precise_full: bool,
 
     /// Seconds to wait for a single language-server answer
     /// [default: from .code-rcl/config.toml, else 15]
-    #[arg(long, value_name = "SECONDS", requires = "precise")]
+    #[arg(long, value_name = "SECONDS", requires = "precision_mode")]
     pub precise_timeout: Option<u64>,
+}
+
+impl PreciseArgs {
+    pub fn requested(&self) -> bool {
+        self.precise || self.precise_selective
+    }
+    pub fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !(self.precise && self.precise_selective),
+            "precise and precise-selective are mutually exclusive"
+        );
+        anyhow::ensure!(
+            !self.precise_full || self.requested(),
+            "--precise-full requires --precise, --precise-selective, or a configured precise mode"
+        );
+        Ok(())
+    }
 }
 
 /// Filters shared by `graph` and `serve`: they select which nodes and edges the
@@ -164,7 +185,7 @@ pub struct GraphQuery {
     #[arg(long, default_value = "both")]
     pub scope: String,
 
-    /// Edge kinds to include, comma-separated: imports, calls, references,
+    /// Edge kinds to include, comma-separated: imports, calls, references, inherits, overrides,
     /// contains, implements (`references` is noisy on large graphs, so it is
     /// off by default) [default: from .code-rcl/config.toml, else
     /// imports,calls,contains,implements]

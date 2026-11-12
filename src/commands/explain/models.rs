@@ -4,6 +4,7 @@ use crate::commands::impact::ImpactReport;
 
 #[derive(Debug, Serialize)]
 pub struct MemberInfo {
+    pub semantic: Option<crate::analysis::semantic::SymbolFacts>,
     pub name: String,
     pub kind: String,
     pub line: Option<i64>,
@@ -12,6 +13,7 @@ pub struct MemberInfo {
 
 #[derive(Debug, Serialize)]
 pub struct ExplainReport {
+    pub semantic: Option<crate::analysis::semantic::SymbolFacts>,
     pub symbol: String,
     pub id: String,
     pub kind: String,

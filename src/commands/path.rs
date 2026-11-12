@@ -16,6 +16,7 @@ const RULE_LIGHT: &str = "──────────────────
 
 #[derive(Debug, Serialize)]
 pub struct PathHop {
+    pub resolution: Option<crate::graph::resolve::refs::Resolution>,
     pub id: String,
     pub label: String,
     pub kind: String,
@@ -168,6 +169,7 @@ pub fn generate_reports(args: &PathArgs) -> Result<Vec<PathReport>> {
                     step.edge.line,
                 );
                 report.hops.push(PathHop {
+                    resolution: step.edge.resolution.clone(),
                     id: node.id.clone(),
                     label: node.label.clone(),
                     kind: node.kind.clone(),
@@ -216,6 +218,7 @@ fn parent_dir(path: &str) -> &str {
 
 fn hop_for_start(node: &Node) -> PathHop {
     PathHop {
+        resolution: None,
         id: node.id.clone(),
         label: node.label.clone(),
         kind: node.kind.clone(),
@@ -380,6 +383,16 @@ fn write_report(out: &mut String, report: &PathReport, label_endpoints: bool) {
             .unwrap_or_default();
         let _ = writeln!(out, "  {glyph} {}  [{}]{loc}", hop.label, hop.kind);
 
+        if let Some(r) = &hop.resolution
+            && r.ambiguous
+        {
+            let _ = writeln!(
+                out,
+                "    ambiguous guess: {} ({} alternatives)",
+                r.reason,
+                r.alternatives.len() + r.omitted_alternatives
+            );
+        }
         if i < last {
             let next = &report.hops[i + 1];
             let verb = match (&next.edge_kind, next.reversed) {

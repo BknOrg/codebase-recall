@@ -9,7 +9,6 @@ use crate::cache::models::SymbolRow;
 
 /// Compare both sides without changing the user's checkout or index.
 pub fn generate_diff_reports(args: &crate::cli::ImpactArgs) -> Result<Vec<super::ImpactReport>> {
-    use crate::graph::symbol_id;
     use std::collections::BTreeMap;
     use std::fs;
     let repo = run_git(&args.project, &["rev-parse", "--show-toplevel"])?;
@@ -54,6 +53,7 @@ pub fn generate_diff_reports(args: &crate::cli::ImpactArgs) -> Result<Vec<super:
         fs::copy(cfg, baseline_project.join(".code-rcl/config.toml"))?;
     }
     let mut baseline_precise = args.precise.clone();
+    baseline_precise.precise_selective = false;
     baseline_precise.precise = false; // Baseline is never allowed to execute historical build scripts.
     let before = crate::commands::graph::build_graph(&crate::service::analysis_query(
         &baseline_project,
@@ -116,10 +116,15 @@ pub fn generate_diff_reports(args: &crate::cli::ImpactArgs) -> Result<Vec<super:
         Ok(resolve_changed_symbols(&db, ranges)?
             .iter()
             .filter_map(|s| {
-                files
-                    .iter()
-                    .find(|f| f.id == s.file_id)
-                    .map(|f| symbol_id(&f.path, &s.name, s.start_line.unwrap_or(0)))
+                files.iter().find(|f| f.id == s.file_id).map(|f| {
+                    crate::graph::declaration_id(
+                        &f.path,
+                        &s.name,
+                        s.start_byte.unwrap_or(0),
+                        s.end_byte.unwrap_or(0),
+                        &s.kind,
+                    )
+                })
             })
             .collect())
     };
@@ -240,7 +245,13 @@ fn symbol_identities(root: &Path) -> Result<std::collections::HashMap<String, St
                 parent = p.parent_symbol_id;
             }
             Some((
-                crate::graph::symbol_id(path, &s.name, s.start_line.unwrap_or(0)),
+                crate::graph::declaration_id(
+                    path,
+                    &s.name,
+                    s.start_byte.unwrap_or(0),
+                    s.end_byte.unwrap_or(0),
+                    &s.kind,
+                ),
                 format!(
                     "{:?}|{:?}|{:?}",
                     owners,

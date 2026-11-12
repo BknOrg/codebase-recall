@@ -49,7 +49,7 @@ max_file_kb = 512
 
 [graph]
 # Drop resolved edges below this confidence (0.0 to 1.0).
-min_confidence = 0.4
+min_confidence = 0.3
 # Include edges to external (npm / pypi / crate) modules.
 include_external = false
 # Cap on total graph nodes (0 disables the cap).
@@ -70,6 +70,9 @@ chunk_profile = "full"
 [precise]
 # true acts like passing --precise for sync, graph and serve.
 enabled = false
+# Opt-in verification of uncertain/risky references; mutually exclusive with enabled.
+selective = false
+selective_budget_secs = 30
 # Seconds to wait for a single language-server answer.
 timeout_secs = 15
 
@@ -87,7 +90,7 @@ Precedence is always **command-line flag > `config.toml` > built-in default**. A
 |-----|---------|------------|
 | `[sync] max_file_kb` | `512` | `sync` and every implicit sync (`graph`, `serve`, `dump`, `impact`, MCP, ...), so the cache never flips between two size limits |
 | `[sync] languages` | all | same as above; `--language` overrides it |
-| `[graph] min_confidence` | `0.4` | `graph`, `serve`, `dump -r` |
+| `[graph] min_confidence` | `0.3` | `graph`, `serve`, `dump -r` |
 | `[graph] include_external` | `false` | `graph`, `serve`, `dump -r` |
 | `[graph] max_nodes` | `4000` | `graph`, `serve` |
 | `[graph] depth` | `2` | `graph`, `serve` (BFS depth around `--focus`) |
@@ -188,7 +191,7 @@ Workspace setup pins its absolute project root and copies the full skill bundle.
 Global setup is opt-in; it leaves the server root unset. Built-in MCP setup targets
 are Claude and Gemini/Antigravity; other clients need their own config format.
 
-## Local embeddings (0.10.0)
+## Local embeddings (0.9.1)
 
 ```toml
 [embeddings]
@@ -252,3 +255,14 @@ configured value stays unchanged on disk; sessions are cached by effective
 thread count. Changing only threads does not invalidate vectors or require
 full reindexing. It changes the CPU budget, not a guarantee of 100% utilization
 or a speedup on every workload.
+
+## C/C++ build context
+
+`CODE_RCL_LSP_CLANGD` selects clangd for both `c` and `cpp`. Optional `[c_family]`
+settings are `compilation_database_dir` and ordered `header_language_overrides`
+(`pattern`, `language` = `c` or `cpp`). `[precise.clangd] query_drivers` defaults
+to an empty allowlist. See [C/C++ configuration and freshness](C-CPLUSPLUS.md).
+
+
+Selective LSP verification is opt-in: `sync --precise-selective` (MCP
+`precise_selective: true`). See [selective precise mode](PRECISE-SELECTIVE.md) for coverage, backend setup, deadlines and cache recovery.

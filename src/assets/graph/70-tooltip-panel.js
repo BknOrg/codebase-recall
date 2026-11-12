@@ -82,6 +82,18 @@
     let html = `<button class="sp-close" title="close">×</button><h2>${esc(n.label)}</h2><div class="sp-kind">${esc(
       n.kind
     )}</div>`;
+    if (n.semantic) {
+      html += `<div class="sp-group">${esc(n.semantic.qualified_name || n.label)}</div>`;
+      html += `<div>${esc(n.semantic.kind)} · ${esc(n.semantic.visibility)}</div>`;
+    }
+    const evidence = DATA.edges.filter(e => (e.source === selected || e.target === selected) && e.resolution && state.kinds.has(e.kind) && (state.showAmbiguous || !e.resolution.ambiguous));
+    for (const e of evidence.slice(0, 20)) {
+      const r = e.resolution;
+      html += `<div class="sp-group">${r.ambiguous ? "Ambiguous guess" : "Resolved"} · ${esc(e.kind)} · ${Number(e.confidence).toFixed(2)}</div>`;
+      html += `<div>${esc(labelFor(e.source))} → ${esc(labelFor(e.target))}</div><div>${esc(r.reason)}</div><div>Evidence: ${esc(r.evidence || "unknown")} · heuristic score, not probability</div>`;
+      for (const a of r.alternatives || []) html += `<div>Alternative: ${esc(a.qualified_name)} (${esc(a.path)})</div>`;
+      if (r.omitted_alternatives) html += `<div>+${Number(r.omitted_alternatives)} alternatives</div>`;
+    }
     const groups = [];
 
     if (isSymId(selected)) {

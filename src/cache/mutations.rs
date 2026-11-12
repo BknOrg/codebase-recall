@@ -57,6 +57,7 @@ impl CacheDb {
             .collect::<Vec<_>>();
         self.clear_precise(&ids)?;
         self.meta_set("precise_generation", "invalid")?;
+        self.meta_set("precision_has_results", "false")?;
         self.meta_set("generation", &generation.to_string())
     }
 
@@ -65,6 +66,21 @@ impl CacheDb {
             b.relational()
                 .table(self.tables.meta.clone())
                 .upsert(props([("key", key.into()), ("value", value.into())]))?;
+            Ok(())
+        })?;
+        Ok(())
+    }
+
+    /// Persist operation coverage in one transaction rather than one fsync per reference.
+    pub fn meta_set_many(&self, values: &[(String, String)]) -> Result<()> {
+        self.db.write_tx(|b| {
+            let mut rel = b.relational();
+            for (key, value) in values {
+                rel.table(self.tables.meta.clone()).upsert(props([
+                    ("key", key.clone().into()),
+                    ("value", value.clone().into()),
+                ]))?;
+            }
             Ok(())
         })?;
         Ok(())
@@ -81,7 +97,12 @@ impl CacheDb {
                 .delete(&PropValue::from(format!("embedding_file:{path}")))?;
             rel.table(t.meta.clone())
                 .delete(&PropValue::from(format!("embedding_excluded:{path}")))?;
-            for prefix in ["analyzer:", "diagnostics:", "embedding_count:"] {
+            for prefix in [
+                "analyzer:",
+                "diagnostics:",
+                "embedding_count:",
+                "semantic_stale:",
+            ] {
                 rel.table(t.meta.clone())
                     .delete(&PropValue::from(format!("{prefix}{path}")))?;
             }
@@ -120,10 +141,26 @@ impl CacheDb {
         file_id: i64,
         results: &[(i64, PreciseStatus, Option<i64>, f64)],
     ) -> Result<()> {
+        self.set_precise_subset(file_id, results, true, &[])
+    }
+    /// Commit only the supplied references; a selective pass never stamps a whole file.
+    pub fn set_precise_subset(
+        &mut self,
+        file_id: i64,
+        results: &[(i64, PreciseStatus, Option<i64>, f64)],
+        complete: bool,
+        coverage: &[(i64, String)],
+    ) -> Result<()> {
         let t = &self.tables;
         let now = unix_now();
         self.db.write_tx(|b| {
             let mut rel = b.relational();
+            if !results.is_empty() {
+                rel.table(t.meta.clone()).upsert(props([
+                    ("key", "precision_has_results".into()),
+                    ("value", "true".into()),
+                ]))?;
+            }
             for (ref_id, status, symbol_id, confidence) in results {
                 let conf = matches!(status, PreciseStatus::Hit).then_some(*confidence);
                 rel.table(t.refs.clone())
@@ -133,10 +170,48 @@ impl CacheDb {
                         row.insert("precise_confidence".into(), conf.into());
                     })?;
             }
-            rel.table(t.files.clone())
-                .update(&PropValue::Int(file_id), |row| {
-                    row.insert("precise_synced_at".into(), now.into());
-                })?;
+            for (id, state) in coverage {
+                rel.table(t.meta.clone()).upsert(props([
+                    ("key", format!("precision_ref:{id}").into()),
+                    ("value", state.clone().into()),
+                ]))?;
+            }
+            if complete {
+                rel.table(t.files.clone())
+                    .update(&PropValue::Int(file_id), |row| {
+                        row.insert("precise_synced_at".into(), now.into());
+                    })?;
+            }
+            Ok(())
+        })?;
+        Ok(())
+    }
+
+    pub fn clear_precise_references(&mut self, ids: &[i64]) -> Result<()> {
+        let t = &self.tables;
+        let wanted: std::collections::HashSet<_> = ids.iter().copied().collect();
+        let files: std::collections::HashSet<_> = self
+            .all_refs()?
+            .into_iter()
+            .filter(|r| wanted.contains(&r.id))
+            .map(|r| r.file_id)
+            .collect();
+        self.db.write_tx(|b| {
+            let mut rel = b.relational();
+            for file in &files {
+                rel.table(t.files.clone())
+                    .update(&PropValue::Int(*file), |row| {
+                        row.insert("precise_synced_at".into(), PropValue::Null);
+                    })?;
+            }
+            for id in ids {
+                rel.table(t.refs.clone())
+                    .update(&PropValue::Int(*id), |row| {
+                        row.insert("precise_status".into(), PropValue::Null);
+                        row.insert("precise_symbol_id".into(), PropValue::Null);
+                        row.insert("precise_confidence".into(), PropValue::Null);
+                    })?;
+            }
             Ok(())
         })?;
         Ok(())
@@ -291,6 +366,12 @@ impl CacheDb {
                     ("signature", s.signature.clone().into()),
                     ("param_count", s.param_count.into()),
                     ("type_name", s.type_name.clone().into()),
+                    (
+                        "semantic",
+                        serde_json::to_string(&s.semantic)
+                            .map_err(|e| BknError::Encoding(e.to_string()))?
+                            .into(),
+                    ),
                 ]))?;
                 ids.push(int_pk(pk)?);
             }
@@ -301,6 +382,9 @@ impl CacheDb {
                         row.insert("parent_symbol_id".into(), parent_id.into());
                     })?;
             }
+
+            rel.table(t.meta.clone())
+                .delete(&PropValue::from(format!("semantic_stale:{path}")))?;
 
             // Scopes, same shape as symbols.
             let mut scope_ids: Vec<i64> = Vec::with_capacity(scopes.len());
@@ -365,6 +449,7 @@ impl CacheDb {
                         ("scope_id", scope_id.into()),
                         ("name", bd.name.as_str().into()),
                         ("binding_kind", bd.binding_kind.as_str().into()),
+                        ("declaration_byte", bd.declaration_byte.into()),
                         ("symbol_id", symbol_id.into()),
                         ("import_id", import_id.into()),
                         ("type_expr", bd.type_expr.clone().into()),
@@ -393,6 +478,15 @@ impl CacheDb {
                         ("receiver", rf.receiver.clone().into()),
                         ("start_line", rf.start_line.into()),
                         ("arg_count", rf.arg_count.into()),
+                        (
+                            "argument_types",
+                            rf.argument_types
+                                .as_ref()
+                                .map(|v| {
+                                    serde_json::to_string(v).expect("argument types serialize")
+                                })
+                                .into(),
+                        ),
                         ("receiver_kind", rf.receiver_kind.as_str().into()),
                         ("local_only", rf.local_only.into()),
                         ("resolved_symbol_id", resolved.into()),

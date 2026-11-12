@@ -9,6 +9,18 @@ use crate::commands::setup_integrations as integ;
 /// Master AI Agent Skill embedded directly into the binary at compile time.
 const REFERENCES: &[(&str, &str)] = &[
     (
+        "precise-selective.md",
+        include_str!("../../skills/code-rcl/references/precise-selective.md"),
+    ),
+    (
+        "c-family.md",
+        include_str!("../../skills/code-rcl/references/c-family.md"),
+    ),
+    (
+        "symbols.md",
+        include_str!("../../skills/code-rcl/references/symbols.md"),
+    ),
+    (
         "embeddings.md",
         include_str!("../../skills/code-rcl/references/embeddings.md"),
     ),

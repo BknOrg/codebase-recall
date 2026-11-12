@@ -1,0 +1,4 @@
+{
+  "must_have": [["main.c", "entry", "main.c", "local_helper"], ["main.c", "api", "main.c", "local_helper"], ["other.c", "other", "other.c", "local_helper"]],
+  "must_not_have": [["main.c", "entry", "other.c", "local_helper"], ["other.c", "other", "main.c", "local_helper"]]
+}

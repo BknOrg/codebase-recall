@@ -419,8 +419,9 @@ impl<'a> Walker<'a> {
         });
 
         self.out.refs.push(NewRef {
+            argument_types: None,
             name,
-            ref_kind: "call".to_string(),
+            ref_kind: "call".into(),
             receiver,
             start_line: self.line(node),
             start_byte: node.start_byte() as i64,
@@ -448,8 +449,9 @@ impl<'a> Walker<'a> {
         let is_exported = name.chars().next().is_some_and(|c| c.is_uppercase());
 
         self.out.symbols.push(NewSymbol {
+            semantic: Default::default(),
             name: name.to_string(),
-            kind: kind.to_string(),
+            kind: kind.into(),
             parent_index,
             is_exported,
             start_line,

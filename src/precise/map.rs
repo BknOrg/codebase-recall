@@ -176,12 +176,37 @@ pub fn symbol_at_byte<'a>(syms: &[&'a SymbolRow], byte: i64) -> Option<&'a Symbo
                 .zip(s.end_byte)
                 .is_some_and(|(start, end)| start <= byte && byte < end)
         })
-        .min_by_key(|s| s.end_byte.unwrap() - s.start_byte.unwrap())
+        .min_by_key(|s| {
+            (
+                !s.semantic
+                    .name_range
+                    .is_some_and(|[start, end]| start as i64 <= byte && byte < end as i64),
+                s.end_byte.unwrap() - s.start_byte.unwrap(),
+                s.start_byte,
+                &s.name,
+            )
+        })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn name_range_distinguishes_members_in_one_declaration() {
+        let mut first = sym(1, 1, 1);
+        first.name = "first".into();
+        first.start_byte = Some(0);
+        first.end_byte = Some(30);
+        first.semantic.name_range = Some([4, 9]);
+        let mut second = first.clone();
+        second.name = "second".into();
+        second.semantic.name_range = Some([11, 17]);
+        assert_eq!(
+            symbol_at_byte(&[&first, &second], 12).unwrap().name,
+            "second"
+        );
+    }
 
     #[test]
     fn utf16_reverse_mapping_rejects_surrogate_midpoints() {
@@ -195,6 +220,7 @@ mod tests {
 
     fn sym(id: i64, start: i64, end: i64) -> SymbolRow {
         SymbolRow {
+            semantic: Default::default(),
             id,
             file_id: 1,
             name: format!("s{id}"),

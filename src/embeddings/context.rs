@@ -162,10 +162,12 @@ pub fn syntax(
     use std::collections::{HashMap, HashSet};
     let mut all = vec![];
     let mut frequency = HashMap::<String, usize>::new();
-    for symbol in symbols
-        .iter()
-        .filter(|s| matches!(s.kind.as_str(), "function" | "method" | "constructor"))
-    {
+    for symbol in symbols.iter().filter(|s| {
+        matches!(
+            s.kind.as_str(),
+            "function" | "method" | "constructor" | "destructor"
+        )
+    }) {
         let (Some(start), Some(end)) = (symbol.start_byte, symbol.end_byte) else {
             continue;
         };
@@ -308,7 +310,7 @@ pub use crate::cache::purpose::Context;
 pub fn container(kind: &str) -> bool {
     matches!(
         kind,
-        "class" | "struct" | "interface" | "trait" | "enum" | "impl" | "type"
+        "concept" | "class" | "struct" | "interface" | "trait" | "enum" | "impl" | "type"
     )
 }
 
@@ -381,7 +383,10 @@ pub fn build(
     budget: usize,
 ) -> Result<Option<Context>> {
     if !container(&symbol.kind)
-        && !matches!(symbol.kind.as_str(), "function" | "method" | "constructor")
+        && !matches!(
+            symbol.kind.as_str(),
+            "function" | "method" | "constructor" | "destructor"
+        )
     {
         return Ok(None);
     }
@@ -491,7 +496,7 @@ pub fn build(
         symbol_key: super::chunk::symbol_key(path, symbol),
         path: path.into(),
         name: symbol.name.clone(),
-        kind: symbol.kind.clone(),
+        kind: symbol.kind.to_string(),
         source_hash: source_hash.into(),
         input_hash,
         text,

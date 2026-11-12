@@ -32,10 +32,13 @@ pub struct FileDigest {
     pub language: String,
     pub types: Vec<TypeDigest>,
     pub functions: Vec<SymbolItem>,
+    pub declarations: Vec<SymbolItem>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct TypeDigest {
+    pub semantic: Option<crate::analysis::semantic::SymbolFacts>,
+    pub members: Vec<SymbolItem>,
     pub name: String,
     pub kind: String,
     pub signature: String,
@@ -48,6 +51,7 @@ pub struct TypeDigest {
 
 #[derive(Debug, Serialize)]
 pub struct SymbolItem {
+    pub semantic: Option<crate::analysis::semantic::SymbolFacts>,
     pub name: String,
     pub kind: String,
     pub signature: String,

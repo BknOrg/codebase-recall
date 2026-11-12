@@ -1,4 +1,4 @@
-# Getting started with code-rcl 0.10.0
+# Getting started with code-rcl 0.9.1
 
 Use [the usage guide](USAGE.md) for everyday CLI commands and
 [the MCP guide](MCP.md) for agent integration. Existing integrations should read
@@ -18,7 +18,7 @@ cargo install --path . --locked
 code-rcl --version
 ```
 
-Check that the reported version is `0.10.0`. To run directly from source without
+Check that the reported version is `0.9.1`. To run directly from source without
 replacing an installed binary:
 
 ```sh
@@ -86,7 +86,7 @@ editing this repository.
   filters, and size limits. Dump defaults to 50 KiB per file.
 - **Cache is locked:** finish the other process using that project and retry.
 - **MCP rejects `json`:** remove that parameter. MCP always returns structured
-  results in 0.10.0.
+  results in 0.9.1.
 - **MCP requires a project:** configure the server with `--project` or supply
   `project` in the tool call.
 

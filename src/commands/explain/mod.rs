@@ -100,8 +100,9 @@ fn build_report(
                         && s.type_name.as_deref() == Some(sym.name.as_str()))
             })
             .map(|s| MemberInfo {
+                semantic: Some(s.semantic.clone()),
                 name: s.name,
-                kind: s.kind,
+                kind: s.kind.to_string(),
                 line: s.start_line,
                 is_exported: s.is_exported,
             })
@@ -110,6 +111,7 @@ fn build_report(
     }
 
     Ok(ExplainReport {
+        semantic: located.as_ref().map(|(_, s)| s.semantic.clone()),
         symbol: relations.target_symbol.clone(),
         id: relations.target_id.clone(),
         kind: relations.target_kind.clone(),
@@ -135,19 +137,17 @@ fn locate_symbol(db: &CacheDb, report: &ImpactReport) -> Result<Option<(FileRow,
     let Some(path) = report.target_path.as_deref() else {
         return Ok(None);
     };
-    let Some(line) = report
-        .target_id
-        .rsplit_once('@')
-        .and_then(|(_, l)| l.parse::<i64>().ok())
-    else {
-        return Ok(None);
-    };
     let Some(file) = db.file_by_path(path)? else {
         return Ok(None);
     };
-    let sym = db
-        .symbols_overlapping_lines(file.id, line, line)?
-        .into_iter()
-        .find(|s| s.name == report.target_symbol && s.start_line == Some(line));
+    let sym = db.symbols_for_file(file.id)?.into_iter().find(|s| {
+        crate::graph::declaration_id(
+            path,
+            &s.name,
+            s.start_byte.unwrap_or(0),
+            s.end_byte.unwrap_or(0),
+            &s.kind,
+        ) == report.target_id
+    });
     Ok(sym.map(|s| (file, s)))
 }

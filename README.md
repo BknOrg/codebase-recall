@@ -1,8 +1,8 @@
 # codebase-recall
 
-[Getting started](docs/GETTING-STARTED.md) · [Usage guide](docs/USAGE.md) · [MCP setup and tools](docs/MCP.md)
+[Semantic model migration](docs/MIGRATION-SEMANTIC-MODEL.md) · [Getting started](docs/GETTING-STARTED.md) · [Usage guide](docs/USAGE.md) · [MCP setup and tools](docs/MCP.md)
 
-Version 0.10.0 adds semantic/hybrid search with local EmbeddingGemma 1 Q4. Read the [embedding guide](docs/EMBEDDINGS.md) and [0.10 migration guide](docs/MIGRATION-0.10.md). The [0.9 migration guide](docs/MIGRATION-0.9.md) still applies to older integrations. JSON examples below show the `data` payload unless an envelope is shown.
+Version 0.9.1 includes semantic/hybrid search, C/C++ analysis, selective LSP verification, and fixes duplicate-symbol crashes in recovered headers. Read the [embedding guide](docs/EMBEDDINGS.md) and [0.9.1 upgrade notes](docs/MIGRATION-0.9.1.md). The [0.9 migration guide](docs/MIGRATION-0.9.md) still applies to older integrations. JSON examples below show the `data` payload unless an envelope is shown.
 
 > **High-performance CLI codebase context dumper for LLMs and AST-based code relation grapher.**
 
@@ -35,6 +35,9 @@ Inspect embedding freshness and coverage before drawing conclusions. See
 [setup, configuration and troubleshooting](docs/EMBEDDINGS.md).
 See [search consistency and automatic retrieval evaluation](docs/AUTOMATIC-SEARCH.md).
 
+C17/C23 and C++23 source analysis is available, with optional clangd precise
+resolution using the project's compilation database. See [C/C++ setup and limits](docs/C-CPLUSPLUS.md).
+
 ## Key Features
 
 ### 📦 Codebase Context Dumper (`dump`)
@@ -59,7 +62,7 @@ See [search consistency and automatic retrieval evaluation](docs/AUTOMATIC-SEARC
   - Interactive search filtering, node isolation, cluster expansion/collapsing, and press-and-hold node spotlighting.
   - Interactive BFS depth adjuster directly inside the web UI.
   - **Zero Background Footprint:** Uses a lightweight EventSource heartbeat; the local server automatically terminates when you close your browser tab.
-- **Export Formats (`graph`):** Standalone zero-dependency HTML, Graphviz `.dot`, and structured JSON (`version: 2`).
+- **Export Formats (`graph`):** Standalone zero-dependency HTML, Graphviz `.dot`, and structured JSON (`version: 3`).
 
 ---
 
@@ -67,7 +70,7 @@ See [search consistency and automatic retrieval evaluation](docs/AUTOMATIC-SEARC
 
 ### Prebuilt Binaries
 
-Release installers fetch published artifacts. To use unpublished 0.10.0 changes in this checkout, build/install from source and verify `code-rcl --version`.
+Release installers fetch published artifacts. To use unpublished 0.9.1 changes in this checkout, build/install from source and verify `code-rcl --version`.
 
 #### macOS / Linux (Shell Script)
 
@@ -553,7 +556,7 @@ Per-project defaults for these flags, and the Kotlin server choice (`[precise.ko
 
 ## JSON Schema (`--format json`, `version: 2`)
 
-When exporting with `code-rcl graph --format json`, the following structure is inside the result envelope's `data` field. Read nodes as `result.data.nodes`; the envelope has `schema_version: 1`. See [JSON results](docs/USAGE.md#json-results).
+When exporting with `code-rcl graph --format json`, the following structure is inside the result envelope's `data` field. Read nodes as `result.data.nodes`; the envelope has `schema_version: 2`. See [JSON results](docs/USAGE.md#json-results).
 
 ```jsonc
 {
@@ -726,3 +729,7 @@ Embedding indexing supports explicit cross-file length batching while preserving
 input text and cache compatibility. The default remains file batching pending
 performance/quality gates. See [indexing benchmarks](docs/INDEXING-BENCHMARK.md);
 compact container representation remains an experimental profile.
+
+
+Selective LSP verification is opt-in: `sync --precise-selective` (MCP
+`precise_selective: true`). See [selective precise mode](docs/PRECISE-SELECTIVE.md) for coverage, backend setup, deadlines and cache recovery.

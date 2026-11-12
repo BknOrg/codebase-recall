@@ -1,0 +1,9 @@
+[
+ ["symbols.rs", "Bits", "union"], ["symbols.rs", "SIZE", "constant"], ["symbols.rs", "Ready", "enum_member"],
+ ["Overloads.java", "choose", "method"], ["Inheritance.java", "value", "field"],
+ ["symbols.kt", "Registry", "object"], ["symbols.kt", "count", "property"],
+ ["symbols.go", "Engine", "struct"], ["symbols.go", "Run", "method"],
+ ["symbols.py", "value", "property"], ["symbols.py", "count", "field"],
+ ["symbols.ts", "ID", "type_alias"], ["symbols.ts", "constructor", "constructor"],
+ ["symbols.js", "create", "function"], ["Card.vue", "default", "component"], ["Card.svelte", "default", "component"]
+]

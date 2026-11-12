@@ -17,15 +17,19 @@
 
 pub mod backend;
 mod client;
-mod map;
+mod engine;
+pub(crate) mod map;
+pub(crate) mod policy;
+mod process;
+pub(crate) mod state;
+mod vue;
 
 use std::collections::HashMap;
 use std::fs;
-use std::io::IsTerminal;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result, ensure};
+use anyhow::{Result, ensure};
 use serde_json::Value;
 
 use crate::cache::CacheDb;
@@ -35,6 +39,8 @@ use client::{LspClient, Readiness};
 use map::{PositionMap, path_to_uri, symbol_at_byte, uri_to_path};
 
 pub struct PreciseOptions {
+    pub selective: bool,
+    pub budget: Duration,
     /// Re-ask about every file, not just the ones with no answers yet.
     pub full: bool,
     /// Budget for a single request to the server.
@@ -78,145 +84,7 @@ pub fn run_precise_pass(
     project: &Path,
     opts: &PreciseOptions,
 ) -> Result<PreciseStats> {
-    let mut stats = PreciseStats::default();
-
-    // ---- preconditions -----------------------------------------------------
-    ensure!(
-        project.is_dir(),
-        "project directory `{}` does not exist (or is not a directory)",
-        project.display()
-    );
-    // Two forms of the root, both needed: the canonical one to compare against
-    // canonicalized paths the server returns, and a plain absolute one to hand
-    // *to* the server, since Windows' `\\?\` prefix is not valid inside a URI.
-    let canonical_root = fs::canonicalize(project)
-        .with_context(|| format!("resolving the full path of `{}`", project.display()))?;
-    let server_root = map::strip_extended_prefix(&canonical_root);
-
-    let files = db.all_files()?;
-    if files.is_empty() {
-        stats.warnings.push(
-            "the cache holds no analyzed files, so there is nothing to resolve. \
-             Run `code-rcl sync` first."
-                .to_string(),
-        );
-        return Ok(stats);
-    }
-
-    let mut by_language: HashMap<&str, Vec<&FileRow>> = HashMap::new();
-    for f in &files {
-        by_language.entry(f.language.as_str()).or_default().push(f);
-    }
-
-    let selected: Vec<(&'static Backend, Vec<&FileRow>)> = opts
-        .backends
-        .iter()
-        .copied()
-        .filter(|b| language_selected(b.lang_group, &opts.language_filter))
-        .filter_map(|b| {
-            by_language
-                .get(b.lang_group)
-                .map(|files| (b, files.clone()))
-        })
-        .collect();
-
-    if selected.is_empty() {
-        let mut present: Vec<&str> = by_language.keys().copied().collect();
-        present.sort_unstable();
-        stats.errors.push(format!(
-            "no file in this project belongs to a language `--precise` can resolve.\n  \
-             Supported: {}.\n  \
-             Found here: {}.",
-            backend::supported_languages(),
-            if present.is_empty() {
-                "(none)".to_string()
-            } else {
-                present.join(", ")
-            },
-        ));
-        return Ok(stats);
-    }
-
-    // Indexes shared by every language's pass.
-    let symbols = db.all_symbols()?;
-    let mut symbols_by_file: HashMap<i64, Vec<&SymbolRow>> = HashMap::new();
-    for s in &symbols {
-        symbols_by_file.entry(s.file_id).or_default().push(s);
-    }
-    let file_id_by_path: HashMap<String, i64> =
-        files.iter().map(|f| (f.path.clone(), f.id)).collect();
-
-    for (backend, lang_files) in selected {
-        let launcher = match backend.locate() {
-            Ok(l) => l,
-            Err(why) => {
-                stats.errors.push(format!(
-                    "skipping {} — {why}\n  \
-                     The heuristic edges for {} are kept as they are.",
-                    backend.lang_group, backend.lang_group
-                ));
-                continue;
-            }
-        };
-
-        if backend.lacks_project_model(&server_root) {
-            stats.warnings.push(format!(
-                "{}: no {} found in the project root — {}.",
-                backend.lang_group,
-                backend.project_markers.join(" / "),
-                backend.marker_hint
-            ));
-        }
-
-        let pending: Vec<&FileRow> = lang_files
-            .into_iter()
-            .filter(|f| opts.full || f.precise_synced_at.is_none())
-            .collect();
-        if pending.is_empty() {
-            continue;
-        }
-
-        if opts.full {
-            let ids: Vec<i64> = pending.iter().map(|f| f.id).collect();
-            db.clear_precise(&ids)?;
-        }
-
-        let mut resolver = Resolver {
-            db: &mut *db,
-            project: &server_root,
-            canonical_root: &canonical_root,
-            symbols_by_file: &symbols_by_file,
-            file_id_by_path: &file_id_by_path,
-            uri_cache: HashMap::new(),
-            opts,
-        };
-
-        match resolver.run_language(backend, &launcher, &pending) {
-            Ok((outcome, warnings)) => {
-                stats.warnings.extend(warnings);
-                stats.languages.push(outcome);
-            }
-            Err(e) => stats
-                .errors
-                .push(format!("{} ({}): {e:#}", backend.lang_group, launcher.name)),
-        }
-    }
-
-    if !stats.errors.is_empty() {
-        let ids = db.all_files()?.iter().map(|f| f.id).collect::<Vec<_>>();
-        db.clear_precise(&ids)?;
-        db.meta_set("precise_generation", "invalid")?;
-    }
-    if stats.errors.is_empty() {
-        db.meta_set(
-            "precise_generation",
-            &db.meta_get("generation")?.unwrap_or_else(|| "0".into()),
-        )?;
-    }
-    for message in stats.warnings.iter().chain(&stats.errors) {
-        crate::operation::warning(message.clone());
-    }
-    Ok(stats)
+    engine::run(db, project, opts)
 }
 
 fn language_selected(lang_group: &str, filter: &[String]) -> bool {
@@ -229,6 +97,7 @@ fn language_selected(lang_group: &str, filter: &[String]) -> bool {
                 "rs" => lang_group == "rust",
                 "ts" => lang_group == "typescript",
                 "js" => lang_group == "javascript",
+                "c++" => lang_group == "cpp",
                 other => other == lang_group,
             }
         })
@@ -243,6 +112,9 @@ struct Resolver<'a> {
     /// Definition URIs repeat constantly; resolving one costs a `canonicalize`.
     uri_cache: HashMap<String, Option<i64>>,
     opts: &'a PreciseOptions,
+    selected: Option<&'a HashMap<i64, usize>>,
+    deadline: Option<Instant>,
+    cfg: &'a crate::config::ProjectConfig,
 }
 
 impl Resolver<'_> {
@@ -265,7 +137,48 @@ impl Resolver<'_> {
         };
 
         let mut client = LspClient::start(launcher, self.project)?;
+        if let Some(deadline) = self.deadline {
+            client.set_deadline(deadline);
+        }
+        if backend.lang_group == "vue" {
+            client.attach_bridge(vue::companion(
+                self.project,
+                launcher,
+                self.cfg,
+                self.deadline,
+                self.opts.request_timeout,
+            )?);
+        }
         client.initialize(self.project, self.opts.request_timeout)?;
+        // Keep translation units open before any header queries, including on warm passes.
+        if matches!(backend.lang_group, "c" | "cpp") {
+            let context =
+                crate::c_family::BuildContext::load_cached(self.project, self.cfg, self.db)?;
+            let mut units = std::collections::BTreeMap::new();
+            for file in files {
+                let path = self.project.join(&file.path);
+                if crate::c_family::is_header(&path) {
+                    if let Some(header) = context.headers.get(&crate::c_family::absolute(&path))
+                        && let Some(includer) = &header.includer
+                    {
+                        units.insert(
+                            includer.clone(),
+                            context
+                                .language(includer)
+                                .map(|l| l.group())
+                                .unwrap_or("cpp"),
+                        );
+                    }
+                } else {
+                    units.insert(path, file.language.as_str());
+                }
+            }
+            for (path, language) in units {
+                crate::operation::check()?;
+                let text = fs::read_to_string(&path)?;
+                client.did_open(&path_to_uri(&path), language, &text)?;
+            }
+        }
 
         eprintln!(
             "precise[{}]: {} indexing {} file(s)...",
@@ -294,7 +207,9 @@ impl Resolver<'_> {
         }
 
         let result = self.resolve_files(&mut client, backend, files, &mut outcome, &mut warnings);
+        let cleanup = crate::operation::time("precise_cleanup");
         client.shutdown();
+        drop(cleanup);
         result?;
 
         Ok((outcome, warnings))
@@ -306,97 +221,156 @@ impl Resolver<'_> {
         backend: &Backend,
         files: &[&FileRow],
         outcome: &mut LanguageOutcome,
-        _warnings: &mut Vec<String>,
+        warnings: &mut Vec<String>,
     ) -> Result<()> {
-        let show_progress = std::io::stderr().is_terminal();
-
-        for (i, file) in files.iter().enumerate() {
+        for file in files {
             crate::operation::check()?;
-            let absolute = self.project.join(&file.path);
-            let text = match fs::read(&absolute) {
-                Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
-                Err(e) => anyhow::bail!("cannot read {}: {e}", file.path),
-            };
-
-            // The stored byte offsets describe the text as it was at sync time.
-            // If the file moved on since, pointing the server at those offsets
-            // would resolve the wrong tokens, so leave it for the next sync.
-            let hash = blake3::hash(text.as_bytes()).to_hex().to_string();
-            anyhow::ensure!(
-                hash == file.content_hash,
-                "{} changed during precise resolution; sync again",
-                file.path
-            );
-
-            let refs = self.db.refs_in_file(file.id)?;
-            if refs.is_empty() {
-                self.db.set_precise_results(file.id, &[])?;
-                outcome.files += 1;
-                continue;
+            if self.deadline.is_some_and(|d| Instant::now() >= d) {
+                break;
             }
-
-            let positions = PositionMap::new(text);
-            let uri = path_to_uri(&absolute);
-            client.did_open(&uri, backend.language_id, positions.text())?;
-
-            // Positions first, so every query for this file goes out together.
-            let mut queried_refs = Vec::with_capacity(refs.len());
-            let mut file_positions = Vec::with_capacity(refs.len());
-            for reference in &refs {
-                // Only the four precise-capable analyzers record the name token.
-                let Some(offset) = reference.name_start_byte else {
-                    continue;
-                };
-                let Some(position) = positions.position(offset as usize) else {
-                    continue;
-                };
-                queried_refs.push(reference.id);
-                file_positions.push(position);
-            }
-
-            let answers = client.definitions(&uri, &file_positions, self.opts.request_timeout)?;
-            let mut results = Vec::with_capacity(answers.len());
-            for (ref_id, answer) in queried_refs.into_iter().zip(&answers) {
-                let (status, symbol_id, confidence) = self.classify(answer);
-                match status {
-                    PreciseStatus::Hit => outcome.hits += 1,
-                    PreciseStatus::External => outcome.external += 1,
-                    PreciseStatus::NoNode => outcome.nonode += 1,
-                    PreciseStatus::Unresolved => outcome.unresolved += 1,
-                }
-                outcome.queried += 1;
-                results.push((ref_id, status, symbol_id, confidence));
-            }
-
-            client.did_close(&uri)?;
-            self.db.set_precise_results(file.id, &results)?;
-            outcome.files += 1;
-
-            if show_progress {
-                eprint!(
-                    "\rprecise[{}]: {}/{} files, {} refs resolved",
-                    backend.lang_group,
-                    i + 1,
-                    files.len(),
-                    outcome.hits
+            let result = (|| -> Result<()> {
+                let absolute = self.project.join(&file.path);
+                let text = fs::read_to_string(&absolute)?;
+                ensure!(
+                    blake3::hash(text.as_bytes()).to_hex().as_str() == file.content_hash,
+                    "{} changed during precise resolution; sync again",
+                    file.path
                 );
+                let references = self.db.refs_in_file(file.id)?;
+                let mut references: Vec<_> = references
+                    .into_iter()
+                    .filter(|r| self.selected.is_none_or(|ids| ids.contains_key(&r.id)))
+                    .collect();
+                if let Some(ranks) = self.selected {
+                    references.sort_by_key(|r| ranks.get(&r.id).copied().unwrap_or(usize::MAX));
+                }
+                if references.is_empty() {
+                    if !self.opts.selective {
+                        self.db.set_precise_results(file.id, &[])?;
+                    }
+                    return Ok(());
+                }
+                let positions = PositionMap::new(text);
+                let uri = path_to_uri(&absolute);
+                let language = document_language(file, backend);
+                if !matches!(backend.lang_group, "c" | "cpp")
+                    || crate::c_family::is_header(&absolute)
+                {
+                    client.open_bridge(&uri, language, positions.text())?;
+                    client.did_open(&uri, language, positions.text())?;
+                }
+                let mut ids = Vec::new();
+                let mut points = Vec::new();
+                for r in &references {
+                    if let Some(position) = r
+                        .name_start_byte
+                        .and_then(|o| positions.position(o as usize))
+                    {
+                        ids.push(r.id);
+                        points.push(position);
+                    }
+                }
+                let answers = if self.opts.selective {
+                    client.definitions_partial(&uri, &points, self.opts.request_timeout)?
+                } else {
+                    client
+                        .definitions(&uri, &points, self.opts.request_timeout)?
+                        .into_iter()
+                        .map(Ok)
+                        .collect()
+                };
+                let source_errors = if matches!(backend.lang_group, "c" | "cpp") {
+                    client.errors(&uri)
+                } else {
+                    Vec::new()
+                };
+                if !self.opts.selective {
+                    ensure!(
+                        source_errors.is_empty(),
+                        "clangd reported errors in {}: {}; fix build context or source before precise",
+                        file.path,
+                        source_errors.join("; ")
+                    );
+                }
+                let mut results = Vec::new();
+                let mut coverage = Vec::new();
+                for (id, answer) in ids.into_iter().zip(answers) {
+                    let answer = if source_errors.is_empty() {
+                        answer
+                    } else {
+                        Err(format!("source_diagnostics: {}", source_errors.join("; ")))
+                    };
+                    match answer {
+                        Ok(answer) => {
+                            let (status, symbol, confidence) = self.classify(&answer);
+                            match status {
+                                PreciseStatus::Hit => outcome.hits += 1,
+                                PreciseStatus::External => outcome.external += 1,
+                                PreciseStatus::NoNode => outcome.nonode += 1,
+                                PreciseStatus::Unresolved => outcome.unresolved += 1,
+                                PreciseStatus::Ambiguous => {
+                                    outcome.unresolved += 1;
+                                    warnings.push(format!("{}: LSP returned multiple distinct targets for reference {id}; left unresolved",file.path));
+                                }
+                            }
+                            outcome.queried += 1;
+                            results.push((id, status, symbol, confidence));
+                            coverage.push((
+                                id,
+                                serde_json::json!({"status":"checked","attempted":true})
+                                    .to_string(),
+                            ));
+                        }
+                        Err(error) => {
+                            let attempted = error != "pending";
+                            outcome.queried += usize::from(attempted);
+                            warnings.push(format!("{}:{id}: {error}", file.path));
+                            coverage.push((id,serde_json::json!({"status":"failed","attempted":attempted,"error":error}).to_string()));
+                        }
+                    }
+                }
+                self.db.set_precise_subset(
+                    file.id,
+                    &results,
+                    !self.opts.selective && results.len() == references.len(),
+                    &coverage,
+                )?;
+                outcome.files += 1;
+                if !matches!(backend.lang_group, "c" | "cpp") {
+                    client.did_close(&uri)?;
+                }
+                Ok(())
+            })();
+            crate::operation::check()?;
+            if let Err(error) = result {
+                if self.opts.selective {
+                    warnings.push(format!(
+                        "file_failed[{}]: {error:#}; other files continue",
+                        file.path
+                    ));
+                } else {
+                    return Err(error);
+                }
             }
-        }
-        if show_progress && !files.is_empty() {
-            eprintln!();
         }
         Ok(())
     }
 
     /// Turn a `textDocument/definition` answer into something storable.
     fn classify(&mut self, answer: &Value) -> (PreciseStatus, Option<i64>, f64) {
-        let targets = definition_targets(answer);
+        let mut targets = definition_targets(answer);
+        targets.sort();
+        targets.dedup();
+        if targets.len() > 1 {
+            return (PreciseStatus::Ambiguous, None, 0.0);
+        }
         if targets.is_empty() {
             return (PreciseStatus::Unresolved, None, 0.0);
         }
 
         let mut hits: Vec<i64> = Vec::new();
         let mut saw_outside = false;
+        let mut saw_nonode = false;
         for (uri, line, column) in &targets {
             match self.file_id_for_uri(uri) {
                 Some(file_id) => {
@@ -411,21 +385,34 @@ impl Resolver<'_> {
                         && !hits.contains(&symbol.id)
                     {
                         hits.push(symbol.id);
+                    } else if offset
+                        .and_then(|offset| symbols.and_then(|s| symbol_at_byte(s, offset as i64)))
+                        .is_none()
+                    {
+                        saw_nonode = true;
                     }
+                }
+                None if !uri.starts_with("file:")
+                    || uri.contains("__VLS_")
+                    || uri.contains(".vue.ts")
+                    || uri.contains(".svelte.ts") =>
+                {
+                    saw_nonode = true
                 }
                 None => saw_outside = true,
             }
         }
 
+        if targets.len() > 1 && (saw_outside || saw_nonode || hits.len() != 1) {
+            return (PreciseStatus::Ambiguous, None, 0.0);
+        }
         match hits.len() {
             0 if saw_outside => (PreciseStatus::External, None, 0.0),
             0 => (PreciseStatus::NoNode, None, 0.0),
             // Exactly one definition: the compiler's own answer.
             1 => (PreciseStatus::Hit, Some(hits[0]), 1.0),
-            // Several (a trait method and its impls, say). The first is what an
-            // editor's "go to definition" jumps to, but it is a choice, so the
-            // edge is marked slightly below certain.
-            _ => (PreciseStatus::Hit, Some(hits[0]), 0.9),
+            // Multiple distinct definitions must not become a first-target edge.
+            _ => (PreciseStatus::Ambiguous, None, 0.0),
         }
     }
 
@@ -493,6 +480,15 @@ fn line_of(range: &Value) -> Option<i64> {
         .and_then(|s| s.get("line"))
         .and_then(Value::as_i64)
         .map(|l| l + 1)
+}
+
+fn document_language<'a>(file: &'a FileRow, backend: &Backend) -> &'a str {
+    match crate::analysis::Language::from_path(Path::new(&file.path)) {
+        Some(crate::analysis::Language::Jsx) => "javascriptreact",
+        Some(crate::analysis::Language::Tsx) => "typescriptreact",
+        _ if file.language == backend.lang_group => backend.language_id,
+        _ => &file.language,
+    }
 }
 
 #[cfg(test)]

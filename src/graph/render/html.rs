@@ -27,7 +27,9 @@ mod tests {
     #[test]
     fn output_is_fully_self_contained() {
         let graph = CodeGraph {
-            version: 2,
+            precision: Default::default(),
+            resolution_summary: Default::default(),
+            version: 3,
             root: ".".to_string(),
             generated_at: 0,
             nodes: Vec::new(),
@@ -53,7 +55,9 @@ mod tests {
         use crate::graph::CommunityInfo;
 
         let graph = CodeGraph {
-            version: 2,
+            precision: Default::default(),
+            resolution_summary: Default::default(),
+            version: 3,
             root: ".".to_string(),
             generated_at: 0,
             nodes: Vec::new(),

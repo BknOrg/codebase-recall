@@ -1,0 +1,1 @@
+import { work } from './helper.js'; export function start() { work(); }

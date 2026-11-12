@@ -21,13 +21,15 @@ use std::collections::{HashMap, HashSet};
 use crate::cache::models::{FileRow, RefRow, SymbolRow};
 
 /// What a locally-visible name binds to across files.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(super) enum Target {
-    Symbol(i64),
+    Symbols(Vec<i64>),
     Module(i64),
 }
 
 /// Read-only indexes the resolver needs, assembled once in [`super::build`].
+pub(super) type LocalTypes = HashMap<(i64, String), Vec<(i64, i64, Option<i64>, String)>>;
+
 pub(super) struct ResolveCtx<'a> {
     pub file_by_id: &'a HashMap<i64, &'a FileRow>,
     pub sym_by_id: &'a HashMap<i64, &'a SymbolRow>,
@@ -40,242 +42,469 @@ pub(super) struct ResolveCtx<'a> {
     /// type simple name -> { field name -> field type simple name }.
     pub type_fields: &'a HashMap<String, HashMap<String, String>>,
     /// (enclosing symbol id, param/local name) -> declared type simple name.
-    pub local_types: &'a HashMap<(i64, String), String>,
+    pub local_types: &'a LocalTypes,
     /// file id -> file ids it imports (module reachability for L4).
     pub imports_files: &'a HashMap<i64, HashSet<i64>>,
 }
 
-pub(super) fn resolve_ref(rf: &RefRow, importer: &FileRow, ctx: &ResolveCtx) -> Option<(i64, f32)> {
-    // ---- L0: ground truth from a language server ---------------------------
-    // Deliberately ahead of `local_only`: the server's answer outranks every
-    // heuristic, including the analyzer's own same-file scope walk.
-    match rf.precise_status.as_deref() {
-        Some("hit") => {
-            if let Some(id) = rf
-                .precise_symbol_id
-                .filter(|id| ctx.sym_by_id.contains_key(id))
-            {
-                return Some((id, rf.precise_confidence.unwrap_or(1.0) as f32));
-            }
-            // The target file was re-analyzed after the precise pass ran, so the
-            // id was dropped. Fall through and let the heuristics answer until
-            // the next `--precise` run refreshes it.
+/// Evidence attached to the single selected edge. Alternatives are not graph edges.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Resolution {
+    #[serde(skip)]
+    pub target: i64,
+    pub evidence: String,
+    pub reason: String,
+    pub confidence: f32,
+    pub ambiguous: bool,
+    pub alternatives: Vec<Alternative>,
+    pub omitted_alternatives: usize,
+}
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Alternative {
+    pub id: String,
+    pub qualified_name: String,
+    pub path: String,
+}
+fn facts_kind(s: &SymbolRow) -> crate::analysis::semantic::SymbolKind {
+    use crate::analysis::semantic::SymbolKind;
+    if s.semantic.kind == SymbolKind::Unknown {
+        SymbolKind::from_legacy(&s.kind)
+    } else {
+        s.semantic.kind
+    }
+}
+fn qualified(s: &SymbolRow) -> &str {
+    if s.semantic.qualified_name.is_empty() {
+        &s.name
+    } else {
+        &s.semantic.qualified_name
+    }
+}
+fn same_type(s: &SymbolRow, ty: &str) -> bool {
+    let owner = s
+        .semantic
+        .owner
+        .as_deref()
+        .or(s.type_name.as_deref())
+        .unwrap_or("");
+    owner == ty
+        || base_type(owner) == base_type(ty)
+        || (!ty.contains("::") && owner.rsplit("::").next() == Some(base_type(ty)))
+}
+fn visible(s: &SymbolRow, rf: &RefRow, importer: &FileRow, ctx: &ResolveCtx) -> bool {
+    use crate::analysis::semantic::Visibility;
+    match s.semantic.visibility {
+        Visibility::Protected if importer.language == "cpp" => {
+            let Some(owner) = rf
+                .from_symbol_id
+                .and_then(|id| ctx.sym_by_id.get(&id))
+                .and_then(|from| from.semantic.owner.as_deref())
+            else {
+                return false;
+            };
+            s.semantic.owner.as_deref() == Some(owner) || inherited_owner(s, owner, importer, ctx)
         }
-        // The server resolved this reference, just not to a node in this graph:
-        // the standard library, a third-party dependency, or a spot we keep no
-        // symbol for. A heuristic guess here would be a false edge.
-        Some("external") | Some("nonode") => return None,
-        // `unresolved` (or never queried) — the server had nothing, so the
-        // heuristic layers below are still the best available answer.
+        Visibility::Private => {
+            if importer.language == "cpp"
+                && s.semantic.owner.is_some()
+                && rf
+                    .from_symbol_id
+                    .and_then(|id| ctx.sym_by_id.get(&id))
+                    .is_some_and(|from| from.semantic.owner == s.semantic.owner)
+            {
+                return true;
+            }
+            if s.file_id != importer.id {
+                return false;
+            }
+            // Rust private items are visible within their module and children.
+            if importer.language == "rust" {
+                return true;
+            }
+            match (
+                &s.semantic.owner,
+                rf.from_symbol_id.and_then(|id| ctx.sym_by_id.get(&id)),
+            ) {
+                (Some(owner), Some(from)) => qualified(from).starts_with(&format!("{owner}::")),
+                _ => true,
+            }
+        }
+        Visibility::Package => {
+            let package = ctx
+                .syms_by_file
+                .get(&importer.id)
+                .and_then(|ss| ss.iter().find_map(|s| s.semantic.package.as_ref()));
+            s.semantic.package.as_ref() == package
+        }
+        _ => true,
+    }
+}
+
+pub(super) fn resolve_ref(rf: &RefRow, importer: &FileRow, ctx: &ResolveCtx) -> Option<Resolution> {
+    let exact = |target, confidence, evidence: &str, reason: &str| Resolution {
+        target,
+        confidence,
+        evidence: evidence.into(),
+        reason: reason.into(),
+        ambiguous: false,
+        alternatives: Vec::new(),
+        omitted_alternatives: 0,
+    };
+    match rf.precise_status.as_deref() {
+        Some("hit")
+            if rf
+                .precise_symbol_id
+                .is_some_and(|id| ctx.sym_by_id.contains_key(&id)) =>
+        {
+            return Some(exact(
+                rf.precise_symbol_id?,
+                rf.precise_confidence.unwrap_or(1.0) as f32,
+                "lsp",
+                "language-server definition",
+            ));
+        }
+        Some("external" | "nonode" | "ambiguous") => return None,
         _ => {}
     }
-
-    // ---- L1: settled at sync time ------------------------------------------
     if rf.local_only {
         return None;
     }
-    if let Some(id) = rf.resolved_symbol_id {
-        return Some((id, rf.resolved_confidence.unwrap_or(0.95) as f32));
-    }
-
     let rk = rf.receiver_kind.as_deref().unwrap_or("none");
-
-    // ---- L2: precise import binding --------------------------------------
-    if matches!(rk, "none" | "path")
-        && let Some(Target::Symbol(id)) = ctx.binding.get(&(rf.file_id, rf.name.clone()))
-    {
-        return Some((*id, 0.90));
-    }
-    if matches!(rk, "path" | "value" | "self")
-        && let Some(recv) = rf.receiver.as_deref()
-    {
-        // `foo.bar()` -> `foo`; `crate::a::mod::bar()` -> try `crate` and `mod`.
-        let first = recv.split(['.', ':']).next().unwrap_or(recv);
-        let last = recv.rsplit("::").next().unwrap_or(recv);
-        for key in [first, last] {
-            if let Some(Target::Module(fid)) = ctx.binding.get(&(rf.file_id, key.to_string()))
-                && let Some(id) = exported_in(ctx, *fid, &rf.name)
+    let inferred = infer_receiver_type(rf, ctx);
+    let mut all = ctx
+        .defs_by_name
+        .get(rf.name.as_str())
+        .cloned()
+        .unwrap_or_default();
+    if let Some(Target::Symbols(ids)) = ctx.binding.get(&(rf.file_id, rf.name.clone())) {
+        for id in ids {
+            if let Some(&s) = ctx.sym_by_id.get(id)
+                && !all.iter().any(|a| a.id == s.id)
             {
-                return Some((id, 0.90));
+                all.push(s);
             }
         }
     }
-
-    // ---- L3: receiver-type resolution ---------------------------------------
-    let inferred = infer_receiver_type(rf, ctx);
-    if let Some((ty, conf)) = &inferred
-        && let Some(id) = method_of_type(ctx, ty, rf, importer)
-    {
-        return Some((id, *conf));
-    }
-
-    // Rust and Go have no class inheritance, so a call on a receiver of known
-    // type can only reach that type's own methods (or a trait's). Anything left
-    // is `SystemTime::now()` / `node.walk()` on a type that is not ours.
-    let nominal_typing = matches!(importer.language.as_str(), "rust" | "go");
-    if nominal_typing && rk == "path" && names_foreign_type(rf, ctx) {
-        return None;
-    }
-
-    // ---- L4: scored disambiguation ----------------------------------------
-    let all = ctx.defs_by_name.get(rf.name.as_str())?;
-    let cands: Vec<&SymbolRow> = all
-        .iter()
-        .filter(|s| {
-            ctx.file_by_id
-                .get(&s.file_id)
-                .is_some_and(|f| languages_compatible(&f.language, &importer.language))
-        })
-        // A reference in type position names a type, never a function, even
-        // though it carries no receiver and so looks like a bare call here.
-        .filter(|s| match (rf.ref_kind.as_str(), rk) {
-            ("type", _) => is_type_kind(&s.kind),
-            // A name handed over as a value can be a function, a const, or a
-            // unit struct / enum variant used as a constructor.
-            ("value", _) => matches!(
-                s.kind.as_str(),
-                "function" | "method" | "variable" | "struct" | "enum"
-            ),
-            (_, "value") => s.kind == "method",
-            (_, "none") => matches!(s.kind.as_str(), "function" | "method"),
-            _ => true,
-        })
-        .filter(|s| match (&inferred, nominal_typing) {
-            (Some((ty, _)), true) => belongs_to_receiver(ctx, s, ty),
-            _ => true,
-        })
-        .copied()
-        .collect();
-    if cands.is_empty() {
-        return None;
-    }
-
+    let source = rf
+        .from_symbol_id
+        .and_then(|id| ctx.sym_by_id.get(&id))
+        .copied();
     let reachable = ctx.imports_files.get(&rf.file_id);
-
-    // `set.insert(x)` / `k.as_str()` / `x.clone()` / `Default::default()` on a receiver
-    // we could not type is almost always the standard library's method, not an arbitrary
-    // project method that happens to share that name in an imported module.
-    if matches!(rk, "value" | "none") && STD_METHOD_NAMES.contains(&rf.name.as_str()) {
-        let has_matching_type = inferred
-            .as_ref()
-            .map(|(ty, _)| cands.iter().any(|c| belongs_to_receiver(ctx, c, ty)))
-            .unwrap_or(false);
-        if !has_matching_type {
-            return None;
-        }
-    } else if matches!(rk, "path")
-        && STD_METHOD_NAMES.contains(&rf.name.as_str())
-        && !cands
-            .iter()
-            .any(|c| reachable.is_some_and(|r| r.contains(&c.file_id)))
-    {
-        return None;
-    }
-
-    // The same reasoning one level up, for names in type position. A file
-    // writing `Command` almost always means `std::process::Command`, not the
-    // unrelated project enum that happens to share the name — unless an import
-    // actually ties the two files together. Without this, adding type
-    // references made every common type name a hub.
-    if rf.ref_kind == "type"
-        && STD_TYPE_NAMES.contains(&rf.name.as_str())
-        && !cands
-            .iter()
-            .any(|c| reachable.is_some_and(|r| r.contains(&c.file_id)))
-    {
-        return None;
-    }
-    let importer_dir = dir_of(&importer.path);
-    let score = |c: &SymbolRow| -> i32 {
-        let mut sc = 0;
-        if reachable.is_some_and(|r| r.contains(&c.file_id)) {
-            sc += 3;
-        }
-        if c.is_exported {
-            sc += 2;
-        }
-        match (rf.arg_count, c.param_count) {
-            (Some(a), Some(p)) if a == p => sc += 2,
-            (Some(a), Some(p)) if (a - p).abs() == 1 => sc += 1,
-            _ => {}
-        }
-        if ctx
+    let binding = ctx.binding.get(&(rf.file_id, rf.name.clone()));
+    let mut ranked: Vec<(i32, &SymbolRow, &'static str)> = Vec::new();
+    for &s in &all {
+        if !ctx
             .file_by_id
-            .get(&c.file_id)
-            .is_some_and(|f| dir_of(&f.path) == importer_dir)
+            .get(&s.file_id)
+            .is_some_and(|f| languages_compatible(&f.language, &importer.language))
+            || !visible(s, rf, importer, ctx)
         {
-            sc += 1;
+            continue;
         }
-        sc
-    };
-
-    let mut scored: Vec<(i32, &SymbolRow)> = cands.iter().map(|c| (score(c), *c)).collect();
-    scored.sort_by_key(|b| std::cmp::Reverse(b.0));
-    let best = scored[0];
-    let margin = match scored.get(1) {
-        Some(runner_up) => best.0 - runner_up.0,
-        None => i32::MAX, // a single candidate is unambiguous
-    };
-
-    // "precision" mode: a tie produces no edge.
-    if margin >= 2 {
-        // The score says how well the winner fits; how alone it is says how far
-        // to trust it. A name only one definition carries is a much safer guess
-        // than the same score won against rivals, so it earns a higher ceiling.
-        let base: f32 = 0.4 + 0.03 * best.0 as f32;
-        let conf = if scored.len() == 1 {
-            (base + 0.15).clamp(0.55, 0.75)
-        } else if margin >= 4 {
-            (base + 0.05).clamp(0.4, 0.7)
+        let kind = facts_kind(s);
+        if matches!(importer.language.as_str(), "c" | "cpp") {
+            let internal = s
+                .semantic
+                .language_details
+                .get("internal_linkage")
+                .and_then(|v| v.as_bool())
+                == Some(true);
+            if internal && s.file_id != rf.file_id {
+                continue;
+            }
+            if s.file_id == rf.file_id
+                && s.start_byte
+                    .zip(rf.name_start_byte)
+                    .is_some_and(|(decl, at)| decl > at)
+                && !(importer.language == "cpp"
+                    && source.is_some_and(|from| {
+                        from.semantic.owner.is_some() && from.semantic.owner == s.semantic.owner
+                    }))
+            {
+                continue;
+            }
+            if rf.ref_kind == "tag"
+                && !matches!(
+                    kind,
+                    crate::analysis::semantic::SymbolKind::Struct
+                        | crate::analysis::semantic::SymbolKind::Union
+                        | crate::analysis::semantic::SymbolKind::Enum
+                )
+            {
+                continue;
+            }
+            if importer.language == "c"
+                && rf.ref_kind == "type"
+                && matches!(
+                    kind,
+                    crate::analysis::semantic::SymbolKind::Struct
+                        | crate::analysis::semantic::SymbolKind::Union
+                        | crate::analysis::semantic::SymbolKind::Enum
+                )
+            {
+                continue;
+            }
+            if s.file_id != rf.file_id && !reachable.is_some_and(|fs| fs.contains(&s.file_id)) {
+                continue;
+            }
+        }
+        if rf.ref_kind == "type" && !kind.is_type() {
+            continue;
+        }
+        if rf.ref_kind == "call" && !kind.callable() && !kind.is_type() && s.kind != "variable" {
+            continue;
+        }
+        if let Some(a) = rf.arg_count {
+            let explicit_receiver = rk == "path"
+                && importer.language == "rust"
+                && s.semantic
+                    .parameters
+                    .as_ref()
+                    .is_some_and(|ps| ps.iter().any(|p| p.receiver));
+            if kind.callable() && !s.semantic.accepts_arity(a - i64::from(explicit_receiver)) {
+                continue;
+            }
+        }
+        if importer.language == "cpp"
+            && rk == "path"
+            && let Some(receiver) = &rf.receiver
+            && s.semantic.owner.as_deref() != Some(receiver.as_str())
+            && !s
+                .semantic
+                .owner
+                .as_deref()
+                .is_some_and(|o| o.ends_with(&format!("::{receiver}")))
+        {
+            continue;
+        }
+        let mut score = if kind == crate::analysis::semantic::SymbolKind::Constructor {
+            5
         } else {
-            base.clamp(0.4, 0.7)
+            0
         };
-        Some((best.1.id, conf))
+        let mut evidence = "name_heuristic";
+        if importer.language == "cpp" && rk == "path" && rf.receiver.is_some() {
+            score += 80;
+            evidence = "qualified_name";
+        }
+        if Some(s.id) == rf.resolved_symbol_id {
+            score += 100;
+            evidence = "scope";
+        }
+        if let Some(Target::Symbols(ids)) = binding
+            && ids.contains(&s.id)
+        {
+            score += 60;
+            evidence = "import";
+        }
+        if let Some((ty, _)) = &inferred {
+            if same_type(s, ty) {
+                score += 80;
+                evidence = "receiver";
+            } else if inherited_owner(s, ty, importer, ctx) {
+                score += 65;
+                evidence = "inheritance";
+            } else if matches!(rk, "value" | "self") && s.semantic.extension_receiver.is_none() {
+                continue;
+            }
+        }
+        if matches!(rk, "path" | "value" | "self")
+            && let Some(recv) = &rf.receiver
+        {
+            let key = recv.split(['.', ':']).next().unwrap_or(recv);
+            if let Some(Target::Module(fid)) = ctx.binding.get(&(rf.file_id, key.to_string()))
+                && *fid == s.file_id
+            {
+                score += 60;
+                evidence = "import";
+            }
+        }
+        if let Some(from) = source {
+            if from.semantic.owner.is_some() && from.semantic.owner == s.semantic.owner {
+                score += 35;
+                if evidence == "name_heuristic" {
+                    evidence = "owner";
+                }
+            }
+            if from.semantic.package.is_some() && from.semantic.package == s.semantic.package {
+                score += 10;
+            }
+        }
+        if s.file_id == importer.id {
+            score += 15;
+        }
+        if reachable.is_some_and(|r| r.contains(&s.file_id)) {
+            score += 10;
+        }
+        if rf.arg_count.zip(s.param_count).is_some_and(|(a, p)| a == p) {
+            score += 3;
+        }
+        if let (Some(args), Some(params)) = (&rf.argument_types, &s.semantic.parameters) {
+            let params: Vec<_> = params.iter().filter(|p| !p.receiver).collect();
+            for (arg, param) in args.iter().zip(params) {
+                if let (Some(arg), Some(declared)) = (arg, &param.declared_type)
+                    && arg.trim() == declared.trim()
+                {
+                    score += 8;
+                }
+            }
+        }
+        if s.is_exported {
+            score += 1;
+        }
+        // Keep the existing foreign/stdlib safeguards. Name-only matches are
+        // insufficient evidence for ubiquitous library identifiers.
+        if score < 35
+            && ((rf.ref_kind == "type" && STD_TYPE_NAMES.contains(&rf.name.as_str()))
+                || (rf.ref_kind == "call"
+                    && STD_METHOD_NAMES.contains(&rf.name.as_str())
+                    && !reachable.is_some_and(|r| r.contains(&s.file_id))))
+        {
+            continue;
+        }
+        if matches!(importer.language.as_str(), "rust" | "go")
+            && rk == "path"
+            && names_foreign_type(rf, ctx)
+            && score < 60
+        {
+            continue;
+        }
+        // Additional receiver/owner hints must not downgrade a proven lexical binding.
+        if Some(s.id) == rf.resolved_symbol_id {
+            evidence = "scope";
+        }
+        ranked.push((score, s, evidence));
+    }
+    ranked.sort_by(|a, b| {
+        b.0.cmp(&a.0)
+            .then_with(|| qualified(a.1).cmp(qualified(b.1)))
+            .then_with(|| {
+                ctx.file_by_id[&a.1.file_id]
+                    .path
+                    .cmp(&ctx.file_by_id[&b.1.file_id].path)
+            })
+            .then_with(|| a.1.start_byte.cmp(&b.1.start_byte))
+            .then_with(|| a.1.end_byte.cmp(&b.1.end_byte))
+    });
+    let &(score, best, evidence) = ranked.first()?;
+    let unknown_receiver =
+        matches!(rk, "value" | "self") && inferred.is_none() && evidence != "import";
+    let dynamic_dispatch = inferred.as_ref().is_some_and(|(ty, _)| {
+        ctx.syms_by_file.values().flatten().any(|s| {
+            matches!(
+                facts_kind(s),
+                crate::analysis::semantic::SymbolKind::Interface
+                    | crate::analysis::semantic::SymbolKind::Trait
+            ) && (qualified(s) == ty || s.name == *ty)
+        })
+    });
+    let ambiguous = unknown_receiver
+        || dynamic_dispatch
+        || ranked.get(1).is_some_and(|r| score - r.0 < 5)
+        || matches!(importer.language.as_str(), "c" | "cpp")
+            && (ranked[0]
+                .1
+                .semantic
+                .language_details
+                .get("conditional")
+                .and_then(|v| v.as_bool())
+                == Some(true)
+                || (ranked[0].1.semantic.modifiers.is_virtual == Some(true)
+                    || ranked[0]
+                        .1
+                        .semantic
+                        .language_details
+                        .get("override")
+                        .and_then(|v| v.as_bool())
+                        == Some(true))
+                || !ranked[0].1.semantic.type_parameters.is_empty());
+    let alternatives: Vec<_> = if ambiguous {
+        ranked
+            .iter()
+            .skip(1)
+            .filter(|r| unknown_receiver || dynamic_dispatch || score - r.0 < 5)
+            .map(|(_, s, _)| {
+                let path = ctx.file_by_id[&s.file_id].path.clone();
+                Alternative {
+                    id: crate::graph::declaration_id(
+                        &path,
+                        &s.name,
+                        s.start_byte.unwrap_or(0),
+                        s.end_byte.unwrap_or(0),
+                        &s.kind,
+                    ),
+                    qualified_name: qualified(s).into(),
+                    path,
+                }
+            })
+            .collect()
     } else {
-        None
-    }
+        Vec::new()
+    };
+    let omitted_alternatives = alternatives.len().saturating_sub(3);
+    let confidence = if ambiguous {
+        0.35
+    } else {
+        match evidence {
+            "scope" => 0.95,
+            "import" => 0.90,
+            "receiver" => 0.85,
+            "inheritance" | "owner" => 0.80,
+            _ => 0.60,
+        }
+    };
+    Some(Resolution {
+        target: best.id,
+        confidence,
+        evidence: evidence.into(),
+        reason: if unknown_receiver {
+            "receiver type is unknown; primary target is a guess".into()
+        } else if dynamic_dispatch {
+            "receiver uses interface/trait dispatch; runtime implementation is unknown".into()
+        } else if ambiguous {
+            "multiple compatible candidates; deterministic primary guess".into()
+        } else {
+            format!("best compatible candidate by {evidence}")
+        },
+        ambiguous,
+        omitted_alternatives,
+        alternatives: alternatives.into_iter().take(3).collect(),
+    })
 }
 
-/// The method `rf.name` of type `ty` nearest the caller.
-///
-/// Type names are not unique across a project, so `ty` may name several
-/// unrelated types. The caller's own file wins (a `self.walk()` belongs to the
-/// type defined beside it), then its directory; failing both, the first
-/// definition is kept, which is what a single-candidate lookup always did.
-fn method_of_type(ctx: &ResolveCtx, ty: &str, rf: &RefRow, importer: &FileRow) -> Option<i64> {
-    let ids = ctx.type_methods.get(ty)?.get(&rf.name)?;
-    if let [only] = ids.as_slice() {
-        return Some(*only);
+fn inherited_owner(s: &SymbolRow, ty: &str, importer: &FileRow, ctx: &ResolveCtx) -> bool {
+    let mut pending = vec![ty.to_string()];
+    let mut seen = HashSet::new();
+    while let Some(current) = pending.pop() {
+        if !seen.insert(current.clone()) {
+            continue;
+        }
+        for types in ctx.syms_by_file.values() {
+            for t in types.iter().filter(|t| {
+                facts_kind(t).is_type()
+                    && (qualified(t) == current
+                        || (t.name == current
+                            && (t.file_id == importer.id
+                                || ctx
+                                    .imports_files
+                                    .get(&importer.id)
+                                    .is_some_and(|files| files.contains(&t.file_id))
+                                || t.semantic.package.as_ref().is_some_and(|pkg| {
+                                    ctx.syms_by_file.get(&importer.id).is_some_and(|ss| {
+                                        ss.iter().any(|s| s.semantic.package.as_ref() == Some(pkg))
+                                    })
+                                }))))
+            }) {
+                for base in &t.semantic.relations {
+                    if same_type(s, &base.target) {
+                        return true;
+                    }
+                    pending.push(base.target.clone());
+                }
+            }
+        }
     }
-    let file_of = |id: &i64| {
-        ctx.sym_by_id
-            .get(id)
-            .and_then(|s| ctx.file_by_id.get(&s.file_id))
-    };
-    let importer_dir = dir_of(&importer.path);
-    ids.iter()
-        .find(|id| file_of(id).is_some_and(|f| f.id == importer.id))
-        .or_else(|| {
-            ids.iter()
-                .find(|id| file_of(id).is_some_and(|f| dir_of(&f.path) == importer_dir))
-        })
-        .or_else(|| ids.first())
-        .copied()
-}
-
-/// Whether candidate `c` could be the method a call on a receiver of type `ty`
-/// reaches: it is one of that type's methods, a trait's (default methods live on
-/// the trait, not the implementor), or has no recorded owner to contradict.
-fn belongs_to_receiver(ctx: &ResolveCtx, c: &SymbolRow, ty: &str) -> bool {
-    let Some(owner) = c.type_name.as_deref() else {
-        return true;
-    };
-    let (owner, ty) = (base_type(owner), base_type(ty));
-    owner == ty
-        || ctx.defs_by_name.get(owner).is_some_and(|defs| {
-            defs.iter()
-                .any(|d| matches!(d.kind.as_str(), "trait" | "interface"))
-        })
+    false
 }
 
 /// The bare type name inside a written type: `&mut Gauge<'a, T>` and
@@ -416,14 +645,6 @@ const STD_METHOD_NAMES: &[&str] = &[
     "recv",
 ];
 
-fn exported_in(ctx: &ResolveCtx, file_id: i64, name: &str) -> Option<i64> {
-    let list = ctx.syms_by_file.get(&file_id)?;
-    list.iter()
-        .find(|s| s.name == name && s.is_exported)
-        .or_else(|| list.iter().find(|s| s.name == name))
-        .map(|s| s.id)
-}
-
 /// Best-effort simple type name of the reference's receiver, with a confidence.
 fn infer_receiver_type(rf: &RefRow, ctx: &ResolveCtx) -> Option<(String, f32)> {
     let recv = rf.receiver.as_deref()?;
@@ -436,6 +657,12 @@ fn infer_receiver_type(rf: &RefRow, ctx: &ResolveCtx) -> Option<(String, f32)> {
         "path" => {
             // `Foo::bar` / `a::Foo::bar` — the receiver is a type path.
             let head = recv.rsplit("::").next().unwrap_or(recv);
+            if head == "Self" {
+                return rf
+                    .from_symbol_id
+                    .and_then(|id| method_owner_type(ctx, id))
+                    .map(|ty| (ty, 0.85));
+            }
             if ctx.type_methods.contains_key(head) || is_type_name(ctx, head) {
                 Some((head.to_string(), 0.85))
             } else {
@@ -456,7 +683,19 @@ fn resolve_value_receiver(rf: &RefRow, ctx: &ResolveCtx) -> Option<(String, f32)
 
     let mut cur = if matches!(first, "self" | "this") {
         method_owner_type(ctx, from?)?
-    } else if let Some(ty) = from.and_then(|f| ctx.local_types.get(&(f, first.to_string()))) {
+    } else if let Some(ty) = from
+        .and_then(|f| ctx.local_types.get(&(f, first.to_string())))
+        .and_then(|types| {
+            types
+                .iter()
+                .filter(|(lo, hi, decl, _)| {
+                    rf.name_start_byte
+                        .is_none_or(|at| at >= *lo && at < *hi && decl.is_none_or(|d| d <= at))
+                })
+                .min_by_key(|(lo, hi, _, _)| hi - lo)
+                .map(|(_, _, _, ty)| ty)
+        })
+    {
         ty.clone()
     } else if is_type_name(ctx, first) {
         first.to_string()
@@ -476,6 +715,9 @@ fn resolve_value_receiver(rf: &RefRow, ctx: &ResolveCtx) -> Option<(String, f32)
 /// The type that owns `symbol_id` if it is a method.
 fn method_owner_type(ctx: &ResolveCtx, symbol_id: i64) -> Option<String> {
     let s = ctx.sym_by_id.get(&symbol_id)?;
+    if let Some(t) = &s.semantic.owner {
+        return Some(t.clone());
+    }
     if let Some(t) = &s.type_name {
         return Some(t.clone());
     }
@@ -493,17 +735,13 @@ fn is_type_name(ctx: &ResolveCtx, name: &str) -> bool {
 
 /// Symbol kinds that a name in type position can legitimately reach.
 fn is_type_kind(kind: &str) -> bool {
-    matches!(
-        kind,
-        "struct" | "enum" | "trait" | "interface" | "class" | "type" | "component"
-    )
+    crate::analysis::semantic::SymbolKind::from_legacy(kind).is_type()
 }
 
-fn dir_of(path: &str) -> &str {
-    path.rfind(['/', '\\']).map(|i| &path[..i]).unwrap_or("")
-}
-
-fn languages_compatible(a: &str, b: &str) -> bool {
+pub(super) fn languages_compatible(a: &str, b: &str) -> bool {
+    if matches!(a, "c" | "cpp") && matches!(b, "c" | "cpp") {
+        return true;
+    }
     if a == b {
         return true;
     }

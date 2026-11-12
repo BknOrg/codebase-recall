@@ -110,7 +110,7 @@ impl<'a> Walker<'a> {
         if let Some(i) = idx {
             let (name, real_kind) = {
                 let s = &self.out.symbols[i];
-                (s.name.clone(), s.kind.clone())
+                (s.name.clone(), s.kind)
             };
             let scope_kind = match real_kind.as_str() {
                 "class" | "interface" => "class",
@@ -254,8 +254,9 @@ impl<'a> Walker<'a> {
         };
 
         self.out.symbols.push(NewSymbol {
+            semantic: Default::default(),
             name,
-            kind: kind.to_string(),
+            kind: kind.into(),
             parent_index: self.stack.last().copied(),
             is_exported: exported,
             start_line: self.line(node),
@@ -332,8 +333,9 @@ impl<'a> Walker<'a> {
                     crate::analysis::node_signature(d, self.src)
                 };
                 self.out.symbols.push(NewSymbol {
+                    semantic: Default::default(),
                     name: name.clone(),
-                    kind: kind.to_string(),
+                    kind: kind.into(),
                     parent_index: self.stack.last().copied(),
                     is_exported: exported,
                     start_line: self.line(d),
@@ -513,8 +515,9 @@ impl<'a> Walker<'a> {
         node: Node,
     ) {
         self.out.refs.push(NewRef {
+            argument_types: None,
             name,
-            ref_kind: kind.to_string(),
+            ref_kind: kind.into(),
             receiver,
             start_line: self.line(node),
             start_byte: node.start_byte() as i64,

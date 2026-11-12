@@ -308,7 +308,14 @@ fn setup_integrations_install_are_idempotent_and_removable() {
     let skill = read(&dir, ".agents/skills/code-rcl/SKILL.md");
     assert!(skill.contains(env!("CARGO_PKG_VERSION")));
     assert!(skill.lines().count() <= 150);
-    for name in ["cli.md", "mcp.md", "installation.md", "embeddings.md"] {
+    for name in [
+        "cli.md",
+        "mcp.md",
+        "installation.md",
+        "embeddings.md",
+        "symbols.md",
+        "c-family.md",
+    ] {
         assert!(
             read(&dir, &format!(".agents/skills/code-rcl/references/{name}"))
                 .contains(env!("CARGO_PKG_VERSION"))

@@ -1,5 +1,6 @@
 //! AST-based extraction of symbols, imports, and references from source files.
 
+mod c_family;
 pub(crate) mod embedding_bodies;
 mod go;
 mod java;
@@ -10,6 +11,8 @@ pub mod lang;
 pub mod python;
 mod rust;
 pub mod scope;
+pub mod semantic;
+mod semantic_extract;
 mod sfc;
 mod toml;
 
@@ -37,8 +40,9 @@ pub struct ParsedFile {
 
 /// Parse `source` according to `language`.
 pub fn parse_file(language: Language, source: &str) -> ParsedFile {
-    match language {
+    let mut parsed = match language {
         Language::Rust => rust::parse(source),
+        Language::C | Language::Cpp => return c_family::parse(source, language),
         Language::JavaScript | Language::Jsx | Language::TypeScript | Language::Tsx => {
             javascript::parse(source, language)
         }
@@ -48,7 +52,9 @@ pub fn parse_file(language: Language, source: &str) -> ParsedFile {
         Language::Vue | Language::Svelte => sfc::parse(source, language),
         Language::Go => go::parse(source),
         Language::Toml => toml::parse(source),
-    }
+    };
+    semantic_extract::enrich(language, source, &mut parsed);
+    parsed
 }
 
 /// Extracts a single-line declaration signature from a tree-sitter AST node,
@@ -110,4 +116,78 @@ pub fn diagnostics(root: tree_sitter::Node<'_>) -> Vec<serde_json::Value> {
     }
     out.sort_by_key(|d| d["start_byte"].as_u64());
     out
+}
+
+/// Include file module identity where the language has no package declaration.
+pub fn qualify_file(parsed: &mut ParsedFile, path: &str, language: Language) {
+    let prefix = path
+        .rsplit_once('.')
+        .map_or(path, |(stem, _)| stem)
+        .replace('/', "::");
+    let file_modules = matches!(
+        language,
+        Language::Rust
+            | Language::Python
+            | Language::JavaScript
+            | Language::Jsx
+            | Language::TypeScript
+            | Language::Tsx
+            | Language::Vue
+            | Language::Svelte
+    );
+    for symbol in &mut parsed.symbols {
+        if file_modules {
+            symbol.semantic.qualified_name =
+                format!("{prefix}::{}", symbol.semantic.qualified_name);
+            if let Some(owner) = &mut symbol.semantic.owner {
+                *owner = format!("{prefix}::{owner}");
+            }
+        }
+    }
+    let repair: Vec<_> = parsed
+        .symbols
+        .iter()
+        .map(|s| {
+            s.semantic.kind.callable()
+                && s.type_name.is_some()
+                && s.parent_index
+                    .and_then(|i| parsed.symbols.get(i))
+                    .is_none_or(|p| p.kind == "impl")
+        })
+        .collect();
+    let types: Vec<_> = parsed
+        .symbols
+        .iter()
+        .filter(|s| s.semantic.kind.is_type())
+        .map(|s| (s.name.clone(), s.semantic.qualified_name.clone()))
+        .collect();
+    for (i, symbol) in parsed.symbols.iter_mut().enumerate() {
+        if !repair[i] {
+            continue;
+        }
+        let written = symbol.type_name.as_deref().unwrap();
+        let owner = written
+            .rsplit(" for ")
+            .next()
+            .unwrap_or(written)
+            .split('<')
+            .next()
+            .unwrap_or(written)
+            .trim();
+        let matches: Vec<_> = types.iter().filter(|(name, _)| name == owner).collect();
+        let package = if file_modules {
+            prefix.as_str()
+        } else {
+            symbol.semantic.package.as_deref().unwrap_or("")
+        };
+        let qualified = if let [(_, qualified)] = matches.as_slice() {
+            qualified.to_string()
+        } else if package.is_empty() {
+            owner.to_string()
+        } else {
+            format!("{package}::{owner}")
+        };
+        symbol.semantic.owner = Some(qualified.clone());
+        symbol.semantic.qualified_name = format!("{qualified}::{}", symbol.name);
+    }
 }

@@ -32,6 +32,7 @@ pub struct SearchResult {
 
 #[derive(Debug, Serialize)]
 pub struct SymbolSearchItem {
+    pub semantic: Option<crate::analysis::semantic::SymbolFacts>,
     pub name: String,
     pub kind: String,
     pub path: String,
@@ -206,6 +207,7 @@ pub fn execute_search(args: &SearchArgs) -> Result<SearchResult> {
         crate::service::auto_sync(&mut db, &project_root)?;
     }
 
+    crate::health::ensure_current(&db)?;
     let mode = resolve_mode(args, profile.promoted);
     crate::operation::retrieval(
         serde_json::json!({"mode":mode,"selection_reason":mode_reason(args,profile.promoted),"automatic_available":profile.promoted}),
@@ -253,8 +255,9 @@ pub fn execute_search(args: &SearchArgs) -> Result<SearchResult> {
                 if sig.is_empty() { s.name.clone() } else { sig }
             });
             SymbolSearchItem {
+                semantic: Some(s.semantic.clone()),
                 name: s.name,
-                kind: s.kind,
+                kind: s.kind.to_string(),
                 path,
                 line: s.start_line,
                 is_exported: s.is_exported,
@@ -269,7 +272,10 @@ pub fn execute_search(args: &SearchArgs) -> Result<SearchResult> {
     if constrained && (args.strings || exact_symbols.is_empty()) {
         let file_paths: HashMap<_, _> = files.values().map(|f| (f.id, f.path.as_str())).collect();
         for symbol in db.all_symbols()? {
-            if args.kind.as_ref().is_some_and(|k| k != &symbol.kind)
+            if args
+                .kind
+                .as_ref()
+                .is_some_and(|k| k.as_str() != symbol.kind.as_str())
                 || (args.exported && !symbol.is_exported)
             {
                 continue;
@@ -323,14 +329,17 @@ pub fn execute_search(args: &SearchArgs) -> Result<SearchResult> {
                 .filter(|(s, p, _)| {
                     files.contains_key(p)
                         && selection.accepts(p)
-                        && args.kind.as_ref().is_none_or(|k| k == &s.kind)
+                        && args
+                            .kind
+                            .as_ref()
+                            .is_none_or(|k| k.as_str() == s.kind.as_str())
                         && (!args.exported || s.is_exported)
                 })
                 .collect::<Vec<_>>();
             f.into_iter()
                 .map(|(s, path, distance)| FuzzySearchItem {
                     name: s.name,
-                    kind: s.kind,
+                    kind: s.kind.to_string(),
                     path,
                     line: s.start_line,
                     distance,
@@ -404,6 +413,7 @@ fn perform_grep_fallback(
     selection: &crate::selection::Selection,
     allowed: &std::collections::HashSet<String>,
 ) -> Result<Vec<GrepSearchItem>> {
+    crate::health::ensure_current(db)?;
     let files = db.all_files()?;
     let q_lower = args.query.to_lowercase();
     let wanted: std::collections::HashSet<_> = crate::cache::content::terms(&args.query)
@@ -420,7 +430,10 @@ fn perform_grep_fallback(
         let eligible = symbols
             .iter()
             .filter(|s| {
-                args.kind.as_ref().is_none_or(|k| k == &s.kind) && (!args.exported || s.is_exported)
+                args.kind
+                    .as_ref()
+                    .is_none_or(|k| k.as_str() == s.kind.as_str())
+                    && (!args.exported || s.is_exported)
             })
             .collect::<Vec<_>>();
         let mut offset = 0;
@@ -635,9 +648,10 @@ fn execute_retrieval(db: &mut CacheDb, project: &Path, args: &SearchArgs) -> Res
             let snippet = source[start..end].to_string();
             let key = crate::embeddings::chunk::symbol_key(&path, &s);
             lexical.push(crate::embeddings::Match {
+                semantic: None,
                 path,
                 name: s.name,
-                kind: s.kind,
+                kind: s.kind.to_string(),
                 line: s.start_line.unwrap_or(1) as usize,
                 end_line: source[..end].bytes().filter(|b| *b == b'\n').count() + 1,
                 start_byte: start,
@@ -668,6 +682,7 @@ fn execute_retrieval(db: &mut CacheDb, project: &Path, args: &SearchArgs) -> Res
     let total_matches = hits.len();
     crate::operation::omitted(total_matches.saturating_sub(args.limit));
     hits.truncate(args.limit);
+    crate::embeddings::attach_facts(db, &mut hits)?;
     Ok(SearchResult {
         matches: Some(hits),
         total_matches,
@@ -753,7 +768,10 @@ fn hybrid_lexical_candidates(
             .into_iter()
             .filter(|(s, path, _)| {
                 selection.accepts(path)
-                    && args.kind.as_ref().is_none_or(|k| k == &s.kind)
+                    && args
+                        .kind
+                        .as_ref()
+                        .is_none_or(|k| k.as_str() == s.kind.as_str())
                     && (!args.exported || s.is_exported)
             })
             .map(|(s, p, _)| (s, p))

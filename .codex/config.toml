@@ -1,1 +1,5 @@
 [mcp_servers]
+
+[mcp_servers.code-rcl]
+command = "code-rcl"
+args = ["mcp", "--project", 'C:\Users\SHI-CHAN\Documents\Projects\code-reviewer']

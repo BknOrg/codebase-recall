@@ -1,5 +1,6 @@
 mod analysis;
 mod assets;
+mod c_family;
 mod cache;
 mod cli;
 mod commands;

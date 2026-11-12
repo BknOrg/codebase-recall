@@ -300,8 +300,19 @@ fn communities_split_two_clusters_and_symbols_inherit() {
     assert_eq!(b, community_of("file:label.rs"));
 
     // A symbol inherits the community of its file.
-    assert_eq!(community_of("sym:tax.rs#apply@1"), a);
-    assert_eq!(community_of("sym:route.rs#plan@3"), b);
+    let symbol_id = |path: &str, label: &str| {
+        g["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["path"] == path && n["label"] == label)
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    assert_eq!(community_of(&symbol_id("tax.rs", "apply")), a);
+    assert_eq!(community_of(&symbol_id("route.rs", "plan")), b);
 }
 
 #[test]

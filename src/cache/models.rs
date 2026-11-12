@@ -22,10 +22,11 @@ pub struct FileRow {
 /// A declared symbol (function, method, type, module-level variable, ...).
 #[derive(Debug, Clone)]
 pub struct SymbolRow {
+    pub semantic: crate::analysis::semantic::SymbolFacts,
     pub id: i64,
     pub file_id: i64,
     pub name: String,
-    pub kind: String,
+    pub kind: crate::analysis::semantic::SymbolKind,
     pub parent_symbol_id: Option<i64>,
     pub is_exported: bool,
     pub start_line: Option<i64>,
@@ -54,6 +55,7 @@ pub struct ImportRow {
 /// A reference to a name (call / read / write / type position).
 #[derive(Debug, Clone)]
 pub struct RefRow {
+    pub argument_types: Option<Vec<Option<String>>>,
     pub id: i64,
     pub file_id: i64,
     pub from_symbol_id: Option<i64>,
@@ -82,6 +84,8 @@ pub struct RefRow {
 /// What a language server answered for one reference.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreciseStatus {
+    /// Multiple distinct LSP targets; suppress local guesses.
+    Ambiguous,
     /// Resolved to a definition we hold a symbol node for.
     Hit,
     /// Resolved outside the project tree (stdlib, or a third-party dependency).
@@ -96,6 +100,7 @@ pub enum PreciseStatus {
 impl PreciseStatus {
     pub fn as_str(self) -> &'static str {
         match self {
+            PreciseStatus::Ambiguous => "ambiguous",
             PreciseStatus::Hit => "hit",
             PreciseStatus::External => "external",
             PreciseStatus::NoNode => "nonode",
@@ -119,6 +124,7 @@ pub struct ScopeRow {
 /// A name introduced in a scope, with an optional declared type.
 #[derive(Debug, Clone)]
 pub struct BindingRow {
+    pub declaration_byte: Option<i64>,
     pub id: i64,
     pub file_id: i64,
     pub scope_id: i64,
@@ -133,8 +139,9 @@ pub struct BindingRow {
 /// Symbol payload produced by an analyzer, before it has a database id.
 #[derive(Debug, Clone, Default)]
 pub struct NewSymbol {
+    pub semantic: crate::analysis::semantic::SymbolFacts,
     pub name: String,
-    pub kind: String,
+    pub kind: crate::analysis::semantic::SymbolKind,
     /// Index into the same file's symbol list identifying the lexical parent.
     pub parent_index: Option<usize>,
     pub is_exported: bool,
@@ -160,6 +167,7 @@ pub struct NewImport {
 /// Reference payload produced by an analyzer.
 #[derive(Debug, Clone, Default)]
 pub struct NewRef {
+    pub argument_types: Option<Vec<Option<String>>>,
     pub name: String,
     pub ref_kind: String,
     pub receiver: Option<String>,
@@ -192,6 +200,7 @@ pub struct NewScope {
 /// Binding payload produced by an analyzer, before it has a database id.
 #[derive(Debug, Clone, Default)]
 pub struct NewBinding {
+    pub declaration_byte: Option<i64>,
     /// Index into the same file's scope list.
     pub scope_index: usize,
     pub name: String,

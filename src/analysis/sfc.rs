@@ -31,7 +31,9 @@ pub fn parse(source: &str, _language: Language) -> ParsedFile {
 
         // Create line- and byte-preserving virtual source code
         let virtual_src = build_virtual_source(source, &script_blocks);
-        javascript::parse(&virtual_src, parse_lang)
+        let mut parsed = javascript::parse(&virtual_src, parse_lang);
+        super::semantic_extract::enrich(parse_lang, &virtual_src, &mut parsed);
+        parsed
     };
 
     // Synthesize a component default export symbol if none exists, so `import Comp from './Comp.vue'`
@@ -42,8 +44,9 @@ pub fn parse(source: &str, _language: Language) -> ParsedFile {
         .any(|s| s.name == "default" && s.is_exported);
     if !has_default_export {
         out.symbols.push(NewSymbol {
+            semantic: Default::default(),
             name: "default".to_string(),
-            kind: "component".to_string(),
+            kind: "component".into(),
             parent_index: None,
             is_exported: true,
             start_line: 1,
@@ -268,12 +271,13 @@ fn scan_template_components(source: &str, script_blocks: &[ScriptBlock], refs: &
             }
             let name = &source[i + 1..name_end];
             refs.push(NewRef {
+                argument_types: None,
                 name: name.to_string(),
-                ref_kind: "component".to_string(),
+                ref_kind: "component".into(),
                 receiver: None,
                 start_line,
                 start_byte,
-                receiver_kind: "none".to_string(),
+                receiver_kind: "none".into(),
                 ..Default::default()
             });
             i = name_end;

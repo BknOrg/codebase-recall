@@ -31,6 +31,7 @@ pub const CODE_CTX_DIR: &str = ".code-rcl";
 pub const BKNDB_FILE: &str = "cache.bkndb";
 
 pub struct CacheDb {
+    pub(crate) project: PathBuf,
     pub(crate) db: BknDb,
     pub(crate) tables: Schemas,
 }
@@ -89,6 +90,7 @@ impl CacheDb {
         };
 
         let cache = Self {
+            project: utils::plain_path(&std::fs::canonicalize(project_root)?),
             db,
             tables: Schemas::build()?,
         };
@@ -132,7 +134,7 @@ impl CacheDb {
             return Ok(());
         }
 
-        if matches!(current.as_deref(), Some("10" | "11")) {
+        if matches!(current.as_deref(), Some("10" | "11" | "12")) {
             self.db
                 .write_tx(|b| {
                     let mut rel = b.relational();
@@ -144,23 +146,44 @@ impl CacheDb {
                                 .into(),
                         ));
                     }
-                    if current.as_deref() == Some("10") {
-                        rel.create_table(self.tables.source_snapshots.clone())?;
-                    }
-                    for table in [
-                        &self.tables.search_documents,
-                        &self.tables.search_postings,
-                        &self.tables.search_files,
-                        &self.tables.purpose_contexts,
-                        &self.tables.purpose_files,
-                    ] {
-                        // A conflicting derived table is not safe to overwrite.
-                        if rel.table_schema(table.name())?.is_some() {
-                            return Err(BknError::Encoding(
-                                "unexpected search table; migration aborted".into(),
-                            ));
+                    // Preserve source bytes, file IDs, metadata and historical baselines.
+                    // All other tables are derived and must not mix analyzer generations.
+                    for table in self.tables.all() {
+                        if matches!(
+                            table.name(),
+                            schema::META | schema::FILES | schema::SOURCE_SNAPSHOTS
+                        ) {
+                            if rel.table_schema(table.name())?.is_none() {
+                                rel.create_table(table.clone())?;
+                            }
+                        } else {
+                            if rel.table_schema(table.name())?.is_some() {
+                                rel.drop_table(table.name())?;
+                            }
+                            rel.create_table(table.clone())?;
                         }
-                        rel.create_table(table.clone())?;
+                    }
+                    let files = rel.table(self.tables.files.clone()).select_all()?;
+                    for file in files {
+                        if let Some(PropValue::Str(path)) = file.values.get("path") {
+                            let mut row = Properties::new();
+                            row.insert("key".into(), format!("semantic_stale:{path}").into());
+                            row.insert("value".into(), "true".into());
+                            rel.table(self.tables.meta.clone()).upsert(row)?;
+                            for prefix in [
+                                "embedding_file:",
+                                "embedding_count:",
+                                "analyzer:",
+                                "diagnostics:",
+                            ] {
+                                rel.table(self.tables.meta.clone())
+                                    .delete(&PropValue::from(format!("{prefix}{path}")))?;
+                            }
+                        }
+                        rel.table(self.tables.files.clone())
+                            .update(&file.pk, |row| {
+                                row.insert("precise_synced_at".into(), PropValue::Null);
+                            })?;
                     }
                     #[cfg(test)]
                     if snapshots::FAIL_MIGRATION_COMMIT.with(|flag| flag.replace(false)) {
@@ -174,7 +197,7 @@ impl CacheDb {
                     rel.table(self.tables.meta.clone()).upsert(row)?;
                     Ok(())
                 })
-                .context("migrating cache schema to 12 without rebuilding existing indexes")?;
+                .context("migrating semantic cache to 13 while preserving source snapshots")?;
             return Ok(());
         }
 

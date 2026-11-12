@@ -40,6 +40,7 @@ function draw() {
   const active = activeNodeId();
 
   for (const l of links) {
+    ctx.setLineDash(edgeDash(l.ambiguous, k));
     const s = l.source;
     const t = l.target;
     if (!s || !t || s.x == null) continue;
@@ -58,8 +59,8 @@ function draw() {
     const on = hs ? hs.has(s.id) && hs.has(t.id) : true;
 
     if (l.kind === "contains") {
-      ctx.globalAlpha = near ? 0.5 : on ? 0.16 : 0.05;
-      ctx.strokeStyle = isOutbound ? COL.outbound : isInbound ? COL.inbound : COL.edge;
+      ctx.globalAlpha = near ? 0.7 : on ? 0.3 : 0.08;
+      ctx.strokeStyle = edgeColor(l.kind);
       ctx.lineWidth = 0.8 / k;
       ctx.beginPath();
       ctx.moveTo(s.x, s.y);
@@ -69,8 +70,8 @@ function draw() {
     }
 
     if (!near && k < 0.22 && l.kind !== "imports") continue;
-    ctx.globalAlpha = near ? 1 : on ? 0.28 : 0.07;
-    const lineColor = isOutbound ? COL.outbound : isInbound ? COL.inbound : COL.edge;
+    ctx.globalAlpha = near ? 1 : on ? 0.65 : 0.12;
+    const lineColor = edgeColor(l.kind);
     ctx.strokeStyle = lineColor;
     ctx.lineWidth = (near ? 1.4 : Math.min(1.4, 0.6 + Math.log2(1 + l.count) * 0.15)) / k;
     const g = edgeGeometry(l);
@@ -80,6 +81,7 @@ function draw() {
     ctx.stroke();
     if (near || k > 0.4) drawArrow({x:g.sx,y:g.sy}, {x:g.tx,y:g.ty}, near, on, lineColor, g.targetRadius);
   }
+  ctx.setLineDash([]);
   ctx.globalAlpha = 1;
 
   const showLabels = k > 0.55;
@@ -91,18 +93,14 @@ function draw() {
     ctx.globalAlpha = dim ? 0.28 : 1;
     ctx.fillStyle = dim ? COL.muted : nodeFill(d);
 
-    if (d.kind === "dir") {
-      roundRect(d.x - r, d.y - r, r * 2, r * 2, 3 / k + 1);
-      ctx.fill();
-    } else if (k < 0.16 && !related && d.id !== selected) {
+    // Sub-pixel nodes need no outline or glyph at the widest zoom levels.
+    if (k < 0.16 && d.kind !== "dir" && !related && d.id !== selected) {
       ctx.fillRect(d.x - r * 0.8, d.y - r * 0.8, r * 1.6, r * 1.6);
       ctx.globalAlpha = 1;
       continue;
-    } else {
-      ctx.beginPath();
-      ctx.arc(d.x, d.y, r, 0, 2 * Math.PI);
-      ctx.fill();
     }
+    traceNode(d, r, k);
+    ctx.fill();
 
     let sw = 1.5 / k;
     let sc = COL.bg;
@@ -119,6 +117,16 @@ function draw() {
     ctx.lineWidth = sw;
     ctx.strokeStyle = sc;
     ctx.stroke();
+
+    // Shape remains visible in subsystem mode; abbreviations identify exact kinds when zoomed in.
+    if (KIND_GLYPHS[d.kind] && r * k >= 8) {
+      ctx.fillStyle = COL.glyph;
+      ctx.font = `bold ${Math.min(10 / k, r * 0.85)}px system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(KIND_GLYPHS[d.kind], d.x, d.y);
+      ctx.textAlign = "left";
+    }
 
     const canExpand =
       (d.kind === "dir") || (d.kind === "file" && childrenOf.has(d.id) && !expanded.has(d.id));
@@ -150,6 +158,27 @@ function draw() {
   }
 
   ctx.restore();
+}
+
+// All shapes fit inside nodeRadius, keeping arrow and hit-test geometry consistent.
+function traceNode(d, r, k) {
+  const shape = nodeShape(d.kind);
+  if (shape === "square") {
+    const half = r / Math.SQRT2;
+    roundRect(d.x - half, d.y - half, half * 2, half * 2, Math.min(2 / k, half / 3));
+    return;
+  }
+  ctx.beginPath();
+  if (shape === "circle") ctx.arc(d.x, d.y, r, 0, 2 * Math.PI);
+  else {
+    const sides = shape === "diamond" ? 4 : 6;
+    for (let i = 0; i < sides; i++) {
+      const a = -Math.PI / 2 + i * Math.PI * 2 / sides;
+      const x = d.x + Math.cos(a) * r, y = d.y + Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  }
 }
 
 // Separate reciprocal directions into parallel lanes, without moving graph nodes.

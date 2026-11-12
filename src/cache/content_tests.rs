@@ -135,15 +135,9 @@ mod tests {
         assert_eq!(db.source_snapshot(&file).unwrap(), source);
     }
     #[test]
-    fn migration_from_eleven_preserves_source_symbols_and_embedding_markers_then_backfills() {
+    fn migration_from_eleven_preserves_source_and_rebuilds_semantics() {
         let (dir, db) = fixture();
         let files = db.all_files().unwrap();
-        let symbols = db
-            .all_symbols()
-            .unwrap()
-            .iter()
-            .map(|s| s.id)
-            .collect::<Vec<_>>();
         let before = db.source_snapshot(&files[0]).unwrap();
         db.meta_set("embedding_file:lib.rs", "preserved-vector-marker")
             .unwrap();
@@ -167,20 +161,14 @@ mod tests {
         let mut db = CacheDb::open(dir.path()).unwrap();
         assert_eq!(
             db.meta_get("schema_version").unwrap().as_deref(),
-            Some("12")
+            Some("13")
         );
-        assert_eq!(
-            db.all_symbols()
-                .unwrap()
-                .iter()
-                .map(|s| s.id)
-                .collect::<Vec<_>>(),
-            symbols
-        );
+        assert!(db.all_symbols().unwrap().is_empty());
+        assert!(crate::health::ensure_current(&db).is_err());
         assert_eq!(db.source_snapshot(&files[0]).unwrap(), before);
         assert_eq!(
             db.meta_get("embedding_file:lib.rs").unwrap().as_deref(),
-            Some("preserved-vector-marker")
+            None
         );
         assert!(
             db.content_candidates("neighbors", |_| true, 10)
@@ -188,7 +176,7 @@ mod tests {
                 .is_empty()
         );
         let stats = crate::service::auto_sync(&mut db, dir.path()).unwrap();
-        assert_eq!(stats.changed, 0);
+        assert_eq!(stats.changed, 1);
         assert!(
             !db.content_candidates("neighbors", |_| true, 10)
                 .unwrap()
@@ -200,7 +188,7 @@ mod tests {
         );
         assert_eq!(
             db.meta_get("embedding_file:lib.rs").unwrap().as_deref(),
-            Some("preserved-vector-marker")
+            None
         );
     }
     #[test]

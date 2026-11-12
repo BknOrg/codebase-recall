@@ -246,6 +246,6 @@ fn sync_json_is_a_single_envelope() {
         String::from_utf8_lossy(&output.stderr)
     );
     let result: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(result["schema_version"], 1);
+    assert_eq!(result["schema_version"], 2);
     assert_eq!(result["data"]["added"], 1);
 }

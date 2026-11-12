@@ -52,7 +52,11 @@ pub fn render(graph: &CodeGraph) -> String {
             "  {} -> {} [style={}, tooltip={}];\n",
             quote(&e.source),
             quote(&e.target),
-            edge_style(&e.kind),
+            if e.resolution.as_ref().is_some_and(|r| r.ambiguous) {
+                "dashed"
+            } else {
+                edge_style(&e.kind)
+            },
             quote(&format!("{} ({:.2})", e.kind, e.confidence)),
         ));
     }
@@ -65,7 +69,8 @@ fn shape(kind: &str) -> &'static str {
     match kind {
         "file" => "box",
         "dir" => "folder",
-        "struct" | "enum" | "trait" | "interface" | "type" | "class" => "diamond",
+        "concept" | "struct" | "union" | "enum" | "trait" | "interface" | "type" | "type_alias"
+        | "class" | "record" | "object" => "diamond",
         "variable" => "note",
         "external" => "box3d",
         _ => "ellipse",

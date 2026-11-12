@@ -10,6 +10,8 @@
   const expanded = new Set(); // file ids whose symbols are shown
   const state = {
     kinds: new Set(["imports", "calls"]),
+    hiddenFamilies: new Set(),
+    showAmbiguous: true,
     query: "",
     isolate: false,
     dumpDepth: 2,

@@ -359,8 +359,9 @@ mod tests {
     #[test]
     fn test_has_diagram_json_explicit_false() {
         let sym = SymbolItem {
+            semantic: None,
             name: "MetaeditArgs".to_string(),
-            kind: "struct".to_string(),
+            kind: "struct".into(),
             signature: "pub struct MetaeditArgs".to_string(),
             line: Some(50),
             is_exported: true,
@@ -396,8 +397,10 @@ mod tests {
         );
 
         let ty = TypeDigest {
+            semantic: None,
+            members: Vec::new(),
             name: "NewArgs".to_string(),
-            kind: "struct".to_string(),
+            kind: "struct".into(),
             signature: "pub struct NewArgs".to_string(),
             doc: Some("Top-level struct doc without diagram".to_string()),
             has_diagram: has_diag_fields,

@@ -7,7 +7,7 @@
   })();
   const nodeById = new Map(DATA.nodes.map((n) => [n.id, n]));
 
-  const TYPE_KINDS = new Set(["struct", "enum", "trait", "interface", "type", "class", "component"]);
+  const TYPE_KINDS = new Set(["concept", "struct", "union", "enum", "trait", "interface", "type", "type_alias", "class", "record", "object", "component"]);
   const isSymId = (id) => typeof id === "string" && id.startsWith("sym:");
 
   // parent/child from `contains` edges: dir->dir, dir->file, file->symbol, sym->sym
@@ -53,17 +53,18 @@
     };
     for (const e of DATA.edges) {
       if (e.kind === "imports") {
-        importEdges.push({ source: e.source, target: e.target });
+        importEdges.push({ source: e.source, target: e.target, resolution: e.resolution });
         continue;
       }
-      if (e.kind !== "calls" && e.kind !== "references") continue;
+      if (!["calls", "references", "inherits", "implements", "overrides"].includes(e.kind)) continue;
       const sf = fileOf(e.source);
       const tf = fileOf(e.target);
-      if (!sf || !tf || sf === tf) continue; // intra-file calls add nothing at this altitude
+      if (!sf || !tf) continue; // intra-file calls add nothing at this altitude
       crossEdges.push({
         source: e.source,
         target: e.target,
         kind: e.kind,
+        resolution: e.resolution,
         srcFile: sf,
         tgtFile: tf,
       });

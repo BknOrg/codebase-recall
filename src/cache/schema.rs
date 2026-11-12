@@ -1,13 +1,13 @@
 //! bkndb table definitions for the cache.
 //!
-//! Schemas 10 and 11 upgrade additively to 12. Other incompatible layouts are derived
-//! data and are rebuilt by the next sync.
+//! Schemas 10–12 preserve files and source snapshots while rebuilding derived
+//! semantic indexes for schema 13.
 
 use anyhow::Result;
 use bkndb::relational::{ColumnKind, ColumnSchema, TableSchema};
 
 /// Bump whenever any table below changes shape.
-pub const SCHEMA_VERSION: i64 = 12;
+pub const SCHEMA_VERSION: i64 = 13;
 
 /// `cache_meta` key that records the [`SCHEMA_VERSION`] the file was built with.
 pub const SCHEMA_VERSION_KEY: &str = "schema_version";
@@ -151,6 +151,7 @@ impl Schemas {
                 ("signature", Str),
                 ("param_count", Int),
                 ("type_name", Str),
+                ("semantic", Str),
             ],
             &["file_id", "name_lower"],
         )?;
@@ -178,6 +179,7 @@ impl Schemas {
                 ("receiver", Str),
                 ("start_line", Int),
                 ("arg_count", Int),
+                ("argument_types", Str),
                 ("receiver_kind", Str),
                 ("local_only", Bool),
                 ("resolved_symbol_id", Int),
@@ -210,6 +212,7 @@ impl Schemas {
                 ("scope_id", Int),
                 ("name", Str),
                 ("binding_kind", Str),
+                ("declaration_byte", Int),
                 ("symbol_id", Int),
                 ("import_id", Int),
                 ("type_expr", Str),

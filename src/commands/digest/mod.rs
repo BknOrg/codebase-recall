@@ -7,7 +7,7 @@ pub use markdown::*;
 pub use models::*;
 
 use anyhow::{Context, Result};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -200,10 +200,11 @@ pub fn generate_digest(args: &DigestArgs) -> Result<DigestReport> {
 
     if !args.no_sync {
         let mut db_mut = CacheDb::open(&project_root)?;
-        let _ = crate::service::auto_sync(&mut db_mut, &project_root);
+        crate::service::auto_sync(&mut db_mut, &project_root)?;
     }
 
     let db = CacheDb::open(&project_root)?;
+    crate::health::ensure_current(&db)?;
     let all_files = db.all_files()?;
     let all_symbols = db.all_symbols()?;
     let mut symbols_by_file: HashMap<i64, Vec<SymbolRow>> = HashMap::new();
@@ -241,30 +242,16 @@ pub fn generate_digest(args: &DigestArgs) -> Result<DigestReport> {
 
         let symbols = symbols_by_file.remove(&f.id).unwrap_or_default();
 
-        let mut type_names: HashSet<String> = HashSet::new();
         let mut types_map: BTreeMap<String, TypeDigest> = BTreeMap::new();
         let mut standalone_functions: Vec<SymbolItem> = Vec::new();
         let mut methods: Vec<&SymbolRow> = Vec::new();
+        let mut declarations = Vec::new();
         let effective_doc_lines = args.effective_doc_lines();
 
         for s in &symbols {
-            // Same symbol kinds `report` counts, so the two summaries agree
-            // whatever the `--all` filter hides from the listing below.
-            if matches!(
-                s.kind.as_str(),
-                "struct"
-                    | "enum"
-                    | "class"
-                    | "interface"
-                    | "trait"
-                    | "type"
-                    | "method"
-                    | "function"
-            ) {
-                total_symbols += 1;
-                if s.is_exported {
-                    public_symbols += 1;
-                }
+            total_symbols += 1;
+            if s.is_exported {
+                public_symbols += 1;
             }
             if !args.all && !s.is_exported {
                 continue;
@@ -280,16 +267,24 @@ pub fn generate_digest(args: &DigestArgs) -> Result<DigestReport> {
             );
 
             match s.kind.as_str() {
-                "struct" | "enum" | "class" | "interface" | "trait" | "type" => {
-                    type_names.insert(s.name.clone());
+                "struct" | "union" | "enum" | "class" | "record" | "object" | "interface"
+                | "trait" | "type" | "type_alias" | "concept" => {
                     let has_diagram_in_fields =
                         check_body_has_diagram(&lines, s.start_line, s.end_line);
                     let combined_has_diagram = has_diagram || has_diagram_in_fields;
                     types_map.insert(
-                        s.name.clone(),
+                        crate::graph::declaration_id(
+                            &f.path,
+                            &s.name,
+                            s.start_byte.unwrap_or(0),
+                            s.end_byte.unwrap_or(0),
+                            &s.kind,
+                        ),
                         TypeDigest {
+                            semantic: Some(s.semantic.clone()),
+                            members: Vec::new(),
                             name: s.name.clone(),
-                            kind: s.kind.clone(),
+                            kind: s.kind.to_string(),
                             signature: if sig.is_empty() {
                                 format!("{} {}", s.kind, s.name)
                             } else {
@@ -302,13 +297,14 @@ pub fn generate_digest(args: &DigestArgs) -> Result<DigestReport> {
                         },
                     );
                 }
-                "method" => {
+                "method" | "constructor" | "destructor" | "field" | "property" | "enum_member" => {
                     methods.push(s);
                 }
                 "function" => {
                     standalone_functions.push(SymbolItem {
+                        semantic: Some(s.semantic.clone()),
                         name: s.name.clone(),
-                        kind: s.kind.clone(),
+                        kind: s.kind.to_string(),
                         signature: if sig.is_empty() {
                             format!("fn {}", s.name)
                         } else {
@@ -320,7 +316,16 @@ pub fn generate_digest(args: &DigestArgs) -> Result<DigestReport> {
                         has_diagram,
                     });
                 }
-                _ => {}
+                _ => declarations.push(SymbolItem {
+                    semantic: Some(s.semantic.clone()),
+                    name: s.name.clone(),
+                    kind: s.kind.to_string(),
+                    signature: s.signature.clone().unwrap_or(sig),
+                    line: s.start_line,
+                    is_exported: s.is_exported,
+                    doc,
+                    has_diagram,
+                }),
             }
         }
 
@@ -334,8 +339,9 @@ pub fn generate_digest(args: &DigestArgs) -> Result<DigestReport> {
                 effective_doc_lines,
             );
             let item = SymbolItem {
+                semantic: Some(m.semantic.clone()),
                 name: m.name.clone(),
-                kind: m.kind.clone(),
+                kind: m.kind.to_string(),
                 signature: if sig.is_empty() {
                     format!("fn {}", m.name)
                 } else {
@@ -347,13 +353,27 @@ pub fn generate_digest(args: &DigestArgs) -> Result<DigestReport> {
                 has_diagram,
             };
 
-            if let Some(tname) = &m.type_name
-                && let Some(td) = types_map.get_mut(tname)
-            {
-                td.methods.push(item);
-                continue;
+            let owners: Vec<_> = types_map
+                .iter()
+                .filter(|(_, td)| {
+                    td.semantic.as_ref().is_some_and(|facts| {
+                        m.semantic.owner.as_deref() == Some(facts.qualified_name.as_str())
+                    })
+                })
+                .map(|(id, _)| id.clone())
+                .collect();
+            if let [owner] = owners.as_slice() {
+                let td = types_map.get_mut(owner).unwrap();
+                if m.kind.callable() {
+                    td.methods.push(item);
+                } else {
+                    td.members.push(item);
+                }
+            } else if m.kind.callable() {
+                standalone_functions.push(item);
+            } else {
+                declarations.push(item);
             }
-            standalone_functions.push(item);
         }
 
         let types: Vec<TypeDigest> = types_map.into_values().collect();
@@ -371,6 +391,7 @@ pub fn generate_digest(args: &DigestArgs) -> Result<DigestReport> {
             language: f.language.clone(),
             types,
             functions: standalone_functions,
+            declarations,
         });
     }
 
@@ -403,8 +424,9 @@ mod tests {
 
     fn node(id: &str, kind: &str, label: &str) -> Node {
         Node {
+            semantic: None,
             id: id.to_string(),
-            kind: kind.to_string(),
+            kind: kind.into(),
             label: label.to_string(),
             path: None,
             dir: None,
@@ -418,9 +440,10 @@ mod tests {
 
     fn edge(source: &str, target: &str) -> Edge {
         Edge {
+            resolution: None,
             source: source.to_string(),
             target: target.to_string(),
-            kind: "calls".to_string(),
+            kind: "calls".into(),
             confidence: 0.9,
             external: None,
             line: None,
@@ -441,7 +464,9 @@ mod tests {
             edges.push(edge(&caller, "build"));
         }
         let graph = CodeGraph {
-            version: 2,
+            precision: Default::default(),
+            resolution_summary: Default::default(),
+            version: 3,
             root: String::new(),
             generated_at: 0,
             nodes,

@@ -33,8 +33,9 @@ impl<'a> Walker<'a> {
             }
         }
         self.out.refs.push(NewRef {
+            argument_types: None,
             name,
-            ref_kind: "call".to_string(),
+            ref_kind: "call".into(),
             receiver,
             start_line: node.start_position().row as i64 + 1,
             start_byte: node.start_byte() as i64,
@@ -96,13 +97,14 @@ impl<'a> Walker<'a> {
             self.collect_macro_body(token_tree);
         }
         self.out.refs.push(NewRef {
+            argument_types: None,
             name: macro_name,
-            ref_kind: "call".to_string(),
+            ref_kind: "call".into(),
             receiver: None,
             start_line: node.start_position().row as i64 + 1,
             start_byte: node.start_byte() as i64,
             name_start_byte: Some(m.start_byte() as i64),
-            receiver_kind: "none".to_string(),
+            receiver_kind: "none".into(),
             ..Default::default()
         });
     }
@@ -135,8 +137,9 @@ impl<'a> Walker<'a> {
         }
         let receiver_kind = if receiver.is_some() { "path" } else { "none" };
         self.out.refs.push(NewRef {
+            argument_types: None,
             name,
-            ref_kind: "value".to_string(),
+            ref_kind: "value".into(),
             receiver,
             start_line: self.line(name_node),
             start_byte: name_node.start_byte() as i64,

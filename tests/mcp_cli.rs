@@ -43,6 +43,130 @@ fn response(responses: &[Value], id: u64) -> &Value {
 }
 
 #[test]
+fn c_and_cpp_filters_and_new_symbol_kinds_round_trip() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("plain.c"), "int c_value(void){return 1;}").unwrap();
+    std::fs::write(dir.path().join("modern.cpp"),"template<class T> concept Number = requires(T v){v+v;}; struct Box { ~Box(){} }; int cpp_value(){return 2;}").unwrap();
+    let out = exchange(
+        dir.path(),
+        vec![
+            call(2, "code_rcl_graph", json!({"kinds":["contains"]})),
+            call(
+                3,
+                "code_rcl_search",
+                json!({"query":"c_value","languages":["c"]}),
+            ),
+            call(
+                4,
+                "code_rcl_search",
+                json!({"query":"cpp_value","languages":["c++"]}),
+            ),
+        ],
+    );
+    assert!(
+        response(&out, 1)["result"]["instructions"]
+            .as_str()
+            .unwrap()
+            .contains("clangd")
+    );
+    for id in [2, 3, 4] {
+        assert_eq!(
+            response(&out, id)["result"]["isError"],
+            false,
+            "{}",
+            response(&out, id)
+        );
+    }
+    let nodes = response(&out, 2)["result"]["structuredContent"]["data"]["nodes"]
+        .as_array()
+        .unwrap();
+    for kind in ["concept", "destructor"] {
+        assert!(nodes.iter().any(|n| n["kind"] == kind));
+    }
+}
+
+#[test]
+fn graph_semantic_contract_selects_structural_edges_and_filters_guesses() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("C.java"),
+        "class Base { int run(int x){return x;} } class Child extends Base { int run(int x){return x;} } class C { int pick(A x){return 1;} int pick(B x){return 2;} int start(){return pick(external());} }").unwrap();
+    let out = exchange(
+        dir.path(),
+        vec![
+            json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
+            call(
+                3,
+                "code_rcl_graph",
+                json!({"kinds":["inherits","overrides","contains"]}),
+            ),
+            call(
+                4,
+                "code_rcl_graph",
+                json!({"kinds":["calls"],"min_confidence":0.0,"no_sync":true}),
+            ),
+            call(
+                5,
+                "code_rcl_graph",
+                json!({"kinds":["calls"],"min_confidence":0.5,"no_sync":true}),
+            ),
+        ],
+    );
+    let tools = response(&out, 2)["result"]["tools"].as_array().unwrap();
+    let graph = tools
+        .iter()
+        .find(|t| t["name"] == "code_rcl_graph")
+        .unwrap();
+    assert!(graph["inputSchema"]["properties"].get("kinds").is_some());
+    assert_eq!(
+        graph["outputSchema"]["properties"]["schema_version"]["const"],
+        2
+    );
+    for id in [3, 4, 5] {
+        let result = &response(&out, id)["result"];
+        assert_eq!(result["isError"], false, "{result}");
+        assert_eq!(result["structuredContent"]["schema_version"], 2);
+        assert_eq!(result["structuredContent"]["data"]["version"], 3);
+        let text: Value =
+            serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(text, result["structuredContent"]);
+    }
+    let data = |id| response(&out, id)["result"]["structuredContent"]["data"].clone();
+    let structural = data(3);
+    for kind in ["inherits", "overrides"] {
+        assert!(
+            structural["edges"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["kind"] == kind),
+            "{structural}"
+        );
+    }
+    let covered = data(4);
+    assert!(
+        covered["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["resolution"]["ambiguous"] == true)
+    );
+    let strict = data(5);
+    assert!(
+        strict["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e["confidence"].as_f64().unwrap() >= 0.5)
+    );
+    assert!(
+        strict["resolution_summary"]["below_min_confidence"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+}
+
+#[test]
 fn explain_small_budget_preserves_identity_and_original_relation_counts() {
     let d = tempfile::tempdir().unwrap();
     let mut source = String::from("pub fn budget_target() {}\n");
@@ -598,4 +722,52 @@ fn error_operation_metadata_also_respects_response_budget() {
         serde_json::to_vec(result).unwrap().len() <= 1024,
         "{result}"
     );
+}
+
+#[test]
+fn selective_contract_config_precedence_and_metadata() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("main.py"),
+        "def strong():\n    pass\ndef caller():\n    strong()\n",
+    )
+    .unwrap();
+    std::fs::create_dir(dir.path().join(".code-rcl")).unwrap();
+    std::fs::write(
+        dir.path().join(".code-rcl/config.toml"),
+        "[precise]\nselective=true\n",
+    )
+    .unwrap();
+    let out = exchange(
+        dir.path(),
+        vec![
+            json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
+            call(3, "code_rcl_sync", json!({"full":true})),
+            call(4, "code_rcl_sync", json!({"precise":false})),
+            call(
+                5,
+                "code_rcl_sync",
+                json!({"precise":true,"precise_selective":true}),
+            ),
+        ],
+    );
+    let tools = response(&out, 2)["result"]["tools"].as_array().unwrap();
+    let sync = tools.iter().find(|v| v["name"] == "code_rcl_sync").unwrap();
+    assert!(sync["inputSchema"]["properties"]["precise_selective"].is_object());
+    assert_eq!(
+        response(&out, 3)["result"]["isError"],
+        false,
+        "{}",
+        response(&out, 3)
+    );
+    assert_eq!(
+        response(&out, 3)["result"]["structuredContent"]["metadata"]["precision"]["requested_mode"],
+        "selective"
+    );
+    assert_eq!(
+        response(&out, 3)["result"]["structuredContent"]["metadata"]["resolution_mode"],
+        "heuristic"
+    );
+    assert_eq!(response(&out, 4)["result"]["isError"], false);
+    assert_eq!(response(&out, 5)["error"]["code"], -32602);
 }

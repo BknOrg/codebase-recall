@@ -7,7 +7,66 @@ use anyhow::Result;
 use serde_json::{Value, json};
 use std::path::{Component, Path};
 pub fn revision(language: Language) -> String {
-    format!("{}-2", language.group())
+    format!(
+        "{}-semantic-{}",
+        language.group(),
+        if matches!(language, Language::C | Language::Cpp) {
+            3
+        } else {
+            2
+        }
+    )
+}
+/// Reject old semantic generations, including explicit --no-sync consumers.
+pub fn ensure_current(db: &CacheDb) -> Result<()> {
+    crate::precise::state::ensure_current(db)?;
+    let files = db.all_files()?;
+    let context = files
+        .iter()
+        .any(|f| matches!(f.language.as_str(), "c" | "cpp"))
+        .then(|| {
+            crate::config::ProjectConfig::load(&db.project)
+                .and_then(|cfg| crate::c_family::BuildContext::load_cached(&db.project, &cfg, db))
+        })
+        .transpose()?;
+    if let Some(context) = &context {
+        anyhow::ensure!(
+            db.meta_get("c_family_context")?.as_deref() == Some(context.fingerprint.as_str()),
+            "C/C++ build context changed; run code-rcl sync without --no-sync"
+        );
+    }
+    for f in files {
+        let stale = db
+            .meta_get(&format!("semantic_stale:{}", f.path))?
+            .as_deref()
+            == Some("true");
+        let revision_stale = if let Some(language) = context
+            .as_ref()
+            .and_then(|c| c.language(&db.project.join(&f.path)))
+            .or_else(|| Language::from_path(Path::new(&f.path)))
+        {
+            db.meta_get(&format!("analyzer:{}", f.path))?
+                .is_some_and(|r| {
+                    r != if matches!(language, Language::C | Language::Cpp) {
+                        format!(
+                            "{}:{}",
+                            revision(language),
+                            context.as_ref().unwrap().fingerprint
+                        )
+                    } else {
+                        revision(language)
+                    }
+                })
+        } else {
+            false
+        };
+        anyhow::ensure!(
+            !stale && !revision_stale,
+            "semantic analysis is stale for {}; run `code-rcl sync` without --no-sync",
+            f.path
+        );
+    }
+    Ok(())
 }
 pub fn warn(db: &CacheDb, file: &FileRow) -> Result<()> {
     if !file.parsed_ok {
@@ -18,7 +77,23 @@ pub fn warn(db: &CacheDb, file: &FileRow) -> Result<()> {
         crate::operation::analysis_partial();
         crate::operation::reason("parser_error", json!({"path":file.path}));
     }
-    let _ = db;
+    if let Some(raw) = db.meta_get(&format!("diagnostics:{}", file.path))?
+        && let Ok(diagnostics) = serde_json::from_str::<Value>(&raw)
+        && diagnostics["errors"].as_array().is_some_and(|errors| {
+            errors.iter().any(|e| {
+                matches!(
+                    e["kind"].as_str(),
+                    Some("unsupported_construct" | "header_language_uncertain")
+                )
+            })
+        })
+    {
+        crate::operation::analysis_partial();
+        crate::operation::warning(format!(
+            "{}: cached analysis has unsupported constructs or uncertain header language; inspect diagnostics and configure precise context",
+            file.path
+        ));
+    }
     Ok(())
 }
 pub fn files(db: &CacheDb, project: &Path) -> Result<Value> {

@@ -28,7 +28,7 @@ impl ScopeStack {
         s.scopes.push(NewScope {
             parent_index: None,
             owner_symbol_index: None,
-            kind: "module".to_string(),
+            kind: "module".into(),
             start_byte: 0,
             end_byte: file_len.max(0),
         });
@@ -53,7 +53,7 @@ impl ScopeStack {
         self.scopes.push(NewScope {
             parent_index: Some(self.current()),
             owner_symbol_index,
-            kind: kind.to_string(),
+            kind: kind.into(),
             start_byte,
             end_byte,
         });
@@ -80,9 +80,10 @@ impl ScopeStack {
             return;
         }
         self.bindings.push(NewBinding {
+            declaration_byte: None,
             scope_index: self.current(),
             name: name.to_string(),
-            binding_kind: kind.to_string(),
+            binding_kind: kind.into(),
             symbol_index,
             import_index,
             type_expr,
@@ -112,10 +113,17 @@ impl ScopeStack {
 /// walking outward: `fn f(args: &RunArgs)` must reach the `RunArgs` type even
 /// where the body happens to declare `let RunArgs = ...`.
 pub fn resolve_locals(parsed: &mut ParsedFile) {
+    resolve_locals_for(parsed, "rust");
+}
+
+pub fn resolve_locals_for(parsed: &mut ParsedFile, language: &str) {
+    let rules = super::semantic::rules(language);
     if parsed.scopes.is_empty() {
         return;
     }
     for ri in 0..parsed.refs.len() {
+        parsed.refs[ri].local_only = false;
+        parsed.refs[ri].resolved_local_symbol_index = None;
         if parsed.refs[ri].receiver.is_some() {
             continue; // only bare calls resolve to locals
         }
@@ -138,16 +146,54 @@ pub fn resolve_locals(parsed: &mut ParsedFile) {
         };
 
         loop {
-            let hit = parsed.bindings.iter().find(|b| {
-                b.scope_index == scope_idx
-                    && b.name == name
-                    && b.binding_kind != "field"
-                    && !(is_type && matches!(b.binding_kind.as_str(), "local" | "param"))
-            });
-            if let Some(b) = hit {
+            let hits: Vec<_> = parsed
+                .bindings
+                .iter()
+                .filter(|b| {
+                    b.scope_index == scope_idx
+                        && b.name == name
+                        && (language != "c"
+                            || if parsed.refs[ri].ref_kind == "tag" {
+                                b.binding_kind == "tag"
+                            } else {
+                                b.binding_kind != "tag"
+                            })
+                        && (b.binding_kind != "field" || rules.implicit_members)
+                        && !(is_type
+                            && rules.separate_type_namespace
+                            && matches!(b.binding_kind.as_str(), "local" | "param"))
+                        && (language == "python"
+                            || b.declaration_byte.is_none_or(|pos| pos <= at)
+                            || b.symbol_index.is_some_and(|si| {
+                                rules.declarations_hoisted && parsed.symbols[si].kind.callable()
+                            }))
+                })
+                .collect();
+            // An overload set must reach the resolver intact, not its first binding.
+            if hits.len() > 1 {
+                break;
+            }
+            if let Some(b) = hits.first() {
                 match b.binding_kind.as_str() {
-                    "local" | "param" => parsed.refs[ri].local_only = true,
-                    "symbol" => parsed.refs[ri].resolved_local_symbol_index = b.symbol_index,
+                    "local" | "param" | "type_param" => parsed.refs[ri].local_only = true,
+                    "symbol" | "field" | "tag" => {
+                        if let Some(si) = b.symbol_index {
+                            let sym = &parsed.symbols[si];
+                            let overloaded = parsed
+                                .symbols
+                                .iter()
+                                .filter(|s| {
+                                    s.name == sym.name
+                                        && s.parent_index == sym.parent_index
+                                        && s.semantic.kind.callable()
+                                })
+                                .count()
+                                > 1;
+                            if !overloaded {
+                                parsed.refs[ri].resolved_local_symbol_index = Some(si);
+                            }
+                        }
+                    }
                     _ => {}
                 }
                 break;

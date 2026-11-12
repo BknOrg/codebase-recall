@@ -1,0 +1,6 @@
+{
+  "must_have": [["main.cpp", "run", "main.cpp", "strong"], ["main.cpp", "run", "main.cpp", "choose"], ["main.c", "run_c", "main.c", "c_strong"]],
+  "must_have_target_lines": [["main.cpp", "run", "main.cpp", "choose", 3]],
+  "must_not_have": [["main.c", "run_c", "main.cpp", "strong"]],
+  "must_not_target_lines": [["main.cpp", "run", "main.cpp", "choose", 4]]
+}

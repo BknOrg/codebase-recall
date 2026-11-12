@@ -46,7 +46,12 @@ pub fn summary(
     }
     let mut remove = Vec::new();
     for child in symbols {
-        if !container(&child.kind) && !matches!(child.kind.as_str(), "function" | "method") {
+        if !container(&child.kind)
+            && !matches!(
+                child.kind.as_str(),
+                "function" | "method" | "constructor" | "destructor"
+            )
+        {
             continue;
         }
         let (Some(lo), Some(hi)) = (child.start_byte, child.end_byte) else {

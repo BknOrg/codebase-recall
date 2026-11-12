@@ -7,6 +7,7 @@ use std::sync::{
 
 #[derive(Default)]
 struct State {
+    memo: std::collections::HashMap<String, String>,
     cancel: Option<Arc<AtomicBool>>,
     warnings: Vec<String>,
     partial: bool,
@@ -42,6 +43,9 @@ pub fn begin(cancel: Arc<AtomicBool>) {
 pub fn check() -> anyhow::Result<()> {
     anyhow::ensure!(!cancelled(), "operation cancelled");
     Ok(())
+}
+pub fn cancel_token() -> Option<Arc<AtomicBool>> {
+    STATE.with(|s| s.borrow().cancel.clone())
 }
 pub fn cancelled() -> bool {
     STATE.with(|s| {
@@ -85,6 +89,8 @@ pub fn embedding_partial() {
     );
     STATE.with(|s| s.borrow_mut().embedding_partial = true);
 }
+
+#[cfg(test)]
 pub fn graph_partial() -> bool {
     STATE.with(|s| s.borrow().partial)
 }
@@ -137,4 +143,14 @@ pub fn cancellation_flag() -> Option<Arc<AtomicBool>> {
 
 pub fn analysis_partial() {
     STATE.with(|s| s.borrow_mut().analysis_partial = true);
+}
+
+/// Operation-local expensive file identity cache; begin() clears it between requests.
+pub fn memo(key: &str) -> Option<String> {
+    STATE.with(|s| s.borrow().memo.get(key).cloned())
+}
+pub fn memo_set(key: String, value: String) {
+    STATE.with(|s| {
+        s.borrow_mut().memo.insert(key, value);
+    });
 }

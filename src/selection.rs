@@ -64,8 +64,9 @@ impl Selection {
         for language in &filters.languages {
             anyhow::ensure!(
                 [
-                    "rs", "js", "jsx", "ts", "tsx", "py", "kt", "go", "java", "vue", "svelte",
-                    "toml"
+                    "c", "h", "cc", "cpp", "cxx", "hpp", "hh", "hxx", "ipp", "tpp", "ixx", "cppm",
+                    "c++", "h++", "rs", "js", "jsx", "ts", "tsx", "py", "kt", "go", "java", "vue",
+                    "svelte", "toml"
                 ]
                 .iter()
                 .filter_map(

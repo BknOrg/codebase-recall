@@ -18,12 +18,12 @@ schema_version = 1
 max_file_kb = 512
 # Restrict analysis to these languages. Omit (or leave empty) to analyze every
 # supported language: rust, javascript, typescript, python, java, kotlin, vue,
-# svelte, go, toml.
+# svelte, go, c, cpp, toml.
 # languages = ["rust", "python"]
 
 [graph]
 # Drop resolved edges below this confidence (0.0 to 1.0).
-min_confidence = 0.4
+min_confidence = 0.3
 # Include edges to external (npm / pypi / crate) modules.
 include_external = false
 # Cap on total graph nodes (0 disables the cap).
@@ -47,6 +47,9 @@ chunk_profile = "full"
 [precise]
 # true acts like passing --precise for sync, graph and serve.
 enabled = false
+# Opt-in verification of uncertain/risky references; mutually exclusive with enabled.
+selective = false
+selective_budget_secs = 30
 # Seconds to wait for a single language-server answer.
 timeout_secs = 15
 
@@ -54,6 +57,20 @@ timeout_secs = 15
 # Kotlin language server: "jetbrains" (intellij-server, default),
 # "fwcd" (kotlin-language-server) or "auto" (jetbrains, falling back to fwcd).
 server = "jetbrains"
+
+[precise.vue]
+# Optional SDK/plugin package paths (project-relative or absolute).
+# tsdk = "node_modules/typescript/lib"
+# plugin_path = "node_modules/@vue/typescript-plugin"
+
+[precise.clangd]
+# Explicit compiler-driver allowlist for clangd include discovery; empty by default.
+query_drivers = []
+
+[c_family]
+# Optional: compilation_database_dir = "build"
+# First matching header override wins; language is "c" or "cpp".
+header_language_overrides = []
 "#;
 
 pub fn run(args: InitArgs) -> Result<()> {

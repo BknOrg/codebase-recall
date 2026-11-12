@@ -26,6 +26,7 @@ pub struct ImpactReport {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ImpactItem {
+    pub resolution: Option<crate::graph::resolve::refs::Resolution>,
     pub id: String,
     pub label: String,
     pub kind: String,

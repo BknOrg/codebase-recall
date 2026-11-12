@@ -89,6 +89,7 @@ fn ranked(rows: &[Indexed], query: &[f32]) -> Vec<Match> {
             symbols.insert(
                 &c.symbol_key,
                 Match {
+                    semantic: None,
                     path: c.path.clone(),
                     name: c.name.clone(),
                     kind: c.kind.clone(),
@@ -145,10 +146,11 @@ fn lexical(db: &crate::cache::CacheDb, project: &Path, query: &str) -> Result<Ve
         let start = s.start_byte.unwrap_or(0).max(0) as usize;
         let end = (s.end_byte.unwrap_or(0).max(0) as usize).min(source.len());
         hits.push(Match {
+            semantic: None,
             symbol_key: embedding::chunk::symbol_key(&path, &s),
             path,
             name: s.name,
-            kind: s.kind,
+            kind: s.kind.to_string(),
             line: s.start_line.unwrap_or(1) as usize,
             end_line: s.end_line.unwrap_or(1) as usize,
             start_byte: start,

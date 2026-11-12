@@ -60,10 +60,13 @@ pub fn file_row(r: &Row) -> FileRow {
 pub fn symbol_row(r: &Row) -> SymbolRow {
     let p = &r.values;
     SymbolRow {
+        semantic: text(p, "semantic")
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default(),
         id: id(r),
         file_id: int(p, "file_id").unwrap_or_default(),
         name: text(p, "name").unwrap_or_default(),
-        kind: text(p, "kind").unwrap_or_default(),
+        kind: text(p, "kind").unwrap_or_default().into(),
         parent_symbol_id: int(p, "parent_symbol_id"),
         is_exported: flag(p, "is_exported"),
         start_line: int(p, "start_line"),
@@ -92,6 +95,7 @@ pub fn import_row(r: &Row) -> ImportRow {
 pub fn ref_row(r: &Row) -> RefRow {
     let p = &r.values;
     RefRow {
+        argument_types: text(p, "argument_types").and_then(|s| serde_json::from_str(&s).ok()),
         id: id(r),
         file_id: int(p, "file_id").unwrap_or_default(),
         from_symbol_id: int(p, "from_symbol_id"),
@@ -127,6 +131,7 @@ pub fn scope_row(r: &Row) -> ScopeRow {
 pub fn binding_row(r: &Row) -> BindingRow {
     let p = &r.values;
     BindingRow {
+        declaration_byte: int(p, "declaration_byte"),
         id: id(r),
         file_id: int(p, "file_id").unwrap_or_default(),
         scope_id: int(p, "scope_id").unwrap_or_default(),

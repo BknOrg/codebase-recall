@@ -17,9 +17,9 @@ pub fn error_bound(value: &mut Value, budget: usize) {
         .take(120)
         .collect::<String>();
     let state = value["metadata"]["operation"]["state"].clone();
-    *value = json!({"schema_version":1,"status":"error","data":null,"metadata":{"operation_state":state,"warnings":[warning,"Details omitted; increase max_output_kb or inspect embeddings status"],"truncated":true,"reasons":[{"kind":"response_budget"}]}});
+    *value = json!({"schema_version":2,"status":"error","data":null,"metadata":{"operation_state":state,"warnings":[warning,"Details omitted; increase max_output_kb or inspect embeddings status"],"truncated":true,"reasons":[{"kind":"response_budget"}]}});
     if size(value).is_ok_and(|n| n > budget) {
-        *value = json!({"schema_version":1,"status":"error","data":null,"metadata":{"truncated":true,"warnings":["Tool failed; error details exceed max_output_kb. Increase the budget."],"reasons":[{"kind":"response_budget"}]}});
+        *value = json!({"schema_version":2,"status":"error","data":null,"metadata":{"truncated":true,"warnings":["Tool failed; error details exceed max_output_kb. Increase the budget."],"reasons":[{"kind":"response_budget"}]}});
     }
 }
 fn item_count(value: &Value) -> usize {
@@ -68,7 +68,8 @@ pub fn bound(value: &mut Value, budget: usize, tool: &str) -> Result<()> {
         }
     }
     while size(value)? > budget {
-        if remove_detail(&mut value["metadata"], "timings_ms") {
+        if remove_detail(&mut value["metadata"], "timings_ms") || trim_semantic(&mut value["data"])
+        {
             value["metadata"]["trimmed_details"] =
                 json!(value["metadata"]["trimmed_details"].as_u64().unwrap_or(0) + 1);
             continue;
@@ -193,6 +194,29 @@ pub fn bound(value: &mut Value, budget: usize, tool: &str) -> Result<()> {
     }
     Ok(())
 }
+/// Optional semantic detail must not crowd out declaration IDs or relation counts.
+fn trim_semantic(value: &mut Value) -> bool {
+    match value {
+        Value::Object(object) => {
+            if let Some(Value::Object(facts)) = object.get_mut("semantic") {
+                if facts.len() > 4 {
+                    facts.retain(|key, _| {
+                        matches!(
+                            key.as_str(),
+                            "kind" | "qualified_name" | "owner" | "visibility"
+                        )
+                    });
+                } else {
+                    object.remove("semantic");
+                }
+                return true;
+            }
+            object.values_mut().any(trim_semantic)
+        }
+        Value::Array(items) => items.iter_mut().any(trim_semantic),
+        _ => false,
+    }
+}
 fn pop_largest(value: &mut Value, keys: &[&str]) -> bool {
     let key = keys
         .iter()
@@ -242,7 +266,7 @@ mod tests {
     use super::*;
     #[test]
     fn explain_keeps_symbol_identity_and_counts_under_budget() {
-        let mut v = json!({"schema_version":1,"status":"ok","data":[{"symbol":"big","path":"lib.rs","signature":"fn big()","doc":"x".repeat(4000),"members":[],"relations":{"callers":[{"snippet":"x".repeat(10000)}],"callees":[]}}],"metadata":{"omitted_count":0}});
+        let mut v = json!({"schema_version":2,"status":"ok","data":[{"symbol":"big","path":"lib.rs","signature":"fn big()","doc":"x".repeat(4000),"members":[],"relations":{"callers":[{"snippet":"x".repeat(10000)}],"callees":[]}}],"metadata":{"omitted_count":0}});
         bound(&mut v, 2048, "code_rcl_explain").unwrap();
         assert_eq!(v["data"][0]["symbol"], "big");
         assert_eq!(v["data"][0]["relation_counts"]["callers"], 1);
@@ -276,7 +300,7 @@ mod tests {
         let diagnostics = (0..200)
             .map(|n| (format!("phase_{n}"), json!(1.0)))
             .collect::<serde_json::Map<_, _>>();
-        let mut v = json!({"schema_version":1,"status":"ok","data":{"matches":[{"name":"alpha","path":"lib.rs","snippet":"fn alpha() {}"}]},"metadata":{"freshness":"verified","embeddings":{"pending_files":0},"timings_ms":diagnostics}});
+        let mut v = json!({"schema_version":2,"status":"ok","data":{"matches":[{"name":"alpha","path":"lib.rs","snippet":"fn alpha() {}"}]},"metadata":{"freshness":"verified","embeddings":{"pending_files":0},"timings_ms":diagnostics}});
         bound(&mut v, 4096, "code_rcl_search").unwrap();
         assert_eq!(v["data"]["matches"][0]["name"], "alpha");
         assert_eq!(v["metadata"]["freshness"], "verified");
@@ -310,7 +334,7 @@ mod tests {
 mod error_regressions {
     #[test]
     fn unicode_and_control_character_errors_fit_the_minimum_budget() {
-        let mut v = serde_json::json!({"schema_version":1,"status":"error","data":null,"metadata":{"operation":{"state":"failed"},"warnings":["🙂\n\u{0000}".repeat(4000)]}});
+        let mut v = serde_json::json!({"schema_version":2,"status":"error","data":null,"metadata":{"operation":{"state":"failed"},"warnings":["🙂\n\u{0000}".repeat(4000)]}});
         super::error_bound(&mut v, 1024);
         assert!(super::size(&v).unwrap() <= 1024);
         assert_eq!(v["status"], "error");

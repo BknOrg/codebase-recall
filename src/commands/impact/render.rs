@@ -114,6 +114,9 @@ pub fn write_tree(
     if item.is_exported {
         badges.push("⚠ public");
     }
+    if item.resolution.as_ref().is_some_and(|r| r.ambiguous) {
+        badges.push("ambiguous guess");
+    }
     if item.low_confidence {
         badges.push("⚠ low-conf");
     }
@@ -169,13 +172,14 @@ mod location_tests {
 
     fn item(path: &str, site: Option<&str>, line: Option<i64>) -> ImpactItem {
         ImpactItem {
+            resolution: None,
             id: "x".to_string(),
             label: "x".to_string(),
-            kind: "function".to_string(),
+            kind: "function".into(),
             path: Some(path.to_string()),
             line,
             site_path: site.map(str::to_string),
-            edge_kind: "calls".to_string(),
+            edge_kind: "calls".into(),
             confidence: 0.9,
             snippet: None,
             depth: 1,
